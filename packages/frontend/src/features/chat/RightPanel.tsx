@@ -1076,9 +1076,14 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
   const activeConversationId = useChatStore((state) => state.activeConversationId);
   const currentPreview = useChatStore((state) => state.currentPreview);
   const setCurrentPreview = useChatStore((state) => state.setCurrentPreview);
+  const contextReferences = useChatStore((state) => state.contextReferences);
+  const removeContextReference = useChatStore((state) => state.removeContextReference);
+  const clearContextReferences = useChatStore((state) => state.clearContextReferences);
   const quotes = extractQuotes(artifacts);
   const totalChars = messages.reduce((sum, message) => sum + message.content.length, 0);
-  const estimatedTokens = Math.ceil(totalChars / 1.5);
+  const activeRefs = activeConversationId ? (contextReferences[activeConversationId] ?? []) : [];
+  const referencedChars = activeRefs.reduce((sum, ref) => sum + ref.content.length, 0);
+  const estimatedTokens = Math.ceil((totalChars + referencedChars) / 1.5);
 
   const handoffQuote = (quote: QuoteItem, agentId: string) => {
     if (!activeConversationId) return;
@@ -1115,7 +1120,33 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
       type: "agent_message",
       sender: "planner",
       senderId: "pmo",
-      content: `上下文摘要已更新：当前会话包含 ${messages.length} 条消息、${artifacts.length} 个产物、${resources.length} 个资源，约 ${estimatedTokens.toLocaleString()} tokens。后续任务会优先引用已标记段落、最新产物版本和部署状态。`,
+      content: `上下文摘要已更新：当前会话包含 ${messages.length} 条消息、${artifacts.length} 个产物、${resources.length} 个资源、${activeRefs.length} 条消息引用，约 ${estimatedTokens.toLocaleString()} tokens。后续任务会优先引用已标记段落、消息引用、最新产物版本和部署状态。`,
+    });
+  };
+
+  const handoffContextReference = (ref: { id: string; title: string; content: string }, agentId: string) => {
+    if (!activeConversationId) return;
+    const agent = AGENT_OPTIONS.find((item) => item.id === agentId) ?? AGENT_OPTIONS[0];
+    addLocalMessage(activeConversationId, {
+      type: "user_message",
+      sender: "user",
+      content: `@${agent.id} 请基于这条上下文引用继续处理：\n\n> ${ref.content}`,
+      mentions: [agent.id],
+      payload: {
+        contextAction: "context-reference-handoff",
+        referenceId: ref.id,
+        title: ref.title,
+      },
+    });
+    addLocalMessage(activeConversationId, {
+      type: "agent_message",
+      sender: agent.sender,
+      senderId: agent.id,
+      content: `已接收上下文引用「${ref.title}」，我会把它纳入后续处理。`,
+      payload: {
+        contextAction: "context-reference-accepted",
+        referenceId: ref.id,
+      },
     });
   };
 
@@ -1123,17 +1154,64 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
     <div>
       <SectionHeader title="上下文管理" desc="管理当前会话中的消息、资源、预览产物和文档引用。" />
 
-      <div className="mb-4 grid grid-cols-3 gap-2">
+      <div className="mb-4 grid grid-cols-2 gap-2">
         {[
           { label: "消息", value: messages.length },
           { label: "产物", value: artifacts.length },
           { label: "资源", value: resources.length },
+          { label: "引用", value: activeRefs.length },
         ].map((item) => (
           <div key={item.label} className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
             <p className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{item.label}</p>
             <p className="mt-1 text-lg font-bold" style={{ color: "var(--fg-primary)" }}>{item.value}</p>
           </div>
         ))}
+      </div>
+
+      <div className="mb-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <SectionHeader title="消息引用" desc="从消息操作加入上下文的内容，可继续交给 Agent 处理。" />
+          {activeRefs.length > 0 && activeConversationId && (
+            <button type="button" onClick={() => clearContextReferences(activeConversationId)} className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--danger)", background: "var(--danger-subtle)" }}>
+              清空
+            </button>
+          )}
+        </div>
+        {activeRefs.length === 0 ? (
+          <p className="rounded-md px-3 py-2 text-xs" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>暂无消息引用，可在消息气泡下方点击“加入上下文”。</p>
+        ) : (
+          <div className="space-y-2">
+            {activeRefs.slice().reverse().map((ref) => (
+              <div key={ref.id} className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{ref.title}</p>
+                    <p className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{ref.sourceType} · {formatTime(ref.createdAt)}</p>
+                  </div>
+                  {activeConversationId && (
+                    <button type="button" onClick={() => removeContextReference(activeConversationId, ref.id)} className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
+                      移除
+                    </button>
+                  )}
+                </div>
+                <p className="line-clamp-4 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.65 }}>{ref.content}</p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {AGENT_OPTIONS.map((agent) => (
+                    <button
+                      key={agent.id}
+                      type="button"
+                      onClick={() => handoffContextReference(ref, agent.id)}
+                      className="rounded-md px-2 py-1 text-[10px] font-semibold"
+                      style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}
+                    >
+                      交给 {agent.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="mb-4 rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>

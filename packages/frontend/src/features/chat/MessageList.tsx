@@ -142,26 +142,74 @@ function getArtifactType(payload: Record<string, unknown> | undefined): Artifact
 }
 
 function MessageActions({
-  content,
+  message,
   isUser,
-  messageId,
   isStreaming,
   onUndo,
   onStop,
 }: {
-  content: string;
+  message: Message;
   isUser: boolean;
-  messageId: string;
   isStreaming?: boolean;
   onUndo?: (messageId: string) => void;
   onStop?: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [referenced, setReferenced] = useState(false);
+  const addContextReference = useChatStore((state) => state.addContextReference);
+  const addMessage = useChatStore((state) => state.addMessage);
+  const deleteMessage = useChatStore((state) => state.deleteMessage);
 
   const copy = async () => {
-    await navigator.clipboard.writeText(content);
+    await navigator.clipboard.writeText(message.content);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1400);
+  };
+
+  const addToContext = () => {
+    const meta = getSenderMeta(message);
+    addContextReference(message.conversationId, {
+      messageId: message.id,
+      sourceType: "message",
+      sender: meta.label,
+      senderId: message.senderId,
+      title: `${meta.label} · ${formatTime(message.timestamp)}`,
+      content: message.content,
+    });
+    setReferenced(true);
+    window.setTimeout(() => setReferenced(false), 1400);
+  };
+
+  const handoffToAgent = (agentId: string, label: string, sender: string) => {
+    const meta = getSenderMeta(message);
+    addToContext();
+    addMessage(message.conversationId, {
+      id: crypto.randomUUID(),
+      conversationId: message.conversationId,
+      type: "user_message",
+      sender: "user",
+      content: `@${agentId} 请基于这条消息继续处理：\n\n> ${message.content.slice(0, 1200)}`,
+      mentions: [agentId],
+      payload: {
+        contextAction: "message-handoff",
+        sourceMessageId: message.id,
+        sourceSender: meta.label,
+      },
+      timestamp: Date.now(),
+    });
+    addMessage(message.conversationId, {
+      id: crypto.randomUUID(),
+      conversationId: message.conversationId,
+      type: "agent_message",
+      sender,
+      senderId: agentId,
+      content: `${label} 已接收该消息引用，会把它作为后续处理上下文。`,
+      payload: {
+        contextAction: "message-accepted",
+        sourceMessageId: message.id,
+      },
+      timestamp: Date.now(),
+    });
   };
 
   return (
@@ -169,16 +217,31 @@ function MessageActions({
       <button type="button" onClick={copy} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: copied ? "var(--success)" : "var(--fg-tertiary)" }}>
         {copied ? "已复制" : "复制"}
       </button>
+      <button type="button" onClick={addToContext} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: referenced ? "var(--success)" : "var(--fg-tertiary)" }}>
+        {referenced ? "已加入" : "加入上下文"}
+      </button>
+      <button type="button" onClick={() => handoffToAgent("pmo", "PMO", "planner")} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }}>
+        交 PMO
+      </button>
+      <button type="button" onClick={() => handoffToAgent("codex", "Codex", "coder")} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }}>
+        交 Codex
+      </button>
+      <button type="button" onClick={() => handoffToAgent("ux-reviewer", "UX Reviewer", "refiner")} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }}>
+        交 UX
+      </button>
       {isStreaming && onStop && (
         <button type="button" onClick={onStop} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "#174ea6" }}>
           暂停
         </button>
       )}
       {isUser && onUndo && (
-        <button type="button" onClick={() => onUndo(messageId)} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }}>
+        <button type="button" onClick={() => onUndo(message.id)} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }}>
           撤回
         </button>
       )}
+      <button type="button" onClick={() => deleteMessage(message.conversationId, message.id)} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--danger)" }}>
+        删除
+      </button>
     </div>
   );
 }
@@ -305,9 +368,8 @@ const MessageBubble = memo(function MessageBubble({
           </div>
 
           <MessageActions
-            content={message.content}
+            message={message}
             isUser={isUser}
-            messageId={message.id}
             isStreaming={isStreaming}
             onUndo={onUndo}
             onStop={onStop}

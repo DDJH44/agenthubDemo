@@ -498,6 +498,26 @@ export function seedAcceptanceDemo() {
     content: updatedLandingHtml,
     filename: "landing-page.html",
   });
+  chat.clearContextReferences(ACCEPTANCE_GROUP_CONVERSATION_ID);
+  chat.addContextReference(ACCEPTANCE_GROUP_CONVERSATION_ID, {
+    id: "demo-context-requirement",
+    messageId: "demo-msg-user",
+    sourceType: "message",
+    sender: "我",
+    title: "用户需求 · 验收目标",
+    content: "请按课题要求，用多 Agent 协作开发一个验收演示：要有对话列表、单聊/群聊、部署状态卡片、产物预览编辑、Diff、版本历史和上下文引用。",
+    createdAt: at(1000 * 60 * 12),
+  });
+  chat.addContextReference(ACCEPTANCE_GROUP_CONVERSATION_ID, {
+    id: "demo-context-risk",
+    messageId: "demo-msg-conflict",
+    sourceType: "message",
+    sender: "PMO 主 Agent",
+    senderId: "pmo",
+    title: "PMO 风险判断 · 冲突接管",
+    content: "检测到 Codex 与自建 UX Reviewer 同时修改 H1 文案，触发代码冲突处理。PMO 已将冲突文件降级派给 Claude Code 合并。",
+    createdAt: at(1000 * 60 * 6),
+  });
 
   for (const agent of agentStatuses) {
     chat.updateAgentState(agent.agentId, {

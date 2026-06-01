@@ -8,6 +8,7 @@ const CONV_KEY = "agenthub-conversations";
 const ACTIVE_CONV_KEY = "agenthub-active-conv";
 const AGENT_STATES_KEY = "agenthub-agent-states";
 const CONV_DETAIL_KEY = "agenthub-conv-detail";
+const CONTEXT_REFS_KEY = "agenthub-context-references";
 const MAX_PERSIST_MSGS = 200;
 
 function loadMessages(): Record<string, Message[]> {
@@ -86,6 +87,36 @@ function saveConvDetail(detail: ChatStore["conversationDetail"]) {
   } catch { /* quota exceeded */ }
 }
 
+interface ContextReference {
+  id: string;
+  messageId?: string;
+  sourceType: "message" | "quote" | "artifact";
+  sender: string;
+  senderId?: string;
+  title: string;
+  content: string;
+  createdAt: number;
+}
+
+function loadContextReferences(): Record<string, ContextReference[]> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(CONTEXT_REFS_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveContextReferences(refs: Record<string, ContextReference[]>) {
+  if (typeof window === "undefined") return;
+  try {
+    const trimmed: Record<string, ContextReference[]> = {};
+    for (const [key, value] of Object.entries(refs)) {
+      trimmed[key] = value.slice(-50);
+    }
+    localStorage.setItem(CONTEXT_REFS_KEY, JSON.stringify(trimmed));
+  } catch { /* quota exceeded */ }
+}
+
 interface StepProgress { id: string; index: number; total: number; step: string; status: "pending"|"running"|"done"; result?: string; }
 
 interface AgentStepInfo {
@@ -146,11 +177,15 @@ interface ChatStore {
   agentTyping: Record<string, string[]>;
   currentPreview: null | { artifactId: string; type: string; content: string; filename?: string };
   agentMessages: Record<string, Array<{ agentId: string; agentName: string; agentRole: string; content: string; timestamp: number }>>;
+  contextReferences: Record<string, ContextReference[]>;
 
   setConversationMode: (convId: string, mode: "single" | "group") => void;
   setAgentTyping: (convId: string, agentId: string, isTyping: boolean) => void;
   setCurrentPreview: (preview: ChatStore["currentPreview"]) => void;
   addAgentMessage: (convId: string, msg: { agentId: string; agentName: string; agentRole: string; content: string; timestamp: number }) => void;
+  addContextReference: (convId: string, ref: Omit<ContextReference, "id" | "createdAt"> & { id?: string; createdAt?: number }) => void;
+  removeContextReference: (convId: string, refId: string) => void;
+  clearContextReferences: (convId: string) => void;
 
   /** AI助手全局流式状态（跨视图持久） */
   aiStreamBuffer: string;
@@ -245,6 +280,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   agentTyping: {},
   currentPreview: null,
   agentMessages: {},
+  contextReferences: loadContextReferences(),
 
   aiStreamBuffer: "",
   aiIsStreaming: false,
@@ -622,6 +658,41 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set((s) => {
       const existing = s.agentMessages[convId] ?? [];
       return { agentMessages: { ...s.agentMessages, [convId]: [...existing, msg] } };
+    }),
+
+  addContextReference: (convId, ref) =>
+    set((s) => {
+      const existing = s.contextReferences[convId] ?? [];
+      const duplicate = ref.messageId ? existing.some((item) => item.messageId === ref.messageId) : false;
+      if (duplicate) return {};
+      const nextRef: ContextReference = {
+        ...ref,
+        id: ref.id ?? crypto.randomUUID(),
+        createdAt: ref.createdAt ?? Date.now(),
+      };
+      const contextReferences = {
+        ...s.contextReferences,
+        [convId]: [...existing, nextRef].slice(-50),
+      };
+      saveContextReferences(contextReferences);
+      return { contextReferences };
+    }),
+
+  removeContextReference: (convId, refId) =>
+    set((s) => {
+      const contextReferences = {
+        ...s.contextReferences,
+        [convId]: (s.contextReferences[convId] ?? []).filter((ref) => ref.id !== refId),
+      };
+      saveContextReferences(contextReferences);
+      return { contextReferences };
+    }),
+
+  clearContextReferences: (convId) =>
+    set((s) => {
+      const contextReferences = { ...s.contextReferences, [convId]: [] };
+      saveContextReferences(contextReferences);
+      return { contextReferences };
     }),
 
   undoMessage: (conversationId, messageId) => {
