@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { NavKey } from "@/stores/navigation-store";
-import { ACCEPTANCE_GROUP_CONVERSATION_ID, seedAcceptanceDemo } from "@/features/demo/acceptance-demo";
+import { ACCEPTANCE_GROUP_CONVERSATION_ID, startAcceptanceDemo } from "@/features/demo/acceptance-demo";
 import { useChatStore } from "@/stores/chat-store";
 import { useNavigationStore } from "@/stores/navigation-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
@@ -190,7 +190,7 @@ export function AcceptanceGuideView() {
   const readyCount = items.filter((item) => item.status === "ready").length;
 
   const prepareDemo = () => {
-    seedAcceptanceDemo();
+    startAcceptanceDemo();
     setActiveConversation(ACCEPTANCE_GROUP_CONVERSATION_ID);
     switchConversation(ACCEPTANCE_GROUP_CONVERSATION_ID);
   };
@@ -225,7 +225,7 @@ export function AcceptanceGuideView() {
   ].filter((step): step is { label: string; item: GuideItem } => Boolean(step.item));
 
   return (
-    <div className="h-full overflow-y-auto custom-scrollbar" style={{ background: "var(--page-bg)" }}>
+    <div data-testid="acceptance-guide" className="h-full overflow-y-auto custom-scrollbar" style={{ background: "var(--page-bg)" }}>
       <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-5 px-6 py-6">
         <header className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
           <div>
@@ -235,11 +235,11 @@ export function AcceptanceGuideView() {
               这里把课题要求拆成可点击的验收点。每一项都能直接跳到对应会话、Agent 页面或右侧产物工作台 Tab。
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" onClick={prepareDemo} className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-white" style={{ background: "#174ea6" }}>
+              <button type="button" data-testid="acceptance-reset" onClick={prepareDemo} className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-white" style={{ background: "#174ea6" }}>
                 <Icon path="M5 3l14 9-14 9V3z" />
-                准备演示数据
+                重置并启动演示
               </button>
-              <button type="button" onClick={() => openGuideItem(items[0])} className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}>
+              <button type="button" data-testid="acceptance-start-chat" onClick={() => openGuideItem(items[0])} className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}>
                 <Icon path="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
                 从会话开始
               </button>
@@ -284,7 +284,7 @@ export function AcceptanceGuideView() {
                       <p className="rounded-md px-3 py-2 text-xs" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)", lineHeight: 1.55 }}>
                         {item.evidence}
                       </p>
-                      <button type="button" onClick={() => openGuideItem(item)} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}>
+                      <button type="button" data-testid={`guide-item-${item.id}`} onClick={() => openGuideItem(item)} className="mt-3 inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}>
                         <Icon path="M9 18l6-6-6-6" size={12} />
                         演示这一项
                       </button>

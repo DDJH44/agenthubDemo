@@ -41,6 +41,7 @@ function NavItemButton({ item, activeNav, setActiveNav, t }: {
   return (
     <button
       key={item.key}
+      data-nav-key={item.key}
       onClick={() => setActiveNav(item.key)}
       className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-all ${isActive ? "bg-[var(--accent-subtle)]" : "bg-transparent hover:bg-[var(--surface-low)]"}`}
       style={{
@@ -66,6 +67,7 @@ function CollapsedIconItem({ item, activeNav, setActiveNav, t }: {
   return (
     <button
       key={item.key}
+      data-nav-key={item.key}
       onClick={() => setActiveNav(item.key)}
       className={`w-8 h-8 rounded-lg flex items-center justify-center relative shrink-0 transition-all ${activeNav === item.key ? "bg-[var(--accent-subtle)]" : "bg-transparent hover:bg-[var(--surface-low)]"}`}
       style={{

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { seedAcceptanceDemo } from "@/features/demo/acceptance-demo";
+import { startAcceptanceDemo as resetAndStartAcceptanceDemo } from "@/features/demo/acceptance-demo";
 import { useChatStore } from "@/stores/chat-store";
 import { useNavigationStore } from "@/stores/navigation-store";
 
@@ -272,7 +272,7 @@ export function DashboardViewNew() {
   };
 
   const startAcceptanceDemo = () => {
-    seedAcceptanceDemo();
+    resetAndStartAcceptanceDemo();
     setActiveNav("chat");
   };
 

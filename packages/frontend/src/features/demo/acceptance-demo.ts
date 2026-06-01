@@ -17,6 +17,13 @@ export const ACCEPTANCE_SINGLE_CONVERSATION_ID = "acceptance-demo-single-codex";
 const ACCEPTANCE_CLAUDE_CONVERSATION_ID = "acceptance-demo-single-claude";
 const ACCEPTANCE_OPEN_CODE_CONVERSATION_ID = "acceptance-demo-single-open-code";
 const ACCEPTANCE_UX_CONVERSATION_ID = "acceptance-demo-single-ux";
+const DEMO_CONVERSATION_IDS = [
+  ACCEPTANCE_GROUP_CONVERSATION_ID,
+  ACCEPTANCE_SINGLE_CONVERSATION_ID,
+  ACCEPTANCE_CLAUDE_CONVERSATION_ID,
+  ACCEPTANCE_OPEN_CODE_CONVERSATION_ID,
+  ACCEPTANCE_UX_CONVERSATION_ID,
+];
 
 const DEMO_DEPLOY_URL = "https://agenthub-demo-preview.example.com";
 
@@ -418,6 +425,65 @@ function persistMessages(messages: Record<string, Message[]>) {
   localStorage.setItem("agenthub-chat-messages", JSON.stringify(messages));
 }
 
+function persistContextReferences(refs: Record<string, unknown[]>) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem("agenthub-context-references", JSON.stringify(refs));
+}
+
+export function resetAcceptanceDemo() {
+  const chat = useChatStore.getState();
+  const workspace = useWorkspaceStore.getState();
+  const demoIds = new Set(DEMO_CONVERSATION_IDS);
+  const nextMessages = { ...chat.messages };
+  const nextContextReferences = { ...chat.contextReferences };
+  const nextConversationMode = { ...chat.conversationMode };
+
+  for (const id of DEMO_CONVERSATION_IDS) {
+    delete nextMessages[id];
+    delete nextContextReferences[id];
+    delete nextConversationMode[id];
+  }
+
+  chat.setConversations(chat.conversations.filter((conversation) => !demoIds.has(conversation.id)));
+  useChatStore.setState({
+    activeConversationId: demoIds.has(chat.activeConversationId ?? "") ? null : chat.activeConversationId,
+    messages: nextMessages,
+    conversationMode: nextConversationMode,
+    contextReferences: nextContextReferences,
+    conversationDetail: null,
+    taskFlow: [],
+    sessionAgentStatuses: [],
+    taskProgress: null,
+    resources: [],
+    agentStates: {},
+    planSteps: [],
+    steps: [],
+    agentSteps: [],
+    currentPreview: null,
+    analysisResults: [],
+    taskAssignments: [],
+    isAnalyzing: false,
+    taskSummary: "",
+    streamBuffer: "",
+    isStreaming: false,
+  });
+  persistMessages(nextMessages);
+  persistContextReferences(nextContextReferences);
+
+  workspace.clearWorkspace();
+  workspace.switchConversation(null);
+
+  if (typeof window !== "undefined") {
+    for (const id of DEMO_CONVERSATION_IDS) {
+      localStorage.removeItem(`agenthub-ws-${id}`);
+    }
+    if (demoIds.has(localStorage.getItem("agenthub-active-conv") ?? "")) {
+      localStorage.removeItem("agenthub-active-conv");
+    }
+    localStorage.removeItem("agenthub-conv-detail");
+  }
+}
+
 export function seedAcceptanceDemo() {
   const chat = useChatStore.getState();
   const now = Date.now();
@@ -644,4 +710,9 @@ export function seedAcceptanceDemo() {
   workspace.setDeployStatus("done", DEMO_DEPLOY_URL);
 
   window.dispatchEvent(new CustomEvent("conversation:select", { detail: { conversationId: ACCEPTANCE_GROUP_CONVERSATION_ID } }));
+}
+
+export function startAcceptanceDemo() {
+  resetAcceptanceDemo();
+  seedAcceptanceDemo();
 }

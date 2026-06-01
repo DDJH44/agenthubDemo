@@ -13,6 +13,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit --pretty false",
+    "smoke:acceptance": "node scripts/acceptance-smoke.mjs",
     "check": "npm run lint && npm run typecheck && npm test -- --runInBand",
     "test": "jest",
     "test:watch": "jest --watch"
