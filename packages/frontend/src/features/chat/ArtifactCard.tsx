@@ -21,6 +21,8 @@ interface Props {
   language?: string;
   deployUrl?: string;
   deployStatus?: string;
+  deployProvider?: string;
+  deployError?: string;
   onEdit?: (content: string) => void;
   onDeploy?: () => void;
   onPreview?: () => void;
@@ -575,27 +577,86 @@ function DiffView({ content, original }: { content: string; original?: string })
   );
 }
 
-function DeployView({ url, status }: { url?: string; status?: string }) {
+function DeployView({
+  url,
+  status,
+  provider,
+  error,
+  conversationId,
+}: {
+  url?: string;
+  status?: string;
+  provider?: string;
+  error?: string;
+  conversationId?: string;
+}) {
   const done = status === "done" || status === "completed";
   const failed = status === "failed" || status === "error";
   const label = done ? "部署完成" : failed ? "部署失败" : "部署中";
   const color = done ? "var(--success)" : failed ? "var(--danger)" : "#174ea6";
+  const addMessage = useChatStore((state) => state.addMessage);
+
+  const handoffToCodex = () => {
+    if (!conversationId) return;
+    const detail = error || "部署失败，请检查构建日志、平台配置和入口文件。";
+    addMessage(conversationId, {
+      id: crypto.randomUUID(),
+      conversationId,
+      type: "user_message",
+      sender: "user",
+      content: `@codex 请根据部署状态卡片修复失败问题：\n\n${detail}`,
+      mentions: ["codex"],
+      payload: {
+        contextAction: "deploy-card-repair",
+        provider,
+        error: detail,
+      },
+      timestamp: Date.now(),
+    });
+    addMessage(conversationId, {
+      id: crypto.randomUUID(),
+      conversationId,
+      type: "agent_message",
+      sender: "coder",
+      senderId: "codex",
+      content: "Codex 已接收部署失败卡片，会检查产物入口、构建配置和平台凭证。",
+      payload: {
+        contextAction: "deploy-card-repair-accepted",
+        provider,
+      },
+      timestamp: Date.now(),
+    });
+  };
 
   return (
     <CardShell
       title="部署状态"
-      meta={label}
-      actions={url ? (
-        <a href={url} target="_blank" rel="noopener noreferrer" className="h-6 rounded px-2 text-[10px] font-semibold no-underline" style={{ color: "#174ea6" }}>
-          访问
-        </a>
-      ) : undefined}
+      meta={provider ? `${provider} · ${label}` : label}
+      actions={
+        <>
+          {failed && conversationId && (
+            <button type="button" onClick={handoffToCodex} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+              交给 Codex
+            </button>
+          )}
+          {url && (
+            <a href={url} target="_blank" rel="noopener noreferrer" className="h-6 rounded px-2 text-[10px] font-semibold no-underline" style={{ color: "#174ea6" }}>
+              访问
+            </a>
+          )}
+        </>
+      }
     >
       <div className="p-3">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full" style={{ background: color }} />
           <span className="text-sm font-semibold" style={{ color }}>{label}</span>
         </div>
+        {error && (
+          <p className="mt-2 rounded-md px-2 py-1.5 text-xs" style={{ color: "var(--danger)", background: "var(--danger-subtle)", lineHeight: 1.5 }}>
+            {error}
+          </p>
+        )}
         {url && (
           <p className="mt-2 break-all text-xs" style={{ color: "var(--fg-tertiary)" }}>
             {url}
@@ -620,6 +681,8 @@ export function ArtifactCard({
   language,
   deployUrl,
   deployStatus,
+  deployProvider,
+  deployError,
   onEdit,
   onPreview,
 }: Props) {
@@ -637,7 +700,7 @@ export function ArtifactCard({
     case "preview_url":
       return <PreviewView url={deployUrl || content} content={content} />;
     case "deploy_url":
-      return <DeployView url={deployUrl || content} status={deployStatus} />;
+      return <DeployView url={deployUrl || content} status={deployStatus} provider={deployProvider} error={deployError} conversationId={conversationId} />;
     case "diff":
       return <DiffView content={content} />;
     default:

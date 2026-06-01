@@ -45,6 +45,8 @@ temp-ref.jpg
 
 # production
 /build
+/deploy-output/
+/packages/server/deploy-output/
 
 # misc
 .DS_Store

@@ -16,6 +16,9 @@ export interface DeployConfig {
   framework?: string;
   vercelToken?: string;
   vercelTeamId?: string;
+  miaodaWebhookUrl?: string;
+  miaodaToken?: string;
+  miaodaAppUrl?: string;
   sshHost?: string;
   sshPort?: number;
   sshUser?: string;
@@ -279,6 +282,157 @@ class StaticDownloadProvider implements IDeployProvider {
   }
 }
 
+class MockPreviewProvider implements IDeployProvider {
+  readonly id = "mock-preview";
+  readonly name = "Mock Preview";
+
+  private outputDir: string;
+
+  constructor(outputDir?: string) {
+    this.outputDir = outputDir || join(process.cwd(), "deploy-output");
+  }
+
+  async deploy(
+    deployId: string,
+    artifacts: DeployArtifact[],
+    _config: DeployConfig,
+    onProgress: DeployProgressCallback
+  ): Promise<DeployResult> {
+    const logs: string[] = [];
+
+    try {
+      onProgress(8, "创建本地预览环境...");
+      logs.push("创建本地预览环境...");
+
+      const deployDir = join(this.outputDir, deployId);
+      if (!existsSync(deployDir)) {
+        mkdirSync(deployDir, { recursive: true });
+      }
+
+      onProgress(25, "校验静态产物...");
+      logs.push(`发现 ${artifacts.length} 个文件`);
+
+      for (let i = 0; i < artifacts.length; i++) {
+        const artifact = artifacts[i];
+        const progress = 35 + Math.round((i / Math.max(artifacts.length, 1)) * 35);
+        onProgress(progress, `写入预览文件: ${artifact.path}`);
+        logs.push(`写入: ${artifact.path}`);
+
+        const filePath = join(deployDir, artifact.path);
+        const dirPath = join(deployDir, artifact.path.split("/").slice(0, -1).join("/"));
+        if (!existsSync(dirPath)) {
+          mkdirSync(dirPath, { recursive: true });
+        }
+
+        const ws = createWriteStream(filePath, "utf-8");
+        ws.write(artifact.content);
+        ws.end();
+        await new Promise<void>((resolve, reject) => {
+          ws.on("finish", resolve);
+          ws.on("error", reject);
+        });
+      }
+
+      onProgress(82, "发布本地预览链接...");
+      logs.push("发布本地预览链接...");
+
+      const url = `/api/preview/${deployId}`;
+      onProgress(100, `预览已就绪: ${url}`);
+      logs.push(`预览已就绪: ${url}`);
+
+      return {
+        success: true,
+        deployId,
+        url,
+        providerId: this.id,
+        logs,
+        downloadPath: deployDir,
+      };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "未知错误";
+      logs.push(`错误: ${errorMsg}`);
+      return {
+        success: false,
+        deployId,
+        providerId: this.id,
+        logs,
+        error: errorMsg,
+      };
+    }
+  }
+}
+
+class MiaodaProvider implements IDeployProvider {
+  readonly id = "miaoda";
+  readonly name = "Miaoda";
+
+  async deploy(
+    deployId: string,
+    artifacts: DeployArtifact[],
+    config: DeployConfig,
+    onProgress: DeployProgressCallback
+  ): Promise<DeployResult> {
+    const logs: string[] = [];
+
+    try {
+      const webhookUrl = config.miaodaWebhookUrl || process.env.MIAODA_DEPLOY_WEBHOOK;
+      const token = config.miaodaToken || process.env.MIAODA_DEPLOY_TOKEN;
+      if (!webhookUrl) {
+        throw new Error("Miaoda 部署需要配置 MIAODA_DEPLOY_WEBHOOK，或在部署配置中传入 miaodaWebhookUrl");
+      }
+
+      onProgress(12, "准备 Miaoda 部署包...");
+      logs.push(`准备 ${artifacts.length} 个文件`);
+
+      onProgress(35, "提交到 Miaoda Webhook...");
+      const response = await fetch(webhookUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          deployId,
+          projectName: config.projectName,
+          framework: config.framework || "static",
+          files: artifacts,
+        }),
+      });
+
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`Miaoda Webhook 返回 ${response.status}: ${text}`);
+      }
+
+      onProgress(72, "等待 Miaoda 返回应用链接...");
+      const data = await response.json().catch(() => ({})) as { url?: string; appUrl?: string };
+      const url = data.url || data.appUrl || config.miaodaAppUrl || `${webhookUrl.replace(/\/+$/, "")}/${deployId}`;
+
+      onProgress(100, `Miaoda 部署成功: ${url}`);
+      logs.push(`Miaoda 部署成功: ${url}`);
+
+      return {
+        success: true,
+        deployId,
+        url,
+        providerId: this.id,
+        logs,
+      };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "未知错误";
+      logs.push(`错误: ${errorMsg}`);
+      logger.warn(`Miaoda deploy failed: ${errorMsg}`, "Deploy");
+      return {
+        success: false,
+        deployId,
+        providerId: this.id,
+        logs,
+        error: errorMsg,
+      };
+    }
+  }
+}
+
 class SelfHostedProvider implements IDeployProvider {
   readonly id = "self-hosted";
   readonly name = "自托管服务器";
@@ -392,7 +546,9 @@ class DeployManager {
   private providers = new Map<string, IDeployProvider>();
 
   constructor() {
+    this.register(new MockPreviewProvider());
     this.register(new VercelProvider());
+    this.register(new MiaodaProvider());
     this.register(new StaticDownloadProvider());
     this.register(new SelfHostedProvider());
   }

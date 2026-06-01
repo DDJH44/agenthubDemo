@@ -349,8 +349,11 @@ const MessageBubble = memo(function MessageBubble({
               <ArtifactCard
                 type={message.type === "deploy_card" ? "deploy_url" : "preview_url"}
                 content={message.content}
+                conversationId={message.conversationId}
                 deployUrl={payload?.url as string | undefined}
                 deployStatus={payload?.status as string | undefined}
+                deployProvider={(payload?.platformLabel || payload?.platform) as string | undefined}
+                deployError={payload?.error as string | undefined}
               />
             )}
 

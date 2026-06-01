@@ -31,7 +31,7 @@ function restoreClientIdMap() {
 
 restoreClientIdMap();
 import { createAgentSocket } from "@/lib/ws-client";
-import type { WSServerMessage, Conversation, WSClientMessage } from "@agenthub/shared";
+import type { WSServerMessage, Conversation, WSClientMessage, Artifact } from "@agenthub/shared";
 
 function parseParticipants(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw as string[];
@@ -460,12 +460,69 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         case "deploy:failed": {
           const status = msg.type === "deploy:progress" ? "deploying" : msg.type === "deploy:completed" ? "success" : "failed";
           const url = "url" in msg ? msg.url : undefined;
+          const conversationId = useChatStore.getState().activeConversationId;
           useWorkspaceStore.getState().setDeployStatus(status, url, {
             progress: msg.type === "deploy:progress" ? msg.progress : 100,
             providerId: msg.providerId,
             logs: msg.type === "deploy:progress" ? msg.logs : [msg.type === "deploy:completed" ? `部署完成：${msg.url}` : msg.error],
             error: msg.type === "deploy:failed" ? msg.error : null,
           });
+
+          if (conversationId && msg.type === "deploy:completed") {
+            const artifact: Artifact = {
+              id: `deploy-result-${msg.deployId}`,
+              jobId: msg.deployId,
+              type: "deploy_url",
+              filename: `${msg.providerId}-deployment.url`,
+              content: msg.url,
+              version: 1,
+              createdBy: "Open Code",
+              createdAt: Date.now(),
+              metadata: {
+                providerId: msg.providerId,
+                deployId: msg.deployId,
+                status: "success",
+                changeSummary: `部署成功：${msg.providerId}`,
+              },
+            };
+            useWorkspaceStore.getState().addArtifact(artifact);
+            useChatStore.getState().addMessage(conversationId, {
+              id: `deploy-card-${msg.deployId}-completed`,
+              conversationId,
+              type: "deploy_card",
+              sender: "worker",
+              senderId: "open-code",
+              content: `部署完成。${msg.providerId} 已返回访问链接。`,
+              payload: {
+                status: "done",
+                platform: msg.providerId,
+                platformLabel: msg.providerId,
+                url: msg.url,
+                deployId: msg.deployId,
+                artifactId: artifact.id,
+              },
+              timestamp: Date.now(),
+            });
+          }
+
+          if (conversationId && msg.type === "deploy:failed") {
+            useChatStore.getState().addMessage(conversationId, {
+              id: `deploy-card-${msg.deployId}-failed`,
+              conversationId,
+              type: "deploy_card",
+              sender: "worker",
+              senderId: "open-code",
+              content: `部署失败。${msg.providerId} 返回错误，可交给 Codex 修复后重试。`,
+              payload: {
+                status: "failed",
+                platform: msg.providerId,
+                platformLabel: msg.providerId,
+                error: msg.error,
+                deployId: msg.deployId,
+              },
+              timestamp: Date.now(),
+            });
+          }
           break;
         }
       }

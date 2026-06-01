@@ -6,7 +6,7 @@ import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import type { Artifact, Message, WSClientMessage } from "@agenthub/shared";
 
-type Platform = "vercel" | "static-download" | "self-hosted";
+type Platform = "mock-preview" | "vercel" | "miaoda";
 
 interface PlatformOption {
   key: Platform;
@@ -19,28 +19,28 @@ interface PlatformOption {
 
 const PLATFORMS: PlatformOption[] = [
   {
-    key: "static-download",
-    label: "静态包",
-    desc: "生成可下载的静态产物包，适合演示、归档和手动上传。",
-    hint: "本地可用，不依赖第三方 Token",
-    tags: ["离线交付", "最快验证"],
-    icon: "M12 3v12m0 0l-4-4m4 4l4-4M5 21h14",
+    key: "mock-preview",
+    label: "Mock Preview",
+    desc: "写入本地预览环境并返回可访问链接，适合答辩现场稳定演示。",
+    hint: "本地可用，不依赖第三方密钥",
+    tags: ["稳定成功", "验收演示"],
+    icon: "M4 5h16v12H4z M8 21h8 M12 17v4",
   },
   {
     key: "vercel",
     label: "Vercel",
-    desc: "发布到 Vercel 并返回公网预览地址，适合网页产物验收。",
+    desc: "提交到 Vercel 部署 API，返回公网预览地址。",
     hint: "需要服务端配置 VERCEL_TOKEN",
-    tags: ["公网预览", "生产部署"],
+    tags: ["公网预览", "真实平台"],
     icon: "M12 3l9 16H3L12 3z",
   },
   {
-    key: "self-hosted",
-    label: "自托管",
-    desc: "通过 SSH 同步到自己的服务器，适合私有化环境。",
-    hint: "需要 SSH 主机、用户和部署目录",
-    tags: ["私有服务器", "SSH"],
-    icon: "M4 7h16v10H4zM8 11h.01M12 11h.01M16 11h.01",
+    key: "miaoda",
+    label: "Miaoda",
+    desc: "通过 Miaoda Webhook 提交静态产物包，返回妙搭应用链接。",
+    hint: "需要 MIAODA_DEPLOY_WEBHOOK 或手动填写 Webhook",
+    tags: ["三方平台", "Webhook"],
+    icon: "M12 2l7 4v6c0 5-3 8-7 10-4-2-7-5-7-10V6l7-4z",
   },
 ];
 
@@ -50,6 +50,14 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; bo
   success: { label: "部署成功", color: "var(--success)", bg: "var(--success-subtle)", border: "var(--success-border)" },
   failed: { label: "部署失败", color: "var(--danger)", bg: "var(--danger-subtle)", border: "var(--danger-border)" },
 };
+
+const LIFECYCLE = [
+  { label: "准备中", progress: 10 },
+  { label: "构建校验", progress: 35 },
+  { label: "发布中", progress: 70 },
+  { label: "回写消息", progress: 88 },
+  { label: "完成", progress: 100 },
+];
 
 function normalizeStatus(status: string | null) {
   if (status === "done" || status === "completed" || status === "success") return "success";
@@ -95,23 +103,22 @@ function addDeployCard(conversationId: string, content: string, payload: Record<
   useChatStore.getState().addMessage(conversationId, message);
 }
 
-function stepState(stepProgress: number, currentProgress: number, status: string) {
-  if (status === "failed" && currentProgress >= stepProgress) return "failed";
+function lifecycleState(stepProgress: number, currentProgress: number, status: string) {
+  if (status === "failed" && currentProgress >= stepProgress - 20) return "failed";
   if (status === "success" || currentProgress >= stepProgress) return "done";
-  if (status === "deploying" && currentProgress >= stepProgress - 25) return "active";
+  if (status === "deploying" && currentProgress >= stepProgress - 28) return "active";
   return "pending";
 }
 
 export function DeployPanel() {
-  const [selectedPlatform, setSelectedPlatform] = useState<Platform>("static-download");
-  const [sshHost, setSshHost] = useState("");
-  const [sshUser, setSshUser] = useState("root");
-  const [sshPort, setSshPort] = useState("22");
-  const [sshKey, setSshKey] = useState("");
-  const [deployPath, setDeployPath] = useState("/var/www/app");
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform>("mock-preview");
+  const [miaodaWebhookUrl, setMiaodaWebhookUrl] = useState("");
+  const [miaodaToken, setMiaodaToken] = useState("");
+  const [miaodaAppUrl, setMiaodaAppUrl] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const activeConversationId = useChatStore((state) => state.activeConversationId);
+  const addTaskAssignment = useChatStore((state) => state.addTaskAssignment);
   const {
     artifacts,
     deployStatus,
@@ -141,10 +148,6 @@ export function DeployPanel() {
       setStatusMessage("暂无可部署产物，请先让 Agent 生成网页、代码或文档产物。");
       return;
     }
-    if (selectedPlatform === "self-hosted" && !sshHost.trim()) {
-      setStatusMessage("自托管部署需要填写服务器地址。");
-      return;
-    }
 
     const projectName = `agenthub-${activeConversationId.slice(0, 8)}`;
     const config: Record<string, unknown> = {
@@ -153,26 +156,26 @@ export function DeployPanel() {
       files: deployFiles,
     };
 
-    if (selectedPlatform === "self-hosted") {
+    if (selectedPlatform === "miaoda") {
       Object.assign(config, {
-        sshHost: sshHost.trim(),
-        sshUser: sshUser.trim() || "root",
-        sshPort: Number.parseInt(sshPort, 10) || 22,
-        sshKey: sshKey.trim() || undefined,
-        deployPath: deployPath.trim() || "/var/www/app",
+        miaodaWebhookUrl: miaodaWebhookUrl.trim() || undefined,
+        miaodaToken: miaodaToken.trim() || undefined,
+        miaodaAppUrl: miaodaAppUrl.trim() || undefined,
       });
     }
 
-    setStatusMessage("部署任务已提交，正在等待平台回调。");
+    const platformLabel = PLATFORMS.find((item) => item.key === selectedPlatform)?.label ?? selectedPlatform;
+    setStatusMessage(`${platformLabel} 部署任务已提交，正在进入准备阶段。`);
     setDeployStatus("deploying", undefined, {
       progress: 5,
       providerId: selectedPlatform,
-      logs: [`已提交 ${PLATFORMS.find((item) => item.key === selectedPlatform)?.label ?? selectedPlatform} 部署任务。`],
+      logs: [`已提交 ${platformLabel} 部署任务。`, `收集 ${deployFiles.length} 个产物文件。`],
       error: null,
     });
-    addDeployCard(activeConversationId, `已向 ${selectedPlatform} 提交部署任务，正在收集 ${deployFiles.length} 个产物文件。`, {
+    addDeployCard(activeConversationId, `已向 ${platformLabel} 提交部署任务，当前阶段：准备中。`, {
       status: "deploying",
       platform: selectedPlatform,
+      platformLabel,
       artifactId: deployableArtifact.id,
       files: deployFiles.map((file) => file.path),
     });
@@ -187,22 +190,48 @@ export function DeployPanel() {
     } as WSClientMessage);
   };
 
-  const steps = [
-    { label: "收集产物", progress: 5 },
-    { label: "构建校验", progress: 25 },
-    { label: "上传平台", progress: 55 },
-    { label: "等待回调", progress: 80 },
-    { label: "发布完成", progress: 100 },
-  ];
+  const handoffFailureToCodex = () => {
+    if (!activeConversationId) return;
+    const errorText = deployError || deployLogs.slice(-3).join("\n") || "部署失败，缺少错误日志。";
+    useChatStore.getState().addMessage(activeConversationId, {
+      id: crypto.randomUUID(),
+      conversationId: activeConversationId,
+      type: "user_message",
+      sender: "user",
+      content: `@codex 请根据部署失败日志修复产物并重新部署：\n\n${errorText}`,
+      mentions: ["codex"],
+      payload: {
+        contextAction: "deploy-failure-handoff",
+        providerId: deployProvider || selectedPlatform,
+        deployError: errorText,
+      },
+      timestamp: Date.now(),
+    });
+    useChatStore.getState().addMessage(activeConversationId, {
+      id: crypto.randomUUID(),
+      conversationId: activeConversationId,
+      type: "agent_message",
+      sender: "coder",
+      senderId: "codex",
+      content: "Codex 已接收部署失败日志，会优先检查构建配置、平台密钥和产物入口文件。",
+      payload: {
+        contextAction: "deploy-failure-accepted",
+        providerId: deployProvider || selectedPlatform,
+      },
+      timestamp: Date.now(),
+    });
+    addTaskAssignment({ targetAgent: "Codex", task: "根据部署失败日志修复并重新部署", status: "pending" });
+    setStatusMessage("已把部署失败日志交给 Codex。");
+  };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div data-testid="deploy-panel" className="flex flex-col gap-4">
       <section className="rounded-lg p-4" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>部署到第三方平台</p>
             <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.6 }}>
-              选择平台后会把当前产物打包提交，并在消息流里生成部署状态卡片。
+              选择平台后会进入准备、构建、发布、回写消息的完整生命周期。
             </p>
           </div>
           <span className="shrink-0 rounded-sm px-2 py-1 text-[10px] font-semibold" style={{ color: statusMeta.color, background: statusMeta.bg, border: `1px solid ${statusMeta.border}` }}>
@@ -242,6 +271,7 @@ export function DeployPanel() {
               <button
                 key={platform.key}
                 type="button"
+                data-testid={`deploy-platform-${platform.key}`}
                 onClick={() => setSelectedPlatform(platform.key)}
                 className="rounded-lg p-3 text-left transition-colors"
                 style={{
@@ -274,44 +304,34 @@ export function DeployPanel() {
         </div>
       </section>
 
-      {selectedPlatform === "self-hosted" && (
+      {selectedPlatform === "miaoda" && (
         <section className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-          <p className="mb-3 text-xs font-bold" style={{ color: "var(--fg-primary)" }}>SSH 配置</p>
+          <p className="mb-3 text-xs font-bold" style={{ color: "var(--fg-primary)" }}>Miaoda 配置</p>
           <div className="space-y-2">
             <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold" style={{ color: "var(--fg-secondary)" }}>服务器地址</span>
-              <input value={sshHost} onChange={(event) => setSshHost(event.target.value)} placeholder="192.168.1.100" className="h-8 w-full rounded-md px-2 text-xs outline-none" style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--border)" }} />
-            </label>
-            <div className="grid grid-cols-[1fr_88px] gap-2">
-              <label className="block">
-                <span className="mb-1 block text-[10px] font-semibold" style={{ color: "var(--fg-secondary)" }}>用户名</span>
-                <input value={sshUser} onChange={(event) => setSshUser(event.target.value)} placeholder="root" className="h-8 w-full rounded-md px-2 text-xs outline-none" style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--border)" }} />
-              </label>
-              <label className="block">
-                <span className="mb-1 block text-[10px] font-semibold" style={{ color: "var(--fg-secondary)" }}>端口</span>
-                <input value={sshPort} onChange={(event) => setSshPort(event.target.value)} placeholder="22" className="h-8 w-full rounded-md px-2 text-xs outline-none" style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--border)" }} />
-              </label>
-            </div>
-            <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold" style={{ color: "var(--fg-secondary)" }}>部署目录</span>
-              <input value={deployPath} onChange={(event) => setDeployPath(event.target.value)} placeholder="/var/www/app" className="h-8 w-full rounded-md px-2 text-xs outline-none" style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--border)" }} />
+              <span className="mb-1 block text-[10px] font-semibold" style={{ color: "var(--fg-secondary)" }}>Webhook URL</span>
+              <input value={miaodaWebhookUrl} onChange={(event) => setMiaodaWebhookUrl(event.target.value)} placeholder="可留空，使用服务端 MIAODA_DEPLOY_WEBHOOK" className="h-8 w-full rounded-md px-2 text-xs outline-none" style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--border)" }} />
             </label>
             <label className="block">
-              <span className="mb-1 block text-[10px] font-semibold" style={{ color: "var(--fg-secondary)" }}>SSH 私钥路径或内容</span>
-              <textarea value={sshKey} onChange={(event) => setSshKey(event.target.value)} rows={3} placeholder="可选" className="w-full resize-y rounded-md px-2 py-1.5 text-[11px] outline-none" style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--border)", fontFamily: "var(--font-mono)" }} />
+              <span className="mb-1 block text-[10px] font-semibold" style={{ color: "var(--fg-secondary)" }}>Token</span>
+              <input value={miaodaToken} onChange={(event) => setMiaodaToken(event.target.value)} placeholder="可选，优先使用服务端 MIAODA_DEPLOY_TOKEN" className="h-8 w-full rounded-md px-2 text-xs outline-none" style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--border)" }} />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-[10px] font-semibold" style={{ color: "var(--fg-secondary)" }}>备用应用链接</span>
+              <input value={miaodaAppUrl} onChange={(event) => setMiaodaAppUrl(event.target.value)} placeholder="Webhook 未返回 URL 时使用" className="h-8 w-full rounded-md px-2 text-xs outline-none" style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--border)" }} />
             </label>
           </div>
         </section>
       )}
 
-      <section className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+      <section data-testid="deploy-lifecycle" className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>部署时间线</p>
+          <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>部署生命周期</p>
           {deployProvider && <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{deployProvider}</span>}
         </div>
         <div className="space-y-2">
-          {steps.map((step) => {
-            const state = stepState(step.progress, progress, normalizedStatus);
+          {LIFECYCLE.map((step) => {
+            const state = lifecycleState(step.progress, progress, normalizedStatus);
             const color = state === "done" ? "var(--success)" : state === "failed" ? "var(--danger)" : state === "active" ? "#174ea6" : "var(--fg-disabled)";
             return (
               <div key={step.label} className="flex items-center gap-2">
@@ -325,7 +345,14 @@ export function DeployPanel() {
 
       {(statusMessage || deployLogs.length > 0 || deployError) && (
         <section className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-          <p className="mb-2 text-xs font-bold" style={{ color: "var(--fg-primary)" }}>最近日志</p>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>最近日志</p>
+            {normalizedStatus === "failed" && (
+              <button type="button" data-testid="deploy-repair-codex" onClick={handoffFailureToCodex} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}>
+                交给 Codex 修复
+              </button>
+            )}
+          </div>
           <div className="space-y-1.5">
             {statusMessage && <p className="text-[11px]" style={{ color: "#174ea6" }}>{statusMessage}</p>}
             {deployError && <p className="text-[11px]" style={{ color: "var(--danger)" }}>{deployError}</p>}
@@ -347,6 +374,7 @@ export function DeployPanel() {
 
       <button
         type="button"
+        data-testid="deploy-start"
         onClick={submitDeploy}
         disabled={!canDeploy || isDeploying}
         className="flex h-9 items-center justify-center gap-2 rounded-lg text-xs font-bold transition-transform active:scale-[0.98]"

@@ -715,6 +715,37 @@ registerRoute("GET", "/api/download/:id", async (req, res) => {
   }));
 });
 
+/* ── GET /api/preview/:id (Mock Preview 预览) ── */
+registerRoute("GET", "/api/preview/:id", async (req, res) => {
+  const deployId = (req as RequestWithParams).params?.id;
+  if (!deployId || !/^[a-zA-Z0-9._-]+$/.test(deployId)) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "valid deployId required" }));
+    return;
+  }
+
+  const deployDir = path.join(process.cwd(), "deploy-output", deployId);
+  if (!existsSync(deployDir)) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Preview not found" }));
+    return;
+  }
+
+  const candidates = ["index.html", "landing-page.html"];
+  const files = readdirSync(deployDir).filter((file) => file.endsWith(".html"));
+  const htmlFile = candidates.find((file) => existsSync(path.join(deployDir, file))) ?? files[0];
+
+  if (!htmlFile) {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(`<!doctype html><html lang="zh-CN"><body><h1>AgentHub Preview</h1><p>${deployId}</p></body></html>`);
+    return;
+  }
+
+  const fullPath = path.join(deployDir, htmlFile);
+  res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+  createReadStream(fullPath).pipe(res);
+});
+
 /* ── DELETE /api/files/:id ── */
 registerRoute("DELETE", "/api/files/:id", async (req, res) => {
   const user = await requireAuth(req, res);

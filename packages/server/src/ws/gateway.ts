@@ -60,6 +60,14 @@ function broadcast(conversationId: string, data: unknown) {
   }
 }
 
+function emitToRequesterAndRoom(conversationId: string, requester: WebSocket, data: unknown) {
+  broadcast(conversationId, data);
+  const clients = rooms.get(conversationId);
+  if (!clients?.has(requester) && requester.readyState === WebSocket.OPEN) {
+    requester.send(JSON.stringify(data));
+  }
+}
+
 function toListItem(conv: {
   id: string; workspaceId: string; title: string; type: string;
   status: string; pinned: boolean; pinnedAt: Date | null;
@@ -107,6 +115,12 @@ async function checkConversationAccess(ws: WebSocket, conversationId: string, us
 
 const DEFAULT_WORKSPACE = "default";
 const AGENT_NAMES = ["planner", "worker", "critic", "researcher", "refiner"];
+
+function safeDeployPath(path: string): string {
+  const normalized = path.replace(/\\/g, "/").replace(/^\/+/, "").split("/").filter(Boolean);
+  const safeParts = normalized.filter((part) => part !== "." && part !== "..");
+  return safeParts.join("/") || "index.html";
+}
 
 export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
   const wss = new WebSocketServer({ noServer: true });
@@ -768,15 +782,14 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const targetConvId = msg.conversationId || currentRoom;
             if (!targetConvId) { sendError(ws, "NO_CONVERSATION", "No conversation selected"); break; }
             const deployId = msg.artifactId + "-" + Date.now();
-            broadcast(targetConvId, { type: "deploy:progress", deployId, status: "deploying", progress: 0, providerId: msg.providerId, logs: ["初始化部署..."], timestamp: Date.now() });
-
+            emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:progress", deployId, status: "deploying", progress: 0, providerId: msg.providerId, logs: ["初始化部署..."], timestamp: Date.now() });
             try {
               const artifacts: Array<{ path: string; content: string }> = [];
               if (msg.config && typeof msg.config === "object") {
                 const config = msg.config as Record<string, unknown>;
                 if (Array.isArray(config.files)) {
                   for (const f of config.files as Array<{ path?: string; content?: string }>) {
-                    if (f.path && f.content) artifacts.push({ path: f.path, content: f.content });
+                    if (f.path && f.content) artifacts.push({ path: safeDeployPath(f.path), content: f.content });
                   }
                 }
               }
@@ -787,30 +800,30 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                   [{ path: "index.html", content: "<!DOCTYPE html><html><body>AgentHub Deploy</body></html>" }],
                   { ...(msg.config as Record<string, unknown> || {}), projectName: targetConvId } as DeployConfig,
                   (progress, log) => {
-                    broadcast(targetConvId, { type: "deploy:progress", deployId, status: "deploying", progress, providerId: msg.providerId, logs: [log], timestamp: Date.now() });
+                    emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:progress", deployId, status: "deploying", progress, providerId: msg.providerId, logs: [log], timestamp: Date.now() });
                   }
                 );
                 if (result.success) {
-                  broadcast(targetConvId, { type: "deploy:completed", deployId, url: result.url || "", providerId: msg.providerId, timestamp: Date.now() });
+                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:completed", deployId, url: result.url || "", providerId: msg.providerId, timestamp: Date.now() });
                 } else {
-                  broadcast(targetConvId, { type: "deploy:failed", deployId, error: result.error || "部署失败", providerId: msg.providerId, timestamp: Date.now() });
+                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:failed", deployId, error: result.error || "部署失败", providerId: msg.providerId, timestamp: Date.now() });
                 }
               } else {
                 const result = await deployManager.deploy(
                   msg.providerId, deployId, artifacts,
                   { ...(msg.config as Record<string, unknown> || {}), projectName: targetConvId } as DeployConfig,
                   (progress, log) => {
-                    broadcast(targetConvId, { type: "deploy:progress", deployId, status: "deploying", progress, providerId: msg.providerId, logs: [log], timestamp: Date.now() });
+                    emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:progress", deployId, status: "deploying", progress, providerId: msg.providerId, logs: [log], timestamp: Date.now() });
                   }
                 );
                 if (result.success) {
-                  broadcast(targetConvId, { type: "deploy:completed", deployId, url: result.url || "", providerId: msg.providerId, timestamp: Date.now() });
+                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:completed", deployId, url: result.url || "", providerId: msg.providerId, timestamp: Date.now() });
                 } else {
-                  broadcast(targetConvId, { type: "deploy:failed", deployId, error: result.error || "部署失败", providerId: msg.providerId, timestamp: Date.now() });
+                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:failed", deployId, error: result.error || "部署失败", providerId: msg.providerId, timestamp: Date.now() });
                 }
               }
             } catch (err) {
-              broadcast(targetConvId, { type: "deploy:failed", deployId, error: String(err), providerId: msg.providerId, timestamp: Date.now() });
+              emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:failed", deployId, error: String(err), providerId: msg.providerId, timestamp: Date.now() });
             }
             break;
           }

@@ -30,6 +30,7 @@ const checks = [
     name: "部署状态",
     selector: '[data-testid="guide-item-deploy"]',
     text: "部署状态",
+    deploy: true,
   },
 ];
 
@@ -127,6 +128,12 @@ async function main() {
       await openAcceptanceGuide(page);
       await page.locator(check.selector).click();
       await waitForText(page, check.text);
+      if (check.deploy) {
+        await page.locator('[data-testid="deploy-panel"]').waitFor({ timeout: 10000 });
+        await page.locator('[data-testid="deploy-platform-mock-preview"]').click();
+        await page.locator('[data-testid="deploy-start"]').click();
+        await waitForText(page, "部署成功");
+      }
     }
 
     console.log(JSON.stringify({
