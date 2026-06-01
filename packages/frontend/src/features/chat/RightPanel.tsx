@@ -127,6 +127,80 @@ function addLocalMessage(conversationId: string, message: Omit<Message, "id" | "
   });
 }
 
+function artifactRootId(artifact: Artifact) {
+  return artifact.parentId ?? artifact.id;
+}
+
+function familyArtifacts(artifacts: Artifact[], artifact: Artifact) {
+  const rootId = artifactRootId(artifact);
+  return artifacts
+    .filter((item) => item.id === rootId || item.parentId === rootId)
+    .sort((a, b) => (b.version ?? 1) - (a.version ?? 1) || b.createdAt - a.createdAt);
+}
+
+function latestArtifacts(artifacts: Artifact[]) {
+  const grouped = new Map<string, Artifact>();
+  for (const artifact of artifacts) {
+    const rootId = artifactRootId(artifact);
+    const current = grouped.get(rootId);
+    const artifactVersion = artifact.version ?? 1;
+    const currentVersion = current?.version ?? 1;
+    if (!current || artifactVersion > currentVersion || (artifactVersion === currentVersion && artifact.createdAt > current.createdAt)) {
+      grouped.set(rootId, artifact);
+    }
+  }
+  return Array.from(grouped.values()).sort((a, b) => b.createdAt - a.createdAt);
+}
+
+function previewTypeForArtifact(artifact: Pick<Artifact, "type" | "filename">) {
+  if (artifact.type === "html" || artifact.filename?.endsWith(".html")) return "html";
+  if (artifact.type === "markdown" || artifact.type === "document" || artifact.filename?.endsWith(".md")) return "document";
+  if (artifact.type === "preview_url" || artifact.type === "deploy_url") return "url";
+  return "code";
+}
+
+function applyUnifiedDiff(source: string, diff: string) {
+  const sourceLines = source.split("\n");
+  const output: string[] = [];
+  const diffLines = diff.split("\n");
+  let cursor = 0;
+  let touched = false;
+
+  for (let index = 0; index < diffLines.length; index++) {
+    const header = diffLines[index].match(/^@@\s+-(\d+)(?:,\d+)?\s+\+(\d+)(?:,\d+)?\s+@@/);
+    if (!header) continue;
+
+    touched = true;
+    const oldStart = Number.parseInt(header[1], 10) - 1;
+    while (cursor < oldStart && cursor < sourceLines.length) {
+      output.push(sourceLines[cursor]);
+      cursor += 1;
+    }
+
+    index += 1;
+    while (index < diffLines.length && !diffLines[index].startsWith("@@")) {
+      const line = diffLines[index];
+      if (line.startsWith(" ")) {
+        output.push(sourceLines[cursor] ?? line.slice(1));
+        cursor += 1;
+      } else if (line.startsWith("-")) {
+        cursor += 1;
+      } else if (line.startsWith("+")) {
+        output.push(line.slice(1));
+      }
+      index += 1;
+    }
+    index -= 1;
+  }
+
+  if (!touched) return null;
+  while (cursor < sourceLines.length) {
+    output.push(sourceLines[cursor]);
+    cursor += 1;
+  }
+  return output.join("\n");
+}
+
 function TaskPanel() {
   const taskFlow = useChatStore((state) => state.taskFlow);
   const taskProgress = useChatStore((state) => state.taskProgress);
@@ -221,6 +295,7 @@ function TaskPanel() {
 function extractCodeItems(artifacts: Artifact[], messages: Message[]) {
   const artifactItems = artifacts
     .filter((artifact) => ["code", "html", "json", "markdown"].includes(artifact.type))
+    .sort((a, b) => (b.version ?? 1) - (a.version ?? 1) || b.createdAt - a.createdAt)
     .map((artifact) => ({
       id: artifact.id,
       artifactId: artifact.id,
@@ -255,6 +330,8 @@ function extractCodeItems(artifacts: Artifact[], messages: Message[]) {
 
 function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: Message[] }) {
   const activeConversationId = useChatStore((state) => state.activeConversationId);
+  const setCurrentPreview = useChatStore((state) => state.setCurrentPreview);
+  const createArtifactVersion = useWorkspaceStore((state) => state.createArtifactVersion);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
   const items = extractCodeItems(artifacts, messages);
@@ -282,10 +359,50 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
   }
 
   const value = drafts[activeItem.id] ?? activeItem.content;
+  const isDirty = value !== activeItem.content;
+  const canSaveVersion = activeItem.source === "artifact" && isDirty;
+
+  const resetDraft = () => {
+    setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[activeItem.id];
+      return next;
+    });
+  };
+
+  const saveVersion = () => {
+    if (!canSaveVersion) return;
+    const created = createArtifactVersion(activeItem.artifactId, value, {
+      createdBy: "User",
+      changeSummary: "在代码编辑器中保存手动修改",
+      metadata: { revisionSource: "code-editor" },
+    });
+    if (!created) return;
+    setActiveId(created.id);
+    setDrafts((prev) => {
+      const next = { ...prev };
+      delete next[activeItem.id];
+      return next;
+    });
+    setCurrentPreview({
+      artifactId: created.id,
+      type: previewTypeForArtifact(created),
+      content: created.content,
+      filename: created.filename,
+    });
+    if (activeConversationId) {
+      addLocalMessage(activeConversationId, {
+        type: "system",
+        sender: "system",
+        content: `已保存 ${created.filename || created.type} v${created.version}，可在历史中回滚或继续交给 Agent。`,
+        payload: { artifactId: created.id, version: created.version },
+      });
+    }
+  };
 
   return (
     <div className="flex h-full min-h-[560px] flex-col">
-      <SectionHeader title="代码编辑" desc="支持查看、局部编辑，并将修改交给 Agent 继续处理。" />
+      <SectionHeader title="代码编辑" desc="支持查看、局部编辑、保存新版本，并将修改交给 Agent 继续处理。" />
       <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
         {items.map((item) => (
           <button
@@ -307,11 +424,19 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
         <div className="flex h-9 items-center justify-between gap-2 px-3" style={{ background: "#2b2b2b", borderBottom: "1px solid #3b3b3b" }}>
           <div className="min-w-0">
             <span className="block truncate text-[11px] font-bold text-white">{activeItem.filename}</span>
-            <span className="text-[10px]" style={{ color: "#a1a1aa" }}>{activeItem.language}{activeItem.version ? ` · v${activeItem.version}` : ""}</span>
+            <span className="text-[10px]" style={{ color: "#a1a1aa" }}>{activeItem.language}{activeItem.version ? ` · v${activeItem.version}` : ""}{isDirty ? " · 未保存" : ""}</span>
           </div>
-          <button type="button" onClick={() => askAgent(activeItem.artifactId, value)} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: "#dbeafe", background: "#174ea6" }}>
-            交给 Agent
-          </button>
+          <div className="flex shrink-0 gap-1">
+            <button type="button" onClick={resetDraft} disabled={!isDirty} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: isDirty ? "#dbeafe" : "#71717a", background: isDirty ? "#3f3f46" : "#2b2b2b", border: "1px solid #3b3b3b" }}>
+              重置
+            </button>
+            <button type="button" onClick={saveVersion} disabled={!canSaveVersion} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: canSaveVersion ? "#dbeafe" : "#71717a", background: canSaveVersion ? "#174ea6" : "#2b2b2b", border: "1px solid #3b3b3b" }}>
+              保存版本
+            </button>
+            <button type="button" onClick={() => askAgent(activeItem.artifactId, value)} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: "#dbeafe", background: "#174ea6" }}>
+              交给 Agent
+            </button>
+          </div>
         </div>
         <div style={{ height: 420 }}>
           <MonacoEditor
@@ -354,7 +479,22 @@ function findPreviewArtifact(artifacts: Artifact[]) {
 }
 
 function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
-  const item = findPreviewArtifact(artifacts);
+  const currentPreview = useChatStore((state) => state.currentPreview);
+  const previewArtifact = currentPreview
+    ? {
+        artifact: {
+          id: currentPreview.artifactId,
+          jobId: "local-preview",
+          type: (["html", "markdown", "document", "preview_url", "deploy_url", "code"].includes(currentPreview.type) ? currentPreview.type : "code") as Artifact["type"],
+          filename: currentPreview.filename,
+          content: currentPreview.content,
+          createdAt: 0,
+          version: undefined,
+        } as Artifact,
+        type: currentPreview.type === "url" ? "url" as const : currentPreview.type === "html" ? "html" as const : "document" as const,
+      }
+    : null;
+  const item = previewArtifact ?? findPreviewArtifact(artifacts);
   if (!item) {
     return <EmptyState title="暂无预览" desc="HTML、文档或部署链接生成后会在这里渲染。" />;
   }
@@ -375,7 +515,7 @@ function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
       <div className="mb-2 flex items-center justify-between rounded-lg px-3 py-2" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
         <div className="min-w-0">
           <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{item.artifact.filename || item.artifact.type}</p>
-          <p className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{item.artifact.version ? `v${item.artifact.version}` : "当前版本"}</p>
+          <p className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{currentPreview ? "临时预览" : item.artifact.version ? `v${item.artifact.version}` : "当前版本"}</p>
         </div>
         {src && (
           <a href={src} target="_blank" rel="noopener noreferrer" className="rounded-md px-2 py-1 text-[10px] font-semibold no-underline" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
@@ -412,7 +552,10 @@ function parseDiff(content: string) {
   return { original, modified };
 }
 
-function DiffPanel({ messages }: { messages: Message[] }) {
+function DiffPanel({ messages, artifacts }: { messages: Message[]; artifacts: Artifact[] }) {
+  const activeConversationId = useChatStore((state) => state.activeConversationId);
+  const setCurrentPreview = useChatStore((state) => state.setCurrentPreview);
+  const createArtifactVersion = useWorkspaceStore((state) => state.createArtifactVersion);
   const diffMessages = messages.filter((message) => message.type === "diff_card");
   const [activeId, setActiveId] = useState<string | null>(null);
   const active = diffMessages.find((message) => message.id === (activeId ?? diffMessages[0]?.id));
@@ -423,31 +566,69 @@ function DiffPanel({ messages }: { messages: Message[] }) {
 
   const payload = active.payload as { fileName?: string } | undefined;
   const { original, modified } = parseDiff(active.content);
+  const fileName = payload?.fileName;
+  const latest = latestArtifacts(artifacts);
+  const targetArtifact =
+    latest.find((artifact) => fileName && (artifact.filename === fileName || artifact.filename?.endsWith(fileName) || fileName.endsWith(artifact.filename ?? ""))) ??
+    latest.find((artifact) => ["html", "code", "markdown", "json"].includes(artifact.type));
+
+  const applyDiff = () => {
+    if (!targetArtifact) return;
+    const nextContent = applyUnifiedDiff(targetArtifact.content, active.content) ?? modified.trimEnd();
+    const created = createArtifactVersion(targetArtifact.id, nextContent, {
+      createdBy: active.senderId || active.sender || "Agent",
+      changeSummary: `应用 Diff：${fileName || targetArtifact.filename || targetArtifact.type}`,
+      metadata: { revisionSource: "diff", diffMessageId: active.id },
+    });
+    if (!created) return;
+    setCurrentPreview({
+      artifactId: created.id,
+      type: previewTypeForArtifact(created),
+      content: created.content,
+      filename: created.filename,
+    });
+    if (activeConversationId) {
+      addLocalMessage(activeConversationId, {
+        type: "system",
+        sender: "system",
+        content: `已将 Diff 应用为 ${created.filename || created.type} v${created.version}。`,
+        payload: { artifactId: created.id, diffMessageId: active.id },
+      });
+    }
+  };
 
   return (
     <div className="flex h-full min-h-[560px] flex-col">
-      <SectionHeader title="Diff 视图" desc="用于展示 Agent 合并冲突、修复代码和版本差异。" />
+      <SectionHeader title="Diff 视图" desc="用于展示 Agent 合并冲突、修复代码和版本差异，并可应用为新版本。" />
       <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
-        {diffMessages.map((message) => (
-          <button
-            key={message.id}
-            type="button"
-            onClick={() => setActiveId(message.id)}
-            className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold"
-            style={{
-              color: message.id === active.id ? "#174ea6" : "var(--fg-secondary)",
-              background: message.id === active.id ? "rgba(23, 78, 166, 0.07)" : "var(--surface-white)",
-              border: `1px solid ${message.id === active.id ? "rgba(23, 78, 166, 0.18)" : "var(--border)"}`,
-            }}
-          >
-            {payload?.fileName || "diff"}
-          </button>
-        ))}
+        {diffMessages.map((message) => {
+          const itemPayload = message.payload as { fileName?: string } | undefined;
+          return (
+            <button
+              key={message.id}
+              type="button"
+              onClick={() => setActiveId(message.id)}
+              className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold"
+              style={{
+                color: message.id === active.id ? "#174ea6" : "var(--fg-secondary)",
+                background: message.id === active.id ? "rgba(23, 78, 166, 0.07)" : "var(--surface-white)",
+                border: `1px solid ${message.id === active.id ? "rgba(23, 78, 166, 0.18)" : "var(--border)"}`,
+              }}
+            >
+              {itemPayload?.fileName || "diff"}
+            </button>
+          );
+        })}
       </div>
       <div className="overflow-hidden rounded-lg" style={{ border: "1px solid var(--border)" }}>
         <div className="flex h-9 items-center justify-between px-3" style={{ background: "var(--surface-low)", borderBottom: "1px solid var(--border)" }}>
-          <span className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{payload?.fileName || "diff"}</span>
-          <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{formatTime(active.timestamp)}</span>
+          <div className="min-w-0">
+            <span className="block truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{payload?.fileName || "diff"}</span>
+            <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{targetArtifact?.filename ? `目标：${targetArtifact.filename}` : formatTime(active.timestamp)}</span>
+          </div>
+          <button type="button" onClick={applyDiff} disabled={!targetArtifact} className="h-6 shrink-0 rounded px-2 text-[10px] font-semibold" style={{ color: targetArtifact ? "#fff" : "var(--fg-disabled)", background: targetArtifact ? "#174ea6" : "var(--surface-white)", border: "1px solid var(--border)" }}>
+            应用为版本
+          </button>
         </div>
         <div style={{ height: 430 }}>
           <MonacoDiffEditor
@@ -552,32 +733,118 @@ function SlidesPanel({ artifacts }: { artifacts: Artifact[] }) {
 }
 
 function HistoryPanel({ artifacts, stepResults }: { artifacts: Artifact[]; stepResults: StepResult[] }) {
-  const versions = artifacts
-    .filter((artifact) => artifact.version)
-    .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  const activeConversationId = useChatStore((state) => state.activeConversationId);
+  const setCurrentPreview = useChatStore((state) => state.setCurrentPreview);
+  const createArtifactVersion = useWorkspaceStore((state) => state.createArtifactVersion);
+  const versionGroups = latestArtifacts(artifacts)
+    .map((artifact) => familyArtifacts(artifacts, artifact))
+    .filter((family) => family.some((artifact) => artifact.version || artifact.parentId));
 
-  if (versions.length === 0 && stepResults.length === 0) {
+  const previewVersion = (artifact: Artifact) => {
+    setCurrentPreview({
+      artifactId: artifact.id,
+      type: previewTypeForArtifact(artifact),
+      content: artifact.content,
+      filename: artifact.filename,
+    });
+  };
+
+  const restoreVersion = (artifact: Artifact) => {
+    const created = createArtifactVersion(artifact.id, artifact.content, {
+      createdBy: "User",
+      changeSummary: `回滚到 v${artifact.version ?? 1}`,
+      metadata: { revisionSource: "restore", restoredFromArtifactId: artifact.id, restoredFromVersion: artifact.version ?? 1 },
+    });
+    if (!created) return;
+    previewVersion(created);
+    if (activeConversationId) {
+      addLocalMessage(activeConversationId, {
+        type: "system",
+        sender: "system",
+        content: `已从 ${artifact.filename || artifact.type} v${artifact.version ?? 1} 回滚生成 v${created.version}。`,
+        payload: { artifactId: created.id, restoredFromArtifactId: artifact.id },
+      });
+    }
+  };
+
+  const handoffVersion = (artifact: Artifact) => {
+    if (!activeConversationId) return;
+    addLocalMessage(activeConversationId, {
+      type: "user_message",
+      sender: "user",
+      content: `@Codex 请基于 ${artifact.filename || artifact.type} v${artifact.version ?? 1} 继续修改。`,
+      mentions: ["codex"],
+      payload: { artifactId: artifact.id, content: artifact.content, version: artifact.version },
+    });
+    addLocalMessage(activeConversationId, {
+      type: "agent_message",
+      sender: "coder",
+      senderId: "codex",
+      content: `已收到 ${artifact.filename || artifact.type} v${artifact.version ?? 1} 的完整内容。我会以这个版本作为基线继续处理。`,
+      payload: { artifactId: artifact.id, version: artifact.version },
+    });
+  };
+
+  if (versionGroups.length === 0 && stepResults.length === 0) {
     return <EmptyState title="暂无版本历史" desc="产物更新、Diff 合并或部署步骤会记录在这里。" />;
   }
 
   return (
     <div>
-      <SectionHeader title="版本历史" desc="按产物版本和 Agent 步骤记录变更。" />
-      {versions.length > 0 && (
+      <SectionHeader title="版本历史" desc="按产物版本和 Agent 步骤记录变更，可预览旧版、回滚并继续交给 Agent。" />
+      {versionGroups.length > 0 && (
         <div className="mb-4 space-y-2">
-          {versions.map((artifact) => (
-            <div key={artifact.id} className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{artifact.filename || artifact.type}</p>
-                <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-bold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>v{artifact.version}</span>
+          {versionGroups.map((family) => {
+            const latest = family[0];
+            return (
+              <div key={artifactRootId(latest)} className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{latest.filename || latest.type}</p>
+                    <p className="mt-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>最新 v{latest.version ?? 1} · {family.length} 个版本</p>
+                  </div>
+                  <button type="button" onClick={() => previewVersion(latest)} className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+                    预览最新
+                  </button>
+                </div>
+                <div className="space-y-1.5">
+                  {family.map((artifact) => {
+                    const isLatest = artifact.id === latest.id;
+                    const changeSummary = typeof artifact.metadata?.changeSummary === "string" ? artifact.metadata.changeSummary : "产物版本";
+                    return (
+                      <div key={artifact.id} className="rounded-md p-2" style={{ background: isLatest ? "rgba(23, 78, 166, 0.05)" : "var(--surface-low)", border: `1px solid ${isLatest ? "rgba(23, 78, 166, 0.14)" : "transparent"}` }}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-bold" style={{ color: isLatest ? "#174ea6" : "var(--fg-secondary)", background: "var(--surface-white)" }}>v{artifact.version ?? 1}</span>
+                              <span className="truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{artifact.createdBy || "Agent"} · {formatTime(artifact.createdAt)}</span>
+                            </div>
+                            <p className="mt-1 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.5 }}>{changeSummary}</p>
+                          </div>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          <button type="button" onClick={() => previewVersion(artifact)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                            预览
+                          </button>
+                          <button type="button" onClick={() => restoreVersion(artifact)} disabled={isLatest} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: isLatest ? "var(--fg-disabled)" : "#174ea6", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                            回滚到此版
+                          </button>
+                          <button type="button" onClick={() => handoffVersion(artifact)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                            交给 Agent
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)" }}>{artifact.createdBy || "Agent"} · {formatTime(artifact.createdAt)}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       {stepResults.length > 0 && (
         <div className="space-y-2">
+          <SectionHeader title="执行记录" />
           {stepResults.map((result, index) => (
             <div key={result.id} className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
               <div className="flex items-center gap-2">
@@ -822,7 +1089,7 @@ export function RightPanel() {
         {activeTab === "tasks" && <TaskPanel />}
         {activeTab === "code" && <CodePanel artifacts={workspace.artifacts} messages={convMessages} />}
         {activeTab === "preview" && <PreviewPanel artifacts={workspace.artifacts} />}
-        {activeTab === "diff" && <DiffPanel messages={convMessages} />}
+        {activeTab === "diff" && <DiffPanel messages={convMessages} artifacts={workspace.artifacts} />}
         {activeTab === "slides" && <SlidesPanel artifacts={workspace.artifacts} />}
         {activeTab === "history" && <HistoryPanel artifacts={workspace.artifacts} stepResults={workspace.stepResults} />}
         {activeTab === "deploy" && <DeployWorkflowPanel />}

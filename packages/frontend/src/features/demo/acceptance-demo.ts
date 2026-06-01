@@ -217,7 +217,7 @@ const artifacts: Artifact[] = [
     version: 1,
     createdBy: "Codex",
     createdAt: at(1000 * 60 * 8),
-    metadata: { editable: true, preview: true },
+    metadata: { editable: true, preview: true, changeSummary: "Codex 生成首版可预览 HTML 页面。" },
   },
   {
     id: "demo-artifact-html-v2",
@@ -229,7 +229,7 @@ const artifacts: Artifact[] = [
     parentId: "demo-artifact-html-v1",
     createdBy: "Claude Code",
     createdAt: at(1000 * 60 * 4),
-    metadata: { editable: true, preview: true, conflictResolved: true },
+    metadata: { editable: true, preview: true, conflictResolved: true, changeSummary: "Claude Code 合并冲突，补齐版本历史和部署状态模块。" },
   },
   {
     id: "demo-artifact-requirements",
@@ -240,6 +240,7 @@ const artifacts: Artifact[] = [
     version: 1,
     createdBy: "Researcher",
     createdAt: at(1000 * 60 * 7),
+    metadata: { changeSummary: "Researcher 提炼课题要求，形成验收清单。" },
   },
   {
     id: "demo-artifact-slides",
@@ -250,6 +251,7 @@ const artifacts: Artifact[] = [
     version: 1,
     createdBy: "PMO 主 Agent",
     createdAt: at(1000 * 60 * 6),
+    metadata: { changeSummary: "PMO 生成用于答辩的演示 PPT 草稿。" },
   },
   {
     id: "demo-artifact-deploy",

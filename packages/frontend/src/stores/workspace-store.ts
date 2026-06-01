@@ -22,6 +22,11 @@ interface WorkspaceStore extends WorkspaceData {
   updateNodeStatus: (nodeId: string, status: string) => void;
   addStepResult: (result: StepResult) => void;
   addArtifact: (artifact: Artifact) => void;
+  createArtifactVersion: (artifactId: string, content: string, options?: {
+    createdBy?: string;
+    changeSummary?: string;
+    metadata?: Record<string, unknown>;
+  }) => Artifact | null;
   setDeployStatus: (status: string, url?: string, meta?: {
     progress?: number;
     providerId?: string;
@@ -91,6 +96,17 @@ function removeConvWorkspace(convId: string) {
   try { localStorage.removeItem(WS_KEY_PREFIX + convId); } catch { /* */ }
 }
 
+function rootArtifactId(artifact: Artifact) {
+  return artifact.parentId ?? artifact.id;
+}
+
+function nextArtifactVersion(artifacts: Artifact[], rootId: string) {
+  const versions = artifacts
+    .filter((artifact) => artifact.id === rootId || artifact.parentId === rootId)
+    .map((artifact) => artifact.version ?? 1);
+  return Math.max(0, ...versions) + 1;
+}
+
 export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   ...EMPTY,
   activeConvId: null,
@@ -142,6 +158,36 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
     if (s.activeConvId) saveConvWorkspace(s.activeConvId, { ...s, artifacts });
     return { artifacts };
   }),
+
+  createArtifactVersion: (artifactId, content, options) => {
+    let created: Artifact | null = null;
+    set((s) => {
+      const source = s.artifacts.find((artifact) => artifact.id === artifactId);
+      if (!source) return {};
+      const rootId = rootArtifactId(source);
+      const version = nextArtifactVersion(s.artifacts, rootId);
+      const createdAt = Date.now();
+      created = {
+        ...source,
+        id: `${rootId}-v${version}-${createdAt}`,
+        content,
+        version,
+        parentId: rootId,
+        createdAt,
+        createdBy: options?.createdBy ?? "User",
+        metadata: {
+          ...(source.metadata ?? {}),
+          ...(options?.metadata ?? {}),
+          changeSummary: options?.changeSummary ?? "手动保存版本",
+          sourceArtifactId: source.id,
+        },
+      };
+      const artifacts = s.artifacts.length >= MAX_RESULTS ? [...s.artifacts.slice(-MAX_RESULTS + 1), created] : [...s.artifacts, created];
+      if (s.activeConvId) saveConvWorkspace(s.activeConvId, { ...s, artifacts });
+      return { artifacts };
+    });
+    return created;
+  },
 
   setDeployStatus: (status, url, meta) => set((s) => {
     const deployUrl = url ?? (status === "deploying" ? s.deployUrl : null);
