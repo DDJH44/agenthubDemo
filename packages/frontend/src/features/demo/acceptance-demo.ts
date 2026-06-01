@@ -14,6 +14,9 @@ import { useWorkspaceStore } from "@/stores/workspace-store";
 
 export const ACCEPTANCE_GROUP_CONVERSATION_ID = "acceptance-demo-group";
 export const ACCEPTANCE_SINGLE_CONVERSATION_ID = "acceptance-demo-single-codex";
+const ACCEPTANCE_CLAUDE_CONVERSATION_ID = "acceptance-demo-single-claude";
+const ACCEPTANCE_OPEN_CODE_CONVERSATION_ID = "acceptance-demo-single-open-code";
+const ACCEPTANCE_UX_CONVERSATION_ID = "acceptance-demo-single-ux";
 
 const DEMO_DEPLOY_URL = "https://agenthub-demo-preview.example.com";
 
@@ -397,6 +400,19 @@ function buildSingleMessages(): Message[] {
   ];
 }
 
+function buildContactMessages(conversationId: string, senderId: string, sender: string, content: string): Message[] {
+  return [
+    makeMessage({
+      id: `${conversationId}-intro`,
+      type: "agent_message",
+      sender,
+      senderId,
+      content,
+      timestamp: at(1000 * 60 * 5),
+    }, conversationId),
+  ];
+}
+
 function persistMessages(messages: Record<string, Message[]>) {
   if (typeof window === "undefined") return;
   localStorage.setItem("agenthub-chat-messages", JSON.stringify(messages));
@@ -443,13 +459,70 @@ export function seedAcceptanceDemo() {
     importance: 5,
   };
 
+  const claudeConversation: Conversation = {
+    id: ACCEPTANCE_CLAUDE_CONVERSATION_ID,
+    workspaceId: "default",
+    title: "Claude Code 冲突处理",
+    type: "direct",
+    status: "active",
+    pinned: false,
+    participants: ["Claude Code"],
+    lastMessage: "我负责降级接管、冲突合并和代码审查。",
+    lastMessageAt: at(1000 * 60 * 5),
+    createdAt: at(1000 * 60 * 8),
+    updatedAt: at(1000 * 60 * 5),
+    summary: "主流 Agent 平台联系人示例。",
+    topics: "claude-code,conflict,diff",
+    messageCount: 1,
+    importance: 5,
+  };
+
+  const openCodeConversation: Conversation = {
+    id: ACCEPTANCE_OPEN_CODE_CONVERSATION_ID,
+    workspaceId: "default",
+    title: "Open Code 部署发布",
+    type: "direct",
+    status: "active",
+    pinned: false,
+    participants: ["Open Code"],
+    lastMessage: "我负责构建部署、发布回调和日志诊断。",
+    lastMessageAt: at(1000 * 60 * 4),
+    createdAt: at(1000 * 60 * 8),
+    updatedAt: at(1000 * 60 * 4),
+    summary: "Open Code 部署 Agent 联系人。",
+    topics: "open-code,deploy,logs",
+    messageCount: 1,
+    importance: 5,
+  };
+
+  const uxConversation: Conversation = {
+    id: ACCEPTANCE_UX_CONVERSATION_ID,
+    workspaceId: "default",
+    title: "自建 UX Reviewer",
+    type: "direct",
+    status: "active",
+    pinned: false,
+    participants: ["自建 UX Reviewer"],
+    lastMessage: "我负责体验审查、验收路径和文案建议。",
+    lastMessageAt: at(1000 * 60 * 3),
+    createdAt: at(1000 * 60 * 8),
+    updatedAt: at(1000 * 60 * 3),
+    summary: "用户自建 Agent 联系人示例。",
+    topics: "custom-agent,ux,review",
+    messageCount: 1,
+    importance: 5,
+  };
+
   const otherConversations = chat.conversations.filter(
     (conversation) =>
       conversation.id !== ACCEPTANCE_GROUP_CONVERSATION_ID &&
-      conversation.id !== ACCEPTANCE_SINGLE_CONVERSATION_ID
+      conversation.id !== ACCEPTANCE_SINGLE_CONVERSATION_ID &&
+      conversation.id !== ACCEPTANCE_CLAUDE_CONVERSATION_ID &&
+      conversation.id !== ACCEPTANCE_OPEN_CODE_CONVERSATION_ID &&
+      conversation.id !== ACCEPTANCE_UX_CONVERSATION_ID
   );
 
-  chat.setConversations([groupConversation, singleConversation, ...otherConversations]);
+  chat.setConversations([groupConversation, singleConversation, claudeConversation, openCodeConversation, uxConversation, ...otherConversations]);
 
   const groupMessages = buildGroupMessages();
   const singleMessages = buildSingleMessages();
@@ -457,6 +530,9 @@ export function seedAcceptanceDemo() {
     ...useChatStore.getState().messages,
     [ACCEPTANCE_GROUP_CONVERSATION_ID]: groupMessages,
     [ACCEPTANCE_SINGLE_CONVERSATION_ID]: singleMessages,
+    [ACCEPTANCE_CLAUDE_CONVERSATION_ID]: buildContactMessages(ACCEPTANCE_CLAUDE_CONVERSATION_ID, "claude-code", "worker", "我负责降级接管、冲突合并和代码审查。把冲突文件或 Diff 交给我即可。"),
+    [ACCEPTANCE_OPEN_CODE_CONVERSATION_ID]: buildContactMessages(ACCEPTANCE_OPEN_CODE_CONVERSATION_ID, "open-code", "worker", "我负责构建部署、发布回调和日志诊断。部署失败时可以直接把日志交给我。"),
+    [ACCEPTANCE_UX_CONVERSATION_ID]: buildContactMessages(ACCEPTANCE_UX_CONVERSATION_ID, "ux-reviewer", "refiner", "我是用户自建 Agent，负责体验审查、验收路径和文案建议。"),
   };
   useChatStore.setState({ messages: nextMessages });
   persistMessages(nextMessages);
@@ -464,6 +540,9 @@ export function seedAcceptanceDemo() {
   chat.setActiveConversation(ACCEPTANCE_GROUP_CONVERSATION_ID);
   chat.setConversationMode(ACCEPTANCE_GROUP_CONVERSATION_ID, "group");
   chat.setConversationMode(ACCEPTANCE_SINGLE_CONVERSATION_ID, "single");
+  chat.setConversationMode(ACCEPTANCE_CLAUDE_CONVERSATION_ID, "single");
+  chat.setConversationMode(ACCEPTANCE_OPEN_CODE_CONVERSATION_ID, "single");
+  chat.setConversationMode(ACCEPTANCE_UX_CONVERSATION_ID, "single");
   chat.setConversationDetail({
     title: groupConversation.title,
     description: "一键演示课题要求中的多 Agent 协作、产物链路和部署闭环。",

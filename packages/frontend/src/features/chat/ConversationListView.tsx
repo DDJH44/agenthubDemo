@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Conversation } from "@agenthub/shared";
 import { useChatStore } from "@/stores/chat-store";
+import { getConversationAgents, getConversationCapabilityTags } from "./agent-directory";
 
 interface Props {
   conversations: Conversation[];
@@ -20,8 +21,6 @@ interface Props {
 }
 
 type ModeFilter = "single" | "group" | null;
-
-const AVATAR_COLORS = ["#174ea6", "#0f766e", "#9a6700", "#a50e0e", "#5f6368", "#7c3aed", "#0e7490"];
 
 function formatTime(ts: number | null | undefined): string {
   if (!ts) return "";
@@ -60,24 +59,52 @@ function Icon({ type, size = 14 }: { type: Parameters<typeof iconPath>[0]; size?
   );
 }
 
-function getInitial(title: string, isGroup: boolean) {
-  if (isGroup) return "群";
-  return (title.trim().charAt(0) || "A").toUpperCase();
+function getTags(conv: Conversation, isGroup: boolean): string[] {
+  const capabilityTags = getConversationCapabilityTags(conv, isGroup ? 4 : 3);
+  if (capabilityTags.length > 0) return capabilityTags;
+  return isGroup ? ["群聊", `${conv.participants.length || 0} 成员`] : ["单聊"];
 }
 
-function getTags(conv: Conversation, isGroup: boolean): string[] {
-  const fromTopics = (conv.topics ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 3);
+function AgentAvatarStack({ conv, isGroup }: { conv: Conversation; isGroup: boolean }) {
+  const agents = getConversationAgents(conv);
+  const visible = isGroup ? agents.slice(0, 3) : agents.slice(0, 1);
+  const extra = Math.max(0, agents.length - visible.length);
 
-  if (fromTopics.length > 0) return fromTopics;
-  if (isGroup) return ["群聊", `${conv.participants.length || 0} 成员`];
-  if (conv.title.toLowerCase().includes("codex")) return ["Codex", "代码"];
-  if (conv.title.toLowerCase().includes("claude")) return ["Claude Code", "冲突"];
-  if (conv.title.toLowerCase().includes("open")) return ["Open Code", "部署"];
-  return ["单聊"];
+  if (isGroup) {
+    return (
+      <div className="flex h-10 w-12 shrink-0 items-center">
+        <div className="flex -space-x-3">
+          {visible.map((agent, index) => (
+            <div
+              key={agent.id}
+              className="grid h-8 w-8 place-items-center rounded-md border-2 text-[10px] font-bold text-white"
+              style={{ background: agent.color, borderColor: "var(--surface-white)", zIndex: visible.length - index }}
+              title={`${agent.name} · ${agent.capabilities.join(" / ")}`}
+            >
+              {agent.badge.slice(0, 2)}
+            </div>
+          ))}
+          {extra > 0 && (
+            <div className="grid h-8 w-8 place-items-center rounded-md border-2 text-[10px] font-bold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", borderColor: "var(--surface-white)" }}>
+              +{extra}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const agent = visible[0] ?? getConversationAgents({ ...conv, participants: [conv.title] })[0];
+  return (
+    <div
+      className="relative grid h-10 w-10 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white"
+      style={{ background: agent.color }}
+      title={`${agent.name} · ${agent.capabilities.join(" / ")}`}
+    >
+      {agent.badge.slice(0, 3)}
+      <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: "var(--success)", border: "2px solid var(--surface-white)" }} />
+    </div>
+  );
 }
 
 const ConversationItem = memo(function ConversationItem({
@@ -94,7 +121,8 @@ const ConversationItem = memo(function ConversationItem({
   onContextMenu: (event: React.MouseEvent) => void;
 }) {
   const tags = getTags(conv, isGroup);
-  const color = AVATAR_COLORS[Math.abs(conv.title.charCodeAt(0) || 0) % AVATAR_COLORS.length];
+  const agents = getConversationAgents(conv);
+  const agentLine = agents.map((agent) => agent.name).slice(0, isGroup ? 3 : 1).join("、");
 
   return (
     <button
@@ -107,12 +135,7 @@ const ConversationItem = memo(function ConversationItem({
         border: `1px solid ${isActive ? "rgba(23, 78, 166, 0.16)" : "transparent"}`,
       }}
     >
-      <div
-        className="grid h-10 w-10 shrink-0 place-items-center rounded-md text-sm font-bold text-white"
-        style={{ background: color }}
-      >
-        {getInitial(conv.title, isGroup)}
-      </div>
+      <AgentAvatarStack conv={conv} isGroup={isGroup} />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2">
@@ -134,6 +157,9 @@ const ConversationItem = memo(function ConversationItem({
                 </span>
               ))}
             </div>
+            <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+              {agentLine}{agents.length > (isGroup ? 3 : 1) ? ` 等 ${agents.length} 个 Agent` : ""}
+            </p>
           </div>
           <span className="shrink-0 text-[10px]" style={{ color: "var(--fg-disabled)" }}>
             {formatTime(conv.lastMessageAt ?? conv.updatedAt)}
@@ -224,7 +250,10 @@ export function ConversationListView({
     const matchesSearch = (conversation: Conversation) => {
       const keyword = search.trim().toLowerCase();
       if (!keyword) return true;
-      return `${conversation.title} ${conversation.lastMessage ?? ""} ${conversation.topics ?? ""}`.toLowerCase().includes(keyword);
+      const agentText = getConversationAgents(conversation)
+        .flatMap((agent) => [agent.name, agent.provider, agent.role, ...agent.capabilities])
+        .join(" ");
+      return `${conversation.title} ${conversation.lastMessage ?? ""} ${conversation.topics ?? ""} ${agentText}`.toLowerCase().includes(keyword);
     };
     const matchesMode = (conversation: Conversation) => !modeFilter || getConvMode(conversation) === modeFilter;
     const apply = (items: Conversation[]) => items.filter((conversation) => matchesSearch(conversation) && matchesMode(conversation));

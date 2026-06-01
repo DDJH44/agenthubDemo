@@ -2,13 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useChatStore } from "@/stores/chat-store";
+import { getAgentMeta } from "./agent-directory";
 import { ContextWindowIndicator } from "./ContextWindowIndicator";
-
-const COLORS = ["#174ea6", "#0f766e", "#9a6700", "#a50e0e", "#7c3aed", "#0e7490", "#5f6368"];
-
-function colorAt(index: number) {
-  return COLORS[index % COLORS.length];
-}
 
 function Icon({ path, size = 14 }: { path: string; size?: number }) {
   return (
@@ -33,8 +28,10 @@ export function ConversationNavBar() {
   const title = conversationDetail?.title ?? activeConv?.title ?? "未选择会话";
   const isGroup = activeConversationId ? (conversationMode[activeConversationId] ?? (activeConv?.type !== "direct")) : false;
   const participants = conversationDetail?.participants ?? (activeConv?.participants ?? []).map((name, index) => ({ id: String(index), name, role: "editor" as const }));
+  const participantAgents = participants.map((participant) => ({ participant, meta: getAgentMeta(participant.name) }));
   const memberAvatars = participants.slice(0, 5);
   const extraMembers = Math.max(0, participants.length - memberAvatars.length);
+  const primaryAgent = getAgentMeta(participants[0]?.name ?? title);
 
   const contextData = useMemo(() => {
     const convMessages = activeConversationId ? (messages[activeConversationId] ?? []) : [];
@@ -58,8 +55,8 @@ export function ConversationNavBar() {
   return (
     <div className="relative flex h-14 shrink-0 items-center px-4" style={{ background: "var(--surface-white)", borderBottom: "1px solid var(--divider)" }}>
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="relative grid h-10 w-10 shrink-0 place-items-center rounded-md text-sm font-bold text-white" style={{ background: isGroup ? "#174ea6" : "#0f766e" }}>
-          {isGroup ? "群" : title.charAt(0).toUpperCase()}
+        <div className="relative grid h-10 w-10 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: isGroup ? "#174ea6" : primaryAgent.color }}>
+          {isGroup ? "群" : primaryAgent.badge.slice(0, 3)}
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: "var(--success)", border: "2px solid var(--surface-white)" }} />
         </div>
 
@@ -108,6 +105,18 @@ export function ConversationNavBar() {
                 {participants.length} 成员
               </button>
             )}
+            {!isGroup && (
+              <>
+                <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)" }}>
+                  {primaryAgent.provider}
+                </span>
+                {primaryAgent.capabilities.slice(0, 2).map((capability) => (
+                  <span key={capability} className="rounded-sm px-1.5 py-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
+                    {capability}
+                  </span>
+                ))}
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -117,16 +126,19 @@ export function ConversationNavBar() {
 
         {isGroup && memberAvatars.length > 0 && (
           <div className="flex -space-x-2">
-            {memberAvatars.map((participant, index) => (
+            {memberAvatars.map((participant, index) => {
+              const agent = getAgentMeta(participant.name);
+              return (
               <div
                 key={participant.id}
                 className="grid h-8 w-8 place-items-center rounded-full border-2 text-[10px] font-bold text-white"
-                style={{ background: colorAt(index), borderColor: "var(--surface-white)", zIndex: memberAvatars.length - index }}
-                title={participant.name}
+                style={{ background: agent.color, borderColor: "var(--surface-white)", zIndex: memberAvatars.length - index }}
+                title={`${agent.name} · ${agent.capabilities.join(" / ")}`}
               >
-                {participant.name.charAt(0).toUpperCase()}
+                {agent.badge.slice(0, 2)}
               </div>
-            ))}
+              );
+            })}
             {extraMembers > 0 && (
               <div className="grid h-8 w-8 place-items-center rounded-full border-2 text-[10px] font-bold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", borderColor: "var(--surface-white)" }}>
                 +{extraMembers}
@@ -149,14 +161,19 @@ export function ConversationNavBar() {
               <p className="mt-0.5 text-xs" style={{ color: "var(--fg-tertiary)" }}>{participants.length} 个参与者</p>
             </div>
             <div className="max-h-72 overflow-y-auto p-2 custom-scrollbar">
-              {participants.map((participant, index) => (
+              {participantAgents.map(({ participant, meta }) => (
                 <div key={participant.id} className="flex items-center gap-3 rounded-md p-2 hover:bg-[var(--surface-low)]">
-                  <div className="grid h-8 w-8 place-items-center rounded-md text-xs font-bold text-white" style={{ background: colorAt(index) }}>
-                    {participant.name.charAt(0).toUpperCase()}
+                  <div className="grid h-8 w-8 place-items-center rounded-md text-[10px] font-bold text-white" style={{ background: meta.color }}>
+                    {meta.badge.slice(0, 3)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{participant.name}</p>
-                    <p className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{participant.role}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{meta.name}</p>
+                      <span className="shrink-0 rounded-sm px-1 py-0.5 text-[10px]" style={{ color: meta.isCustom ? "#a50e0e" : "#174ea6", background: meta.isCustom ? "var(--danger-subtle)" : "rgba(23, 78, 166, 0.07)" }}>
+                        {meta.isCustom ? "自建" : meta.provider}
+                      </span>
+                    </div>
+                    <p className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{meta.role} · {meta.capabilities.slice(0, 2).join(" / ")}</p>
                   </div>
                 </div>
               ))}
