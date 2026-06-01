@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { parseMentions } from "@agenthub/shared";
 
 interface Props {
@@ -15,6 +15,7 @@ interface Props {
   conversationMode?: "single" | "group";
   onAssignAgent?: (agentId: string, content: string) => void;
   onMentionQueryChange?: (query: string | null) => void;
+  contextCount?: number;
 }
 
 function getCursorMentionQuery(value: string, cursorPos: number): string | null {
@@ -43,16 +44,29 @@ export function QuickReplyBar({
   conversationMode,
   onAssignAgent,
   onMentionQueryChange,
+  contextCount = 0,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  const fitTextarea = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "36px";
+    el.style.height = `${Math.min(132, Math.max(36, el.scrollHeight))}px`;
+  }, []);
+
   const handleChange = useCallback((nextValue: string) => {
     onChange(nextValue);
+    window.requestAnimationFrame(fitTextarea);
     if (onMentionQueryChange) {
       const cursorPos = textareaRef.current?.selectionStart ?? nextValue.length;
       onMentionQueryChange(getCursorMentionQuery(nextValue, cursorPos));
     }
-  }, [onChange, onMentionQueryChange]);
+  }, [fitTextarea, onChange, onMentionQueryChange]);
+
+  useEffect(() => {
+    fitTextarea();
+  }, [fitTextarea, value]);
 
   const submit = useCallback(() => {
     const trimmed = value.trim();
@@ -120,8 +134,8 @@ export function QuickReplyBar({
           placeholder={placeholder ?? (conversationMode === "group" ? "@Codex 处理这段代码，或直接输入任务" : "输入消息")}
           disabled={disabled}
           rows={1}
-          className="custom-scrollbar min-h-9 flex-1 resize-none rounded-md px-3 py-2 text-sm outline-none"
-          style={{ color: "var(--fg-primary)", background: "var(--surface-low)", maxHeight: 124, lineHeight: 1.5 }}
+          className="custom-scrollbar min-h-9 flex-1 resize-none rounded-md px-3 py-2 text-sm outline-none transition-colors focus:bg-[var(--surface-white)]"
+          style={{ color: "var(--fg-primary)", background: "var(--surface-low)", maxHeight: 132, lineHeight: 1.5, border: "1px solid var(--border)" }}
         />
 
         <button
@@ -154,6 +168,26 @@ export function QuickReplyBar({
             <Icon path="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
           )}
         </button>
+      </div>
+
+      <div className="flex min-h-7 items-center justify-between gap-3 px-3 pb-2">
+        <div className="flex min-w-0 items-center gap-1.5">
+          {contextCount > 0 && (
+            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+              上下文 {contextCount}
+            </span>
+          )}
+          {disabled && (
+            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--warning)", background: "var(--warning-subtle)" }}>
+              未连接
+            </span>
+          )}
+        </div>
+        {value.length > 0 && (
+          <span className="shrink-0 text-[10px]" style={{ color: value.length > 1800 ? "var(--warning)" : "var(--fg-tertiary)" }}>
+            {value.length}
+          </span>
+        )}
       </div>
     </div>
   );

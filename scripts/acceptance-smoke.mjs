@@ -121,6 +121,12 @@ async function main() {
     const page = await context.newPage();
     await page.goto(APP_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
     await page.locator(SELECTORS.guide).waitFor({ timeout: 15000 });
+    await page.keyboard.press("Control+K");
+    await page.locator('[data-testid="command-palette"]').waitFor({ timeout: 10000 });
+    await page.keyboard.type("部署面板");
+    await page.keyboard.press("Enter");
+    await page.locator('[data-testid="deploy-panel"]').waitFor({ timeout: 10000 });
+    await openAcceptanceGuide(page);
     await page.locator(SELECTORS.reset).click();
     await waitForText(page, "验收覆盖度");
 

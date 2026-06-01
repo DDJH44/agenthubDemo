@@ -18,7 +18,7 @@ import {
   DashboardViewNew, AcceptanceGuideView, AgentsView, TasksView, ProjectsView,
   KnowledgeView, FilesView, AgentMarketView, MyAgentsView,
   McpView, WorkflowsView, SettingsView, HelpView,
-  SidebarNav, RightPanelTabs, AIAssistantView, ContactsView,
+  SidebarNav, RightPanelTabs, AIAssistantView, ContactsView, CommandPalette,
 } from "../../packages/frontend/src/features/views";
 
 function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
@@ -463,6 +463,7 @@ export default function Page() {
         onClose={() => setShowCreateModal(false)}
         onCreate={handleCreateConversation}
       />
+      <CommandPalette />
     </div>
   );
 }

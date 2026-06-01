@@ -20,3 +20,4 @@ export { AgentMarketView } from "./AgentMarketView";
 export { ConversationGroupView } from "./ConversationGroupView";
 export { AIAssistantView } from "./AIAssistantView";
 export { ContactsView } from "./ContactsView";
+export { CommandPalette } from "./CommandPalette";

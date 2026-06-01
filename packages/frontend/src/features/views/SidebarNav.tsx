@@ -85,6 +85,7 @@ function CollapsedIconItem({ item, activeNav, setActiveNav, t }: {
 function CollapsedNav() {
   const { activeNav, setActiveNav, toggleSidebar } = useNavigationStore();
   const t = useT();
+  const openCommandPalette = () => window.dispatchEvent(new CustomEvent("command-palette:open"));
   return (
     <div className="flex flex-col items-center py-3 gap-0.5" style={{ width: 48 }}>
       <button
@@ -94,6 +95,17 @@ function CollapsedNav() {
         title="展开导航"
       >
         <Image src="/agenthub-logo.png" alt="AgentHub" width={24} height={24} style={{ width: 20, height: 20, objectFit: "contain" }} />
+      </button>
+      <button
+        type="button"
+        onClick={openCommandPalette}
+        className="mb-2 grid h-8 w-8 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
+        style={{ color: "var(--fg-tertiary)" }}
+        title="快速跳转"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+        </svg>
       </button>
       {NAV_ITEMS.map((item) => (
         <CollapsedIconItem key={item.key} item={item} activeNav={activeNav} setActiveNav={setActiveNav} t={t} />
@@ -120,6 +132,7 @@ function ExpandedNav({
   const t = useT();
   const { toggleSidebar } = useNavigationStore();
   const { locale, toggleLocale } = useSettingsStore();
+  const openCommandPalette = () => window.dispatchEvent(new CustomEvent("command-palette:open"));
 
   return (
     <div className="flex flex-col h-full" style={{ width: "100%" }}>
@@ -143,6 +156,20 @@ function ExpandedNav({
             </svg>
           </button>
         </div>
+      </div>
+
+      <div className="px-3 py-2" style={{ borderBottom: "1px solid var(--divider)" }}>
+        <button
+          type="button"
+          onClick={openCommandPalette}
+          className="flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-semibold transition-colors hover:bg-[var(--surface-low)]"
+          style={{ color: "var(--fg-secondary)", background: "var(--surface-tinted)", border: "1px solid var(--border)" }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
+          </svg>
+          <span className="min-w-0 flex-1 truncate">快速跳转</span>
+        </button>
       </div>
 
       {/* 新建会话 — 仅 chat 模式显示 */}

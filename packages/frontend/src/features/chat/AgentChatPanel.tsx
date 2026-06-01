@@ -85,6 +85,7 @@ export function AgentChatPanel({
   const {
     activeConversationId,
     conversationMode,
+    contextReferences,
     undoMessage,
     setStreaming,
   } = useChatStore();
@@ -94,6 +95,7 @@ export function AgentChatPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const convId = activeConversationId ?? activeConversationIdProp;
   const currentMode = convId ? (conversationMode[convId] ?? "single") : "single";
+  const contextCount = convId ? (contextReferences[convId]?.length ?? 0) : 0;
 
   useEffect(() => {
     if (!convId) return;
@@ -243,6 +245,7 @@ export function AgentChatPanel({
                 conversationMode={currentMode}
                 onAssignAgent={handleAssignAgent}
                 onMentionQueryChange={setMentionQuery}
+                contextCount={contextCount}
               />
             </div>
           </div>
