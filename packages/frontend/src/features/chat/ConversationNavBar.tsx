@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useChatStore } from "@/stores/chat-store";
+import { useUserAgentStore } from "@/stores/user-agent-store";
 import { getAgentMeta } from "./agent-directory";
 import { ContextWindowIndicator } from "./ContextWindowIndicator";
 
@@ -23,15 +24,21 @@ export function ConversationNavBar() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [showMembers, setShowMembers] = useState(false);
+  const userAgents = useUserAgentStore((state) => state.agents);
+  const hydrateUserAgents = useUserAgentStore((state) => state.hydrate);
+
+  useEffect(() => {
+    void hydrateUserAgents();
+  }, [hydrateUserAgents]);
 
   const activeConv = conversations.find((conversation) => conversation.id === activeConversationId);
   const title = conversationDetail?.title ?? activeConv?.title ?? "未选择会话";
   const isGroup = activeConversationId ? (conversationMode[activeConversationId] ?? (activeConv?.type !== "direct")) : false;
   const participants = conversationDetail?.participants ?? (activeConv?.participants ?? []).map((name, index) => ({ id: String(index), name, role: "editor" as const }));
-  const participantAgents = participants.map((participant) => ({ participant, meta: getAgentMeta(participant.name) }));
+  const participantAgents = participants.map((participant) => ({ participant, meta: getAgentMeta(participant.name, userAgents) }));
   const memberAvatars = participants.slice(0, 5);
   const extraMembers = Math.max(0, participants.length - memberAvatars.length);
-  const primaryAgent = getAgentMeta(participants[0]?.name ?? title);
+  const primaryAgent = getAgentMeta(participants[0]?.name ?? title, userAgents);
 
   const contextData = useMemo(() => {
     const convMessages = activeConversationId ? (messages[activeConversationId] ?? []) : [];
@@ -127,7 +134,7 @@ export function ConversationNavBar() {
         {isGroup && memberAvatars.length > 0 && (
           <div className="flex -space-x-2">
             {memberAvatars.map((participant, index) => {
-              const agent = getAgentMeta(participant.name);
+              const agent = getAgentMeta(participant.name, userAgents);
               return (
               <div
                 key={participant.id}

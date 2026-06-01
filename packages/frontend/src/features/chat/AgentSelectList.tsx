@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { UserAgent } from "@agenthub/shared";
-import { MAIN_AGENT, MAIN_AGENT_ID, AGENT_ROLE_LABELS } from "@agenthub/shared";
+import { MAIN_AGENT, MAIN_AGENT_ID, AGENT_ROLE_LABELS, TOOL_OPTIONS } from "@agenthub/shared";
 import { useUserAgentStore } from "@/stores/user-agent-store";
 
 interface AgentSelectListProps {
@@ -12,13 +12,26 @@ interface AgentSelectListProps {
 }
 
 export function AgentSelectList({ mode, selected, onChange }: AgentSelectListProps) {
-  const { agents } = useUserAgentStore();
+  const { agents, hydrate } = useUserAgentStore();
   const [search, setSearch] = useState("");
+  const toolLabels = useMemo(() => new Map(TOOL_OPTIONS.map((tool) => [tool.value, tool.label])), []);
+
+  useEffect(() => {
+    void hydrate();
+  }, [hydrate]);
 
   const allAgents: UserAgent[] = [MAIN_AGENT, ...agents];
   const filtered = search
-    ? allAgents.filter((a) => a.name.toLowerCase().includes(search.toLowerCase()))
+    ? allAgents.filter((agent) => {
+      const capabilityText = agent.tools.map((tool) => toolLabels.get(tool) ?? tool).join(" ");
+      return `${agent.name} ${AGENT_ROLE_LABELS[agent.role]} ${agent.model} ${capabilityText} ${agent.systemPrompt}`.toLowerCase().includes(search.toLowerCase());
+    })
     : allAgents;
+
+  const getCapabilityLabels = (agent: UserAgent) => {
+    const toolCapabilities = agent.tools.map((tool) => toolLabels.get(tool) ?? tool);
+    return toolCapabilities.length > 0 ? toolCapabilities.slice(0, 3) : [AGENT_ROLE_LABELS[agent.role] ?? "自定义"];
+  };
 
   const handleToggle = (id: string) => {
     if (id === MAIN_AGENT_ID) return;
@@ -34,7 +47,7 @@ export function AgentSelectList({ mode, selected, onChange }: AgentSelectListPro
   };
 
   return (
-    <div className="flex flex-col" style={{ maxHeight: 280 }}>
+    <div className="flex flex-col" style={{ maxHeight: 320 }}>
       <div className="px-1 pb-2">
         <div
           className="flex items-center gap-2 rounded-lg px-3 py-2"
@@ -92,6 +105,13 @@ export function AgentSelectList({ mode, selected, onChange }: AgentSelectListPro
                 <p className="truncate" style={{ fontSize: "var(--text-2xs)", color: "var(--fg-tertiary)", marginTop: 1 }}>
                   {agent.systemPrompt.slice(0, 50)}...
                 </p>
+                <div className="mt-1 flex max-w-full flex-nowrap gap-1 overflow-hidden">
+                  {getCapabilityLabels(agent).map((capability) => (
+                    <span key={capability} className="shrink-0 rounded-sm px-1.5 py-px" style={{ fontSize: 9, color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
+                      {capability}
+                    </span>
+                  ))}
+                </div>
               </div>
               <div className="shrink-0">
                 {isMain ? (

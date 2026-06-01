@@ -13,7 +13,8 @@ export const AGENT_DEFINITIONS: Record<string, AgentDefinition> = {
 
 export const AGENT_ROLE_LABELS: Record<string, string> = {
   planner: "规划者", worker: "执行者", critic: "审查者", researcher: "研究员", refiner: "润色师",
-  coder: "程序员", reviewer: "代码审查", browser: "浏览器", custom: "自定义",
+  coder: "程序员", reviewer: "代码审查", browser: "浏览器", frontend: "前端 Agent", backend: "后端 Agent",
+  design: "设计 Agent", custom: "自定义",
 };
 
 export const AGENT_COLORS: Record<string, string> = {

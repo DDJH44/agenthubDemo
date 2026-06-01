@@ -2,8 +2,9 @@
 
 import { useState, useRef, useEffect } from "react";
 import type { Conversation } from "@agenthub/shared";
-import { MAIN_AGENT_ID } from "@agenthub/shared";
+import { MAIN_AGENT, MAIN_AGENT_ID } from "@agenthub/shared";
 import { useChatStore } from "@/stores/chat-store";
+import { useUserAgentStore } from "@/stores/user-agent-store";
 import { AgentSelectList } from "./AgentSelectList";
 import { ContactList } from "./ContactList";
 
@@ -23,10 +24,16 @@ export function CreateConversationModal({ open, onClose, onCreate }: CreateConve
   const [activeTab, setActiveTab] = useState<MemberTab>("agents");
   const modalRef = useRef<HTMLDivElement>(null);
   const setConversationMode = useChatStore((s) => s.setConversationMode);
+  const agents = useUserAgentStore((s) => s.agents);
+  const hydrateUserAgents = useUserAgentStore((s) => s.hydrate);
 
   useEffect(() => {
     if (open) modalRef.current?.focus();
   }, [open]);
+
+  useEffect(() => {
+    if (open) void hydrateUserAgents();
+  }, [hydrateUserAgents, open]);
 
   if (!open) return null;
 
@@ -44,10 +51,16 @@ export function CreateConversationModal({ open, onClose, onCreate }: CreateConve
     setSelectedContacts([]);
   };
 
+  const getAgentName = (id: string) => {
+    if (id === MAIN_AGENT_ID) return MAIN_AGENT.name;
+    return agents.find((agent) => agent.id === id)?.name ?? id;
+  };
+
   const handleCreate = () => {
-    const allParticipants = [...selectedAgents, ...selectedContacts];
+    const selectedAgentNames = selectedAgents.map(getAgentName);
+    const allParticipants = [...selectedAgentNames, ...selectedContacts];
     const participants = mode === "group" ? [MAIN_AGENT_ID, ...allParticipants] : allParticipants;
-    const convTitle = title.trim() || (mode === "direct" ? `与 ${selectedAgents[0] || selectedContacts[0]} 的对话` : `群聊 (${participants.length} 人)`);
+    const convTitle = title.trim() || (mode === "direct" ? `与 ${allParticipants[0] || "成员"} 的对话` : `群聊 (${participants.length} 人)`);
     const convId = crypto.randomUUID();
     setConversationMode(convId, mode === "direct" ? "single" : "group");
     onCreate({
@@ -202,7 +215,7 @@ export function CreateConversationModal({ open, onClose, onCreate }: CreateConve
                   <span key={id}
                     className="inline-flex items-center gap-1 px-2 py-1 rounded-full"
                     style={{ fontSize: "var(--text-2xs)", background: "var(--accent-subtle)", color: "var(--accent)" }}>
-                    @{id}
+                    @{getAgentName(id)}
                     <button onClick={() => setSelectedAgents(selectedAgents.filter((s) => s !== id))}
                       style={{ fontSize: 11, opacity: 0.6 }}>×</button>
                   </span>

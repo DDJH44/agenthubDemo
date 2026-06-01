@@ -1,4 +1,5 @@
-import type { Conversation } from "@agenthub/shared";
+import type { Conversation, UserAgent } from "@agenthub/shared";
+import { AGENT_ROLE_LABELS, MAIN_AGENT_ID, TOOL_OPTIONS } from "@agenthub/shared";
 
 export interface AgentDirectoryEntry {
   id: string;
@@ -15,7 +16,7 @@ export interface AgentDirectoryEntry {
 export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
   {
     id: "pmo",
-    aliases: ["pmo", "pm", "pmo 主 agent", "pm agent", "主 agent", "pmo 主 Agent"],
+    aliases: [MAIN_AGENT_ID, "AgentHub 助手", "pmo", "pm", "pmo 主 agent", "pm agent", "主 agent", "pmo 主 Agent"],
     name: "PMO 主 Agent",
     provider: "AgentHub",
     role: "协调器",
@@ -77,6 +78,7 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
 ];
 
 const FALLBACK_COLORS = ["#174ea6", "#0f766e", "#9a6700", "#a50e0e", "#5f6368", "#7c3aed", "#0e7490"];
+const TOOL_LABELS = new Map(TOOL_OPTIONS.map((tool) => [tool.value, tool.label]));
 
 function normalize(value: string) {
   return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
@@ -97,14 +99,46 @@ function fallbackAgent(name: string): AgentDirectoryEntry {
   };
 }
 
-export function getAgentMeta(nameOrId: string): AgentDirectoryEntry {
+function userAgentToDirectoryEntry(agent: UserAgent): AgentDirectoryEntry {
+  const roleLabel = AGENT_ROLE_LABELS[agent.role] ?? "自建 Agent";
+  const toolCapabilities = agent.tools.map((tool) => TOOL_LABELS.get(tool) ?? tool);
+  const capabilities = toolCapabilities.length > 0 ? toolCapabilities.slice(0, 3) : [roleLabel];
+  const badgeSource = agent.avatar || agent.name.slice(0, 2) || "AI";
+
+  return {
+    id: agent.id,
+    aliases: [agent.id, agent.name],
+    name: agent.name,
+    provider: "Custom",
+    role: roleLabel,
+    badge: badgeSource.toUpperCase(),
+    color: agent.avatarBg,
+    capabilities,
+    isCustom: true,
+  };
+}
+
+function findUserAgent(nameOrId: string, userAgents: UserAgent[]): AgentDirectoryEntry | null {
   const key = normalize(nameOrId);
+  const found = userAgents.find((agent) => normalize(agent.id) === key || normalize(agent.name) === key);
+  return found ? userAgentToDirectoryEntry(found) : null;
+}
+
+export function getAgentMeta(nameOrId: string, userAgents: UserAgent[] = []): AgentDirectoryEntry {
+  const key = normalize(nameOrId);
+  const userAgentById = userAgents.find((agent) => normalize(agent.id) === key);
+  if (userAgentById) return userAgentToDirectoryEntry(userAgentById);
+
   const found = AGENT_DIRECTORY.find((agent) => agent.id === key || agent.aliases.some((alias) => normalize(alias) === key));
   if (found) return found;
+
+  const userAgent = findUserAgent(nameOrId, userAgents);
+  if (userAgent) return userAgent;
+
   return fallbackAgent(nameOrId);
 }
 
-export function getConversationAgents(conversation: Conversation): AgentDirectoryEntry[] {
+export function getConversationAgents(conversation: Conversation, userAgents: UserAgent[] = []): AgentDirectoryEntry[] {
   const names = conversation.participants.length > 0 ? conversation.participants : [conversation.title];
   const inferred = [...names];
   const title = conversation.title.toLowerCase();
@@ -116,7 +150,7 @@ export function getConversationAgents(conversation: Conversation): AgentDirector
 
   const seen = new Set<string>();
   return inferred
-    .map(getAgentMeta)
+    .map((name) => getAgentMeta(name, userAgents))
     .filter((agent) => {
       if (seen.has(agent.id)) return false;
       seen.add(agent.id);
@@ -124,9 +158,9 @@ export function getConversationAgents(conversation: Conversation): AgentDirector
     });
 }
 
-export function getConversationCapabilityTags(conversation: Conversation, max = 4): string[] {
+export function getConversationCapabilityTags(conversation: Conversation, max = 4, userAgents: UserAgent[] = []): string[] {
   const tags: string[] = [];
-  for (const agent of getConversationAgents(conversation)) {
+  for (const agent of getConversationAgents(conversation, userAgents)) {
     if (agent.id === "pmo") tags.push("主 Agent");
     if (agent.isCustom) tags.push("自建 Agent");
     tags.push(...agent.capabilities);

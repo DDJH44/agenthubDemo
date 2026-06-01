@@ -1,8 +1,9 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Conversation } from "@agenthub/shared";
+import type { Conversation, UserAgent } from "@agenthub/shared";
 import { useChatStore } from "@/stores/chat-store";
+import { useUserAgentStore } from "@/stores/user-agent-store";
 import { getConversationAgents, getConversationCapabilityTags } from "./agent-directory";
 
 interface Props {
@@ -59,8 +60,8 @@ function Icon({ type, size = 14 }: { type: Parameters<typeof iconPath>[0]; size?
   );
 }
 
-function getTags(conv: Conversation, isGroup: boolean): string[] {
-  const agents = getConversationAgents(conv);
+function getTags(conv: Conversation, isGroup: boolean, userAgents: UserAgent[]): string[] {
+  const agents = getConversationAgents(conv, userAgents);
   if (isGroup) {
     return [
       "群聊",
@@ -72,11 +73,11 @@ function getTags(conv: Conversation, isGroup: boolean): string[] {
 
   const primary = agents[0];
   if (primary) return [primary.provider, primary.capabilities[0]].filter(Boolean).slice(0, 2);
-  return getConversationCapabilityTags(conv, 2);
+  return getConversationCapabilityTags(conv, 2, userAgents);
 }
 
-function AgentAvatarStack({ conv, isGroup }: { conv: Conversation; isGroup: boolean }) {
-  const agents = getConversationAgents(conv);
+function AgentAvatarStack({ conv, isGroup, userAgents }: { conv: Conversation; isGroup: boolean; userAgents: UserAgent[] }) {
+  const agents = getConversationAgents(conv, userAgents);
 
   if (isGroup) {
     const primary = agents.find((agent) => agent.id === "pmo") ?? agents[0];
@@ -94,7 +95,7 @@ function AgentAvatarStack({ conv, isGroup }: { conv: Conversation; isGroup: bool
     );
   }
 
-  const agent = agents[0] ?? getConversationAgents({ ...conv, participants: [conv.title] })[0];
+  const agent = agents[0] ?? getConversationAgents({ ...conv, participants: [conv.title] }, userAgents)[0];
   return (
     <div
       className="relative grid h-10 w-10 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white"
@@ -111,17 +112,19 @@ const ConversationItem = memo(function ConversationItem({
   conv,
   isActive,
   isGroup,
+  userAgents,
   onSelect,
   onContextMenu,
 }: {
   conv: Conversation;
   isActive: boolean;
   isGroup: boolean;
+  userAgents: UserAgent[];
   onSelect: () => void;
   onContextMenu: (event: React.MouseEvent) => void;
 }) {
-  const tags = getTags(conv, isGroup);
-  const agents = getConversationAgents(conv);
+  const tags = getTags(conv, isGroup, userAgents);
+  const agents = getConversationAgents(conv, userAgents);
   const agentLine = isGroup
     ? agents.map((agent) => agent.name).slice(0, 4).join("、")
     : `${agents[0]?.name ?? conv.title}${agents[0] ? ` · ${agents[0].role}` : ""}`;
@@ -138,7 +141,7 @@ const ConversationItem = memo(function ConversationItem({
         border: `1px solid ${isActive ? "rgba(23, 78, 166, 0.16)" : "transparent"}`,
       }}
     >
-      <AgentAvatarStack conv={conv} isGroup={isGroup} />
+      <AgentAvatarStack conv={conv} isGroup={isGroup} userAgents={userAgents} />
 
       <div className="min-w-0 flex-1 overflow-hidden">
         <div className="flex items-center justify-between gap-2">
@@ -224,6 +227,8 @@ export function ConversationListView({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; convId: string; isPinned: boolean; isArchived: boolean } | null>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const conversationMode = useChatStore((state) => state.conversationMode);
+  const userAgents = useUserAgentStore((state) => state.agents);
+  const hydrateUserAgents = useUserAgentStore((state) => state.hydrate);
 
   const getConvMode = useCallback((conv: Conversation): "single" | "group" => {
     return conversationMode[conv.id] ?? (conv.type === "direct" ? "single" : "group");
@@ -234,6 +239,10 @@ export function ConversationListView({
     if (searchTimer.current) clearTimeout(searchTimer.current);
     searchTimer.current = setTimeout(() => onSearch(value), 250);
   }, [onSearch]);
+
+  useEffect(() => {
+    void hydrateUserAgents();
+  }, [hydrateUserAgents]);
 
   useEffect(() => {
     const close = () => setContextMenu(null);
@@ -253,7 +262,7 @@ export function ConversationListView({
     const matchesSearch = (conversation: Conversation) => {
       const keyword = search.trim().toLowerCase();
       if (!keyword) return true;
-      const agentText = getConversationAgents(conversation)
+      const agentText = getConversationAgents(conversation, userAgents)
         .flatMap((agent) => [agent.name, agent.provider, agent.role, ...agent.capabilities])
         .join(" ");
       return `${conversation.title} ${conversation.lastMessage ?? ""} ${conversation.topics ?? ""} ${agentText}`.toLowerCase().includes(keyword);
@@ -268,7 +277,7 @@ export function ConversationListView({
       groupCount: active.filter((conversation) => getConvMode(conversation) === "group").length,
       singleCount: active.filter((conversation) => getConvMode(conversation) === "single").length,
     };
-  }, [conversations, getConvMode, modeFilter, search]);
+  }, [conversations, getConvMode, modeFilter, search, userAgents]);
 
   const handleContextMenu = (event: React.MouseEvent, conv: Conversation) => {
     event.preventDefault();
@@ -353,6 +362,7 @@ export function ConversationListView({
             conv={conv}
             isActive={conv.id === activeConversationId}
             isGroup={getConvMode(conv) === "group"}
+            userAgents={userAgents}
             onSelect={() => onSelect(conv.id)}
             onContextMenu={(event) => handleContextMenu(event, conv)}
           />
@@ -365,6 +375,7 @@ export function ConversationListView({
             conv={conv}
             isActive={conv.id === activeConversationId}
             isGroup={getConvMode(conv) === "group"}
+            userAgents={userAgents}
             onSelect={() => onSelect(conv.id)}
             onContextMenu={(event) => handleContextMenu(event, conv)}
           />
@@ -388,6 +399,7 @@ export function ConversationListView({
             conv={conv}
             isActive={conv.id === activeConversationId}
             isGroup={getConvMode(conv) === "group"}
+            userAgents={userAgents}
             onSelect={() => onSelect(conv.id)}
             onContextMenu={(event) => handleContextMenu(event, conv)}
           />
