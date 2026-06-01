@@ -79,7 +79,7 @@ function renderSlideContentToHtml(content: string): string {
   return `<p>${html}</p>`;
 }
 
-function SlidesRenderer({ artifact }: { artifact: Artifact }) {
+export function SlidesRenderer({ artifact }: { artifact: Artifact }) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showNotes, setShowNotes] = useState(false);
 

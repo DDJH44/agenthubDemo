@@ -2,16 +2,21 @@
 
 import { useCallback, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import type { Artifact } from "@agenthub/shared";
 import { renderMarkdown } from "@/lib/markdown-utils";
+import { useChatStore } from "@/stores/chat-store";
+import { SlidesRenderer } from "./SlidesRenderer";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((module) => module.default), { ssr: false });
 const MonacoDiffEditor = dynamic(() => import("@monaco-editor/react").then((module) => module.DiffEditor), { ssr: false });
 
-export type ArtifactCardType = "code" | "html" | "json" | "markdown" | "preview_url" | "deploy_url" | "diff";
+export type ArtifactCardType = "code" | "html" | "json" | "markdown" | "document" | "slides" | "preview_url" | "deploy_url" | "diff";
 
 interface Props {
   type: ArtifactCardType;
   content: string;
+  artifactId?: string;
+  conversationId?: string;
   filename?: string;
   language?: string;
   deployUrl?: string;
@@ -36,6 +41,8 @@ const LANG_MAP: Record<string, string> = {
   go: "go",
   rust: "rust",
   diff: "diff",
+  document: "markdown",
+  slides: "markdown",
 };
 
 const LANG_LABEL: Record<string, string> = {
@@ -48,6 +55,16 @@ const LANG_LABEL: Record<string, string> = {
   python: "Python",
   diff: "Diff",
 };
+
+const HANDOFF_AGENTS = [
+  { id: "pmo", label: "PMO", sender: "planner" },
+  { id: "codex", label: "Codex", sender: "coder" },
+  { id: "ux-reviewer", label: "UX", sender: "refiner" },
+];
+
+function currentTime() {
+  return Date.now();
+}
 
 function getLanguage(type: ArtifactCardType, language?: string, filename?: string) {
   if (type === "html") return "html";
@@ -259,6 +276,204 @@ function MarkdownView({ content, filename }: { content: string; filename?: strin
   );
 }
 
+function extractDocumentParagraphs(content: string) {
+  return content
+    .split(/\n\s*\n/g)
+    .map((block) => block.replace(/^#+\s+/gm, "").replace(/^>\s?/gm, "").replace(/^- /gm, "").trim())
+    .filter((block) => block.length >= 18)
+    .slice(0, 8);
+}
+
+function DocumentView({
+  content,
+  filename,
+  artifactId,
+  conversationId,
+  onPreview,
+}: {
+  content: string;
+  filename?: string;
+  artifactId?: string;
+  conversationId?: string;
+  onPreview?: () => void;
+}) {
+  const [sourceMode, setSourceMode] = useState(false);
+  const [expandedQuotes, setExpandedQuotes] = useState(false);
+  const [referencedId, setReferencedId] = useState<string | null>(null);
+  const addContextReference = useChatStore((state) => state.addContextReference);
+  const addMessage = useChatStore((state) => state.addMessage);
+  const html = useMemo(() => renderMarkdown(content), [content]);
+  const paragraphs = useMemo(() => extractDocumentParagraphs(content), [content]);
+  const visibleParagraphs = expandedQuotes ? paragraphs : paragraphs.slice(0, 3);
+  const title = filename || "document.md";
+
+  const referenceParagraph = (text: string, index: number) => {
+    if (!conversationId) return;
+    const refId = `${artifactId || title}-paragraph-${index + 1}`;
+    addContextReference(conversationId, {
+      id: refId,
+      sourceType: "artifact",
+      sender: title,
+      senderId: artifactId,
+      title: `${title} · 第 ${index + 1} 段`,
+      content: text,
+    });
+    setReferencedId(refId);
+    window.setTimeout(() => setReferencedId(null), 1400);
+  };
+
+  const handoffParagraph = (text: string, index: number, agent: (typeof HANDOFF_AGENTS)[number]) => {
+    if (!conversationId) return;
+    referenceParagraph(text, index);
+    addMessage(conversationId, {
+      id: crypto.randomUUID(),
+      conversationId,
+      type: "user_message",
+      sender: "user",
+      content: `@${agent.id} 请处理 ${title} 第 ${index + 1} 段引用：\n\n> ${text}`,
+      mentions: [agent.id],
+      payload: {
+        contextAction: "document-paragraph-handoff",
+        artifactId,
+        filename: title,
+        paragraphIndex: index + 1,
+        quote: text,
+      },
+      timestamp: currentTime(),
+    });
+    addMessage(conversationId, {
+      id: crypto.randomUUID(),
+      conversationId,
+      type: "agent_message",
+      sender: agent.sender,
+      senderId: agent.id,
+      content: `${agent.label} 已接收 ${title} 第 ${index + 1} 段引用，会基于这段内容继续处理。`,
+      payload: {
+        contextAction: "document-paragraph-accepted",
+        artifactId,
+        filename: title,
+        paragraphIndex: index + 1,
+      },
+      timestamp: currentTime(),
+    });
+  };
+
+  return (
+    <CardShell
+      title={title}
+      meta="文档"
+      actions={
+        <>
+          <CopyButton text={content} />
+          {onPreview && (
+            <button
+              type="button"
+              onClick={onPreview}
+              className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]"
+              style={{ color: "#174ea6" }}
+            >
+              打开预览
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setSourceMode((value) => !value)}
+            className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]"
+            style={{ color: "#174ea6" }}
+          >
+            {sourceMode ? "预览" : "源码"}
+          </button>
+        </>
+      }
+    >
+      <div className="max-h-[420px] overflow-auto p-3">
+        {sourceMode ? (
+          <pre className="m-0 whitespace-pre-wrap" style={{ color: "var(--fg-secondary)", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.6 }}>
+            {content}
+          </pre>
+        ) : (
+          <div className="prose-chat" dangerouslySetInnerHTML={{ __html: html }} />
+        )}
+      </div>
+
+      {paragraphs.length > 0 && (
+        <div className="space-y-2 p-3" style={{ borderTop: "1px solid var(--border)", background: "var(--surface-low)" }}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[10px] font-bold" style={{ color: "var(--fg-tertiary)" }}>段落引用</span>
+            {paragraphs.length > 3 && (
+              <button type="button" onClick={() => setExpandedQuotes((value) => !value)} className="text-[10px] font-semibold" style={{ color: "#174ea6" }}>
+                {expandedQuotes ? "收起" : `全部 ${paragraphs.length} 段`}
+              </button>
+            )}
+          </div>
+          {visibleParagraphs.map((paragraph, index) => {
+            const refId = `${artifactId || title}-paragraph-${index + 1}`;
+            return (
+              <div key={refId} className="rounded-md p-2" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                <p className="line-clamp-3 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.6 }}>{paragraph}</p>
+                {conversationId && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <button type="button" onClick={() => referenceParagraph(paragraph, index)} className="rounded px-2 py-1 text-[10px] font-semibold" style={{ color: referencedId === refId ? "var(--success)" : "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}>
+                      {referencedId === refId ? "已引用" : "引用"}
+                    </button>
+                    {HANDOFF_AGENTS.map((agent) => (
+                      <button key={agent.id} type="button" onClick={() => handoffParagraph(paragraph, index, agent)} className="rounded px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+                        交 {agent.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </CardShell>
+  );
+}
+
+function SlidesView({
+  content,
+  filename,
+  artifactId,
+  onPreview,
+}: {
+  content: string;
+  filename?: string;
+  artifactId?: string;
+  onPreview?: () => void;
+}) {
+  const artifact: Artifact = {
+    id: artifactId || filename || "inline-slides",
+    jobId: "inline-message",
+    type: "slides",
+    content,
+    filename,
+    createdAt: 0,
+  };
+
+  return (
+    <CardShell
+      title={filename || "slides.md"}
+      meta="PPT"
+      actions={
+        <>
+          <CopyButton text={content} />
+          {onPreview && (
+            <button type="button" onClick={onPreview} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]" style={{ color: "#174ea6" }}>
+              打开预览
+            </button>
+          )}
+        </>
+      }
+    >
+      <div className="h-[420px]">
+        <SlidesRenderer artifact={artifact} />
+      </div>
+    </CardShell>
+  );
+}
+
 function PreviewView({ url, content }: { url?: string; content?: string }) {
   const openUrl = url && /^https?:\/\//.test(url) ? url : undefined;
 
@@ -399,6 +614,8 @@ function DeployView({ url, status }: { url?: string; status?: string }) {
 export function ArtifactCard({
   type,
   content,
+  artifactId,
+  conversationId,
   filename,
   language,
   deployUrl,
@@ -413,6 +630,10 @@ export function ArtifactCard({
       return <CodeView type={type} content={content} language={language} filename={filename} onEdit={onEdit} onPreview={onPreview} />;
     case "markdown":
       return <MarkdownView content={content} filename={filename} />;
+    case "document":
+      return <DocumentView content={content} filename={filename} artifactId={artifactId} conversationId={conversationId} onPreview={onPreview} />;
+    case "slides":
+      return <SlidesView content={content} filename={filename} artifactId={artifactId} onPreview={onPreview} />;
     case "preview_url":
       return <PreviewView url={deployUrl || content} content={content} />;
     case "deploy_url":

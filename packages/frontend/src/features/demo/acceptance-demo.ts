@@ -237,7 +237,7 @@ const artifacts: Artifact[] = [
   {
     id: "demo-artifact-requirements",
     jobId: "acceptance-demo-job",
-    type: "markdown",
+    type: "document",
     filename: "requirements-summary.md",
     content: requirementsDoc,
     version: 1,
@@ -314,8 +314,8 @@ function buildGroupMessages(): Message[] {
       type: "agent_message",
       sender: "researcher",
       senderId: "researcher",
-      content: "已引用课题说明中的「产物预览与编辑」段落，并整理为 `requirements-summary.md`。我把这段上下文交给 Codex 与 UX Reviewer，后续每次修改都可以追溯引用来源。",
-      payload: { artifactType: "markdown", filename: "requirements-summary.md", language: "md" },
+      content: requirementsDoc,
+      payload: { artifactType: "document", artifactId: "demo-artifact-requirements", filename: "requirements-summary.md", language: "md" },
       timestamp: at(1000 * 60 * 9),
     }),
     makeMessage({
@@ -349,8 +349,8 @@ function buildGroupMessages(): Message[] {
       type: "agent_message",
       sender: "planner",
       senderId: "pmo",
-      content: "PPT 浏览产物已生成，可在右侧面板的 PPT Tab 中查看：`acceptance-demo.slides.md`。",
-      payload: { artifactType: "markdown", filename: "acceptance-demo.slides.md", language: "md" },
+      content: demoSlides,
+      payload: { artifactType: "slides", artifactId: "demo-artifact-slides", filename: "acceptance-demo.slides.md", language: "md" },
       timestamp: at(1000 * 60 * 4),
     }),
     makeMessage({

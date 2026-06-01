@@ -22,7 +22,7 @@ const AGENT_META: Record<string, { label: string; badge: string; color: string }
   system: { label: "系统", badge: "SYS", color: "#5f6368" },
 };
 
-const ARTIFACT_TYPES = new Set<ArtifactCardType>(["code", "html", "json", "markdown", "preview_url", "deploy_url", "diff"]);
+const ARTIFACT_TYPES = new Set<ArtifactCardType>(["code", "html", "json", "markdown", "document", "slides", "preview_url", "deploy_url", "diff"]);
 
 function formatTime(ts: number): string {
   const date = new Date(ts);
@@ -137,8 +137,15 @@ function InlineCodeBlock({ code, language }: { code: string; language?: string }
 }
 
 function getArtifactType(payload: Record<string, unknown> | undefined): ArtifactCardType | null {
-  const raw = String(payload?.artifactType || payload?.type || "");
-  return ARTIFACT_TYPES.has(raw as ArtifactCardType) ? raw as ArtifactCardType : null;
+  const raw = String(payload?.artifactType || payload?.type || "").toLowerCase();
+  const normalized = ({
+    doc: "document",
+    docx: "document",
+    ppt: "slides",
+    pptx: "slides",
+    slide: "slides",
+  } as Record<string, ArtifactCardType>)[raw] ?? raw;
+  return ARTIFACT_TYPES.has(normalized as ArtifactCardType) ? normalized as ArtifactCardType : null;
 }
 
 function MessageActions({
@@ -264,8 +271,19 @@ const MessageBubble = memo(function MessageBubble({
   const senderMeta = getSenderMeta(message);
   const payload = message.payload as Record<string, unknown> | undefined;
   const artifactType = getArtifactType(payload);
+  const setCurrentPreview = useChatStore((state) => state.setCurrentPreview);
   const { hasThinking, main } = extractDisplayContent(message.content);
   const displayContent = main || message.content;
+  const artifactId = String(payload?.artifactId || payload?.modifiedArtifactId || payload?.originalArtifactId || message.id);
+  const artifactFilename = payload?.filename as string | undefined;
+  const previewArtifact = (type: string, content: string, filename?: string) => {
+    setCurrentPreview({
+      artifactId,
+      type,
+      content,
+      filename,
+    });
+  };
   const htmlLike = !artifactType && !["diff_card", "deploy_card", "preview_card"].includes(message.type) &&
     (displayContent.includes("<!DOCTYPE html>") || displayContent.includes("<html"));
   const parts = useMemo(() => splitCodeBlocks(displayContent), [displayContent]);
@@ -340,15 +358,26 @@ const MessageBubble = memo(function MessageBubble({
               <ArtifactCard
                 type={artifactType}
                 content={message.content}
-                filename={payload?.filename as string | undefined}
+                artifactId={artifactId}
+                conversationId={message.conversationId}
+                filename={artifactFilename}
                 language={payload?.language as string | undefined}
                 deployUrl={payload?.deployUrl as string | undefined}
                 deployStatus={payload?.deployStatus as string | undefined}
+                onPreview={artifactType === "slides" ? undefined : () => previewArtifact(artifactType, message.content, artifactFilename)}
               />
             )}
 
             {htmlLike && (
-              <ArtifactCard type="html" content={displayContent} filename="index.html" language="html" />
+              <ArtifactCard
+                type="html"
+                content={displayContent}
+                artifactId={message.id}
+                conversationId={message.conversationId}
+                filename="index.html"
+                language="html"
+                onPreview={() => previewArtifact("html", displayContent, "index.html")}
+              />
             )}
 
             {!artifactType && !htmlLike && !["diff_card", "deploy_card", "preview_card"].includes(message.type) && (
