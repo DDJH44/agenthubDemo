@@ -60,41 +60,41 @@ function Icon({ type, size = 14 }: { type: Parameters<typeof iconPath>[0]; size?
 }
 
 function getTags(conv: Conversation, isGroup: boolean): string[] {
-  const capabilityTags = getConversationCapabilityTags(conv, isGroup ? 4 : 3);
-  if (capabilityTags.length > 0) return capabilityTags;
-  return isGroup ? ["群聊", `${conv.participants.length || 0} 成员`] : ["单聊"];
+  const agents = getConversationAgents(conv);
+  if (isGroup) {
+    return [
+      "群聊",
+      `${agents.length} Agent`,
+      agents.some((agent) => agent.id === "pmo") ? "主 Agent" : "",
+      agents.some((agent) => agent.isCustom) ? "自建" : "",
+    ].filter(Boolean).slice(0, 3);
+  }
+
+  const primary = agents[0];
+  if (primary) return [primary.provider, primary.capabilities[0]].filter(Boolean).slice(0, 2);
+  return getConversationCapabilityTags(conv, 2);
 }
 
 function AgentAvatarStack({ conv, isGroup }: { conv: Conversation; isGroup: boolean }) {
   const agents = getConversationAgents(conv);
-  const visible = isGroup ? agents.slice(0, 3) : agents.slice(0, 1);
-  const extra = Math.max(0, agents.length - visible.length);
 
   if (isGroup) {
+    const primary = agents.find((agent) => agent.id === "pmo") ?? agents[0];
     return (
-      <div className="flex h-10 w-12 shrink-0 items-center">
-        <div className="flex -space-x-3">
-          {visible.map((agent, index) => (
-            <div
-              key={agent.id}
-              className="grid h-8 w-8 place-items-center rounded-md border-2 text-[10px] font-bold text-white"
-              style={{ background: agent.color, borderColor: "var(--surface-white)", zIndex: visible.length - index }}
-              title={`${agent.name} · ${agent.capabilities.join(" / ")}`}
-            >
-              {agent.badge.slice(0, 2)}
-            </div>
-          ))}
-          {extra > 0 && (
-            <div className="grid h-8 w-8 place-items-center rounded-md border-2 text-[10px] font-bold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", borderColor: "var(--surface-white)" }}>
-              +{extra}
-            </div>
-          )}
+      <div
+        className="relative grid h-10 w-10 shrink-0 place-items-center rounded-md text-sm font-bold text-white"
+        style={{ background: primary?.color ?? "#174ea6" }}
+        title={agents.map((agent) => `${agent.name} · ${agent.capabilities.join(" / ")}`).join("\n")}
+      >
+        群
+        <div className="absolute -bottom-1 -right-1 grid h-4 min-w-4 place-items-center rounded-sm px-1 text-[9px] font-bold" style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid rgba(23, 78, 166, 0.18)" }}>
+          {agents.length}
         </div>
       </div>
     );
   }
 
-  const agent = visible[0] ?? getConversationAgents({ ...conv, participants: [conv.title] })[0];
+  const agent = agents[0] ?? getConversationAgents({ ...conv, participants: [conv.title] })[0];
   return (
     <div
       className="relative grid h-10 w-10 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white"
@@ -122,14 +122,17 @@ const ConversationItem = memo(function ConversationItem({
 }) {
   const tags = getTags(conv, isGroup);
   const agents = getConversationAgents(conv);
-  const agentLine = agents.map((agent) => agent.name).slice(0, isGroup ? 3 : 1).join("、");
+  const agentLine = isGroup
+    ? agents.map((agent) => agent.name).slice(0, 4).join("、")
+    : `${agents[0]?.name ?? conv.title}${agents[0] ? ` · ${agents[0].role}` : ""}`;
+  const hiddenAgentCount = isGroup ? Math.max(0, agents.length - 4) : 0;
 
   return (
     <button
       type="button"
       onClick={onSelect}
       onContextMenu={onContextMenu}
-      className="group mx-2 flex w-[calc(100%-16px)] items-start gap-3 rounded-md px-2.5 py-2.5 text-left transition-colors"
+      className="group mx-2 flex w-[calc(100%-16px)] items-start gap-2.5 rounded-md px-2.5 py-2.5 text-left transition-colors"
       style={{
         background: isActive ? "rgba(23, 78, 166, 0.07)" : "transparent",
         border: `1px solid ${isActive ? "rgba(23, 78, 166, 0.16)" : "transparent"}`,
@@ -137,11 +140,11 @@ const ConversationItem = memo(function ConversationItem({
     >
       <AgentAvatarStack conv={conv} isGroup={isGroup} />
 
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
+      <div className="min-w-0 flex-1 overflow-hidden">
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>
+              <span className="min-w-0 truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>
                 {conv.title}
               </span>
               {conv.pinned && (
@@ -150,18 +153,18 @@ const ConversationItem = memo(function ConversationItem({
                 </span>
               )}
             </div>
-            <div className="mt-1 flex flex-wrap gap-1">
+            <p className="mt-1 truncate text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
+              {agentLine}{hiddenAgentCount > 0 ? ` 等 ${agents.length} 个 Agent` : ""}
+            </p>
+            <div className="mt-1 flex max-w-full flex-nowrap gap-1 overflow-hidden">
               {tags.map((tag) => (
-                <span key={tag} className="rounded-sm px-1.5 py-0.5 text-[10px]" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)" }}>
+                <span key={tag} className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px]" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)" }}>
                   {tag}
                 </span>
               ))}
             </div>
-            <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
-              {agentLine}{agents.length > (isGroup ? 3 : 1) ? ` 等 ${agents.length} 个 Agent` : ""}
-            </p>
           </div>
-          <span className="shrink-0 text-[10px]" style={{ color: "var(--fg-disabled)" }}>
+          <span className="shrink-0 self-start pt-0.5 text-[10px]" style={{ color: "var(--fg-disabled)" }}>
             {formatTime(conv.lastMessageAt ?? conv.updatedAt)}
           </span>
         </div>
