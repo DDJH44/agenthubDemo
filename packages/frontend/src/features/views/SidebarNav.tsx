@@ -91,10 +91,10 @@ function CollapsedNav() {
       <button
         onClick={toggleSidebar}
         className="w-8 h-8 rounded-lg flex items-center justify-center mb-2 font-bold text-white shrink-0 overflow-hidden"
-        style={{ background: "var(--accent-gradient)" }}
+        style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}
         title="展开导航"
       >
-        <Image src="/agenthub-logo.png" alt="AgentHub" width={24} height={24} style={{ width: 20, height: 20, objectFit: "contain" }} />
+        <Image src="/brand/logo-mark.png" alt="AgentHub" width={28} height={28} style={{ width: 28, height: 28, objectFit: "contain" }} />
       </button>
       <button
         type="button"
@@ -139,8 +139,8 @@ function ExpandedNav({
       {/* Logo */}
       <div className="px-4 pt-4 pb-1" style={{ borderBottom: "1px solid var(--divider)" }}>
         <div className="flex items-center gap-3 mb-1">
-          <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 overflow-hidden" style={{ background: "var(--accent-gradient)" }}>
-            <Image src="/agenthub-logo.png" alt="AgentHub" width={24} height={24} style={{ width: 24, height: 24, objectFit: "contain" }} />
+          <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 overflow-hidden" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+            <Image src="/brand/logo-mark.png" alt="AgentHub" width={28} height={28} style={{ width: 28, height: 28, objectFit: "contain" }} />
           </div>
           <h1 className="flex-1" style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-heading)", lineHeight: 1.2, letterSpacing: "-0.01em", color: "var(--fg-primary)" }}>
             AgentHub

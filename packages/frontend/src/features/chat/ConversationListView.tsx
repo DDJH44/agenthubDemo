@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Conversation, UserAgent } from "@agenthub/shared";
+import { BrandMascot } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
 import { getConversationAgents, getConversationCapabilityTags } from "./agent-directory";
@@ -81,6 +82,20 @@ function AgentAvatarStack({ conv, isGroup, userAgents }: { conv: Conversation; i
 
   if (isGroup) {
     const primary = agents.find((agent) => agent.id === "pmo") ?? agents[0];
+    if (primary?.id === "pmo") {
+      return (
+        <div
+          className="relative h-10 w-10 shrink-0"
+          title={agents.map((agent) => `${agent.name} - ${agent.capabilities.join(" / ")}`).join("\n")}
+        >
+          <BrandMascot variant="happy" size={40} />
+          <div className="absolute -bottom-1 -right-1 grid h-4 min-w-4 place-items-center rounded-sm px-1 text-[9px] font-bold" style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid rgba(23, 78, 166, 0.18)" }}>
+            {agents.length}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div
         className="relative grid h-10 w-10 shrink-0 place-items-center rounded-md text-sm font-bold text-white"
@@ -96,6 +111,18 @@ function AgentAvatarStack({ conv, isGroup, userAgents }: { conv: Conversation; i
   }
 
   const agent = agents[0] ?? getConversationAgents({ ...conv, participants: [conv.title] }, userAgents)[0];
+  if (agent.id === "pmo") {
+    return (
+      <div
+        className="relative h-10 w-10 shrink-0"
+        title={`${agent.name} - ${agent.capabilities.join(" / ")}`}
+      >
+        <BrandMascot variant="thinking" size={40} />
+        <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: "var(--success)", border: "2px solid var(--surface-white)" }} />
+      </div>
+    );
+  }
+
   return (
     <div
       className="relative grid h-10 w-10 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white"

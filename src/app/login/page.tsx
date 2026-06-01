@@ -49,7 +49,7 @@ export default function LoginPage() {
       <div className="grid min-h-dvh lg:grid-cols-[minmax(0,1fr)_440px]">
         <section className="relative hidden overflow-hidden lg:block" aria-label="AgentHub">
           <Image
-            src="/agenthub-logo.png"
+            src="/brand/mascot-hero.png"
             alt="AgentHub assistant"
             fill
             priority
@@ -57,19 +57,30 @@ export default function LoginPage() {
             style={{ objectFit: "cover", objectPosition: "center" }}
           />
           <div className="absolute inset-0" style={{ background: "linear-gradient(90deg, rgba(248,249,252,0) 0%, rgba(248,249,252,0.78) 100%)" }} />
-          <div className="absolute left-8 top-8 flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl shadow-sm" style={{ background: "rgba(255,255,255,0.86)", border: "1px solid rgba(255,255,255,0.65)" }}>
-              <span style={{ color: "var(--accent)", fontWeight: 800, fontSize: 18 }}>A</span>
-            </div>
-            <span style={{ color: "#14141a", fontSize: 18, fontWeight: 750, letterSpacing: 0 }}>AgentHub</span>
+          <div className="absolute left-8 top-8 rounded-2xl px-4 py-3 shadow-sm" style={{ background: "rgba(255,255,255,0.84)", border: "1px solid rgba(255,255,255,0.65)", backdropFilter: "blur(14px)" }}>
+            <Image
+              src="/brand/logo-lockup.png"
+              alt="AgentHub"
+              width={228}
+              height={65}
+              priority
+              style={{ display: "block", height: "auto", width: 228 }}
+            />
           </div>
         </section>
 
         <section className="flex min-h-dvh items-center justify-center px-5 py-8 sm:px-8" aria-label="登录">
           <div className="w-full max-w-[400px]">
             <div className="mb-8 lg:hidden">
-              <div className="mb-4 grid h-12 w-12 place-items-center rounded-2xl" style={{ background: "var(--accent-gradient)" }}>
-                <span className="text-white" style={{ fontWeight: 800, fontSize: 21 }}>A</span>
+              <div className="mb-4 inline-flex rounded-2xl px-3 py-2 shadow-sm" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                <Image
+                  src="/brand/logo-lockup.png"
+                  alt="AgentHub"
+                  width={172}
+                  height={50}
+                  priority
+                  style={{ display: "block", height: "auto", width: 172 }}
+                />
               </div>
               <h1 style={{ color: "var(--fg-primary)", fontSize: 26, fontWeight: 760, lineHeight: 1.15 }}>AgentHub</h1>
             </div>

@@ -10,6 +10,7 @@ import { MessageList } from "./MessageList";
 import { QuickReplyBar } from "./QuickReplyBar";
 import { RightPanel } from "./RightPanel";
 import { TaskSteps } from "./TaskSteps";
+import { BrandMascot } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
 
 interface StepProgress {
@@ -183,11 +184,7 @@ export function AgentChatPanel({
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar" style={{ background: "var(--page-bg)" }}>
               {!hasContent ? (
                 <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-                  <div className="mb-5 grid h-14 w-14 place-items-center rounded-lg" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}>
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                      <path d="M4 6h16M4 12h10M4 18h16" />
-                    </svg>
-                  </div>
+                  <BrandMascot variant="wave" size={156} className="mb-4" priority />
                   <h2 className="text-lg font-bold" style={{ color: "var(--fg-primary)" }}>从一个任务开始</h2>
                   <p className="mt-2 max-w-md text-sm" style={{ color: "var(--fg-tertiary)", lineHeight: 1.7 }}>
                     描述目标，PMO 主 Agent 会拆解任务并分配给 Codex、Claude Code、Open Code 或自建 Agent。

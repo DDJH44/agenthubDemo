@@ -3,12 +3,13 @@
 import { memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { Message } from "@agenthub/shared";
+import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
 import { ArtifactCard, type ArtifactCardType } from "./ArtifactCard";
 
-const AGENT_META: Record<string, { label: string; badge: string; color: string }> = {
-  planner: { label: "PMO 主 Agent", badge: "PMO", color: "#174ea6" },
-  pmo: { label: "PMO 主 Agent", badge: "PMO", color: "#174ea6" },
+const AGENT_META: Record<string, { label: string; badge: string; color: string; mascot?: BrandMascotVariant }> = {
+  planner: { label: "PMO 主 Agent", badge: "PMO", color: "#174ea6", mascot: "happy" },
+  pmo: { label: "PMO 主 Agent", badge: "PMO", color: "#174ea6", mascot: "happy" },
   researcher: { label: "Researcher", badge: "R", color: "#0e7490" },
   coder: { label: "Codex", badge: "CX", color: "#0f766e" },
   codex: { label: "Codex", badge: "CX", color: "#0f766e" },
@@ -314,9 +315,13 @@ const MessageBubble = memo(function MessageBubble({
       <div className={`group flex gap-3 px-4 py-1.5 ${isUser ? "justify-end" : "justify-start"}`}>
         {!isUser && (
           showAvatar ? (
-            <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: senderMeta.color }}>
-              {senderMeta.badge}
-            </div>
+            senderMeta.mascot ? (
+              <BrandMascot variant={senderMeta.mascot} size={36} className="mt-0.5" />
+            ) : (
+              <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: senderMeta.color }}>
+                {senderMeta.badge}
+              </div>
+            )
           ) : (
             <div className="w-9 shrink-0" />
           )

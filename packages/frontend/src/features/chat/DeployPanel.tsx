@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
 import { getGlobalSend } from "@/lib/ws-client";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
@@ -49,6 +50,13 @@ const STATUS_META: Record<string, { label: string; color: string; bg: string; bo
   deploying: { label: "部署中", color: "#174ea6", bg: "rgba(23, 78, 166, 0.07)", border: "rgba(23, 78, 166, 0.18)" },
   success: { label: "部署成功", color: "var(--success)", bg: "var(--success-subtle)", border: "var(--success-border)" },
   failed: { label: "部署失败", color: "var(--danger)", bg: "var(--danger-subtle)", border: "var(--danger-border)" },
+};
+
+const STATUS_MASCOT: Record<string, BrandMascotVariant> = {
+  idle: "shield",
+  deploying: "rocket",
+  success: "complete",
+  failed: "thinking",
 };
 
 const LIFECYCLE = [
@@ -134,6 +142,7 @@ export function DeployPanel() {
   const deployableArtifact = useMemo(() => pickDeployArtifact(artifacts), [artifacts]);
   const normalizedStatus = normalizeStatus(deployStatus);
   const statusMeta = STATUS_META[normalizedStatus];
+  const statusMascot = STATUS_MASCOT[normalizedStatus] ?? "shield";
   const progress = deployProgress ?? (normalizedStatus === "success" || normalizedStatus === "failed" ? 100 : normalizedStatus === "deploying" ? 35 : 0);
   const activePlatform = PLATFORMS.find((platform) => platform.key === (deployProvider || selectedPlatform)) ?? PLATFORMS[0];
   const canDeploy = Boolean(activeConversationId && deployableArtifact && deployFiles.length > 0);
@@ -234,9 +243,12 @@ export function DeployPanel() {
               选择平台后会进入准备、构建、发布、回写消息的完整生命周期。
             </p>
           </div>
-          <span className="shrink-0 rounded-sm px-2 py-1 text-[10px] font-semibold" style={{ color: statusMeta.color, background: statusMeta.bg, border: `1px solid ${statusMeta.border}` }}>
-            {statusMeta.label}
-          </span>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <BrandMascot variant={statusMascot} size={82} />
+            <span className="rounded-sm px-2 py-1 text-[10px] font-semibold" style={{ color: statusMeta.color, background: statusMeta.bg, border: `1px solid ${statusMeta.border}` }}>
+              {statusMeta.label}
+            </span>
+          </div>
         </div>
 
         <div className="mt-4 grid grid-cols-3 gap-2">

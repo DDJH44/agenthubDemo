@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Artifact, Message, ResourceItem, SessionAgentStatus, StepResult } from "@agenthub/shared";
+import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { DeployPanel as DeployWorkflowPanel } from "./DeployPanel";
@@ -94,10 +95,10 @@ function documentShell(title: string, body: string) {
 </html>`;
 }
 
-function EmptyState({ title, desc }: { title: string; desc?: string }) {
+function EmptyState({ title, desc, mascot = "search" }: { title: string; desc?: string; mascot?: BrandMascotVariant }) {
   return (
     <div className="flex min-h-[220px] flex-col items-center justify-center rounded-lg px-6 text-center" style={{ background: "var(--surface-white)", border: "1px dashed var(--border)" }}>
-      <div className="mb-3 h-2 w-2 rounded-full" style={{ background: "var(--fg-disabled)" }} />
+      <BrandMascot variant={mascot} size={126} className="mb-3" />
       <p className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{title}</p>
       {desc && <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.6 }}>{desc}</p>}
     </div>
@@ -378,7 +379,7 @@ function TaskPanel({ messages }: { messages: Message[] }) {
   });
 
   if (items.length === 0) {
-    return <EmptyState title="暂无任务" desc="启动验收演示后，这里会展示 PMO 的拆解步骤。" />;
+    return <EmptyState title="暂无任务" desc="启动验收演示后，这里会展示 PMO 的拆解步骤。" mascot="working" />;
   }
 
   return (
@@ -515,7 +516,7 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
   };
 
   if (!activeItem) {
-    return <EmptyState title="暂无代码产物" desc="Agent 回复代码块或生成产物后，会在这里进入编辑。" />;
+    return <EmptyState title="暂无代码产物" desc="Agent 回复代码块或生成产物后，会在这里进入编辑。" mascot="working" />;
   }
 
   const value = drafts[activeItem.id] ?? activeItem.content;
@@ -656,7 +657,7 @@ function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
     : null;
   const item = previewArtifact ?? findPreviewArtifact(artifacts);
   if (!item) {
-    return <EmptyState title="暂无预览" desc="HTML、文档或部署链接生成后会在这里渲染。" />;
+    return <EmptyState title="暂无预览" desc="HTML、文档或部署链接生成后会在这里渲染。" mascot="search" />;
   }
 
   let srcDoc: string | undefined;
@@ -721,7 +722,7 @@ function DiffPanel({ messages, artifacts }: { messages: Message[]; artifacts: Ar
   const active = diffMessages.find((message) => message.id === (activeId ?? diffMessages[0]?.id));
 
   if (!active) {
-    return <EmptyState title="暂无 Diff" desc="出现代码冲突、版本变更或审查修改后会显示在这里。" />;
+    return <EmptyState title="暂无 Diff" desc="出现代码冲突、版本变更或审查修改后会显示在这里。" mascot="thinking" />;
   }
 
   const payload = active.payload as { fileName?: string } | undefined;
@@ -839,7 +840,7 @@ function SlidesPanel({ artifacts }: { artifacts: Artifact[] }) {
   const current = slides[Math.min(page, Math.max(0, slides.length - 1))];
 
   if (!artifact || slides.length === 0 || !current) {
-    return <EmptyState title="暂无 PPT" desc="Agent 生成 slides 产物后，可以在这里逐页浏览。" />;
+    return <EmptyState title="暂无 PPT" desc="Agent 生成 slides 产物后，可以在这里逐页浏览。" mascot="wave" />;
   }
 
   return (
@@ -946,7 +947,7 @@ function HistoryPanel({ artifacts, stepResults }: { artifacts: Artifact[]; stepR
   };
 
   if (versionGroups.length === 0 && stepResults.length === 0) {
-    return <EmptyState title="暂无版本历史" desc="产物更新、Diff 合并或部署步骤会记录在这里。" />;
+    return <EmptyState title="暂无版本历史" desc="产物更新、Diff 合并或部署步骤会记录在这里。" mascot="complete" />;
   }
 
   return (
@@ -1249,7 +1250,7 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
       <div>
         <SectionHeader title="文档段落引用" desc="选择段落后可以直接交给指定 Agent 继续处理。" />
         {quotes.length === 0 ? (
-          <EmptyState title="暂无可引用段落" desc="生成 Markdown、文档或 PPT 产物后会自动提取段落。" />
+          <EmptyState title="暂无可引用段落" desc="生成 Markdown、文档或 PPT 产物后会自动提取段落。" mascot="search" />
         ) : (
           <div className="space-y-2">
             {quotes.map((quote) => (
