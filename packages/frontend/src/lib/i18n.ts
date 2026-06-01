@@ -5,6 +5,7 @@ type TranslationMap = Record<string, Record<Locale, string>>;
 export const translations: TranslationMap = {
   // Sidebar
   "nav.dashboard": { zh: "工作台", en: "Dashboard" },
+  "nav.acceptance": { zh: "验收导览", en: "Acceptance Guide" },
   "nav.ai-assistant": { zh: "AI 智能助手", en: "AI Assistant" },
   "nav.tasks": { zh: "任务", en: "Tasks" },
   "nav.chat": { zh: "会话", en: "Chats" },

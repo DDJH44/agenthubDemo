@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export type NavKey = "dashboard" | "ai-assistant" | "chat" | "agents" | "tasks" | "projects" | "knowledge" | "files" | "contacts" | "agent-market" | "my-agents" | "mcp" | "workflows" | "settings" | "help";
+export type NavKey = "dashboard" | "acceptance" | "ai-assistant" | "chat" | "agents" | "tasks" | "projects" | "knowledge" | "files" | "contacts" | "agent-market" | "my-agents" | "mcp" | "workflows" | "settings" | "help";
 
 interface NavigationStore {
   activeNav: NavKey;
@@ -12,7 +12,7 @@ interface NavigationStore {
 
 const SIDEBAR_KEY = "agenthub-sidebar-collapsed";
 const NAV_KEY = "agenthub-active-nav";
-const VALID_NAV_KEYS: NavKey[] = ["dashboard", "ai-assistant", "chat", "agents", "tasks", "projects", "knowledge", "files", "contacts", "agent-market", "my-agents", "mcp", "workflows", "settings", "help"];
+const VALID_NAV_KEYS: NavKey[] = ["dashboard", "acceptance", "ai-assistant", "chat", "agents", "tasks", "projects", "knowledge", "files", "contacts", "agent-market", "my-agents", "mcp", "workflows", "settings", "help"];
 
 export const useNavigationStore = create<NavigationStore>((set) => ({
   activeNav: "dashboard",

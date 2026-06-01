@@ -1,6 +1,7 @@
 "use client";
 
 export { DashboardViewNew } from "./DashboardViewNew";
+export { AcceptanceGuideView } from "./AcceptanceGuideView";
 export { SidebarNav } from "./SidebarNav";
 export { RightPanelTabs } from "./RightPanelTabs";
 export { AgentsView } from "./AgentsView";

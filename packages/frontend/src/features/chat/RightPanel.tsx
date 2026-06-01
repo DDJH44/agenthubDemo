@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Artifact, Message, ResourceItem, SessionAgentStatus, StepResult } from "@agenthub/shared";
 import { useChatStore } from "@/stores/chat-store";
@@ -1285,6 +1285,15 @@ export function RightPanel() {
   const { messages, activeConversationId, resources } = useChatStore();
   const workspace = useWorkspaceStore();
   const convMessages = activeConversationId ? (messages[activeConversationId] ?? []) : [];
+
+  useEffect(() => {
+    const handleTabChange = (event: Event) => {
+      const tab = (event as CustomEvent<{ tab?: PanelTab }>).detail?.tab;
+      if (tab && TABS.some((item) => item.key === tab)) setActiveTab(tab);
+    };
+    window.addEventListener("right-panel:tab", handleTabChange);
+    return () => window.removeEventListener("right-panel:tab", handleTabChange);
+  }, []);
 
   return (
     <aside className="flex h-full flex-col" style={{ background: "var(--surface-white)", borderLeft: "1px solid var(--border)" }}>

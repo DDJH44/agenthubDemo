@@ -301,6 +301,18 @@ export function DashboardViewNew() {
             </button>
             <button
               type="button"
+              onClick={() => setActiveNav("acceptance")}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold"
+              style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M9 11l3 3L22 4" />
+                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
+              </svg>
+              验收导览
+            </button>
+            <button
+              type="button"
               onClick={() => setActiveNav("chat")}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold"
               style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}

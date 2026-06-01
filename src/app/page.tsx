@@ -15,7 +15,7 @@ import { RightPanel } from "../../packages/frontend/src/features/chat/RightPanel
 import { ConversationListView } from "../../packages/frontend/src/features/chat/ConversationListView";
 import { CreateConversationModal } from "../../packages/frontend/src/features/chat/CreateConversationModal";
 import {
-  DashboardViewNew, AgentsView, TasksView, ProjectsView,
+  DashboardViewNew, AcceptanceGuideView, AgentsView, TasksView, ProjectsView,
   KnowledgeView, FilesView, AgentMarketView, MyAgentsView,
   McpView, WorkflowsView, SettingsView, HelpView,
   SidebarNav, RightPanelTabs, AIAssistantView, ContactsView,
@@ -296,6 +296,7 @@ export default function Page() {
         {/* 所有视图保持挂载，用 display 切换，避免 SSE/WS 中断 */}
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden" style={{ minHeight: 0 }}>
           <div style={{ display: activeNav === "dashboard" ? "" : "none", flex: 1, minHeight: 0 }}><DashboardViewNew /></div>
+          <div style={{ display: activeNav === "acceptance" ? "" : "none", flex: 1, minHeight: 0 }}><AcceptanceGuideView /></div>
           <div style={{ display: activeNav === "ai-assistant" ? "" : "none", flex: 1, minHeight: 0 }}><AIAssistantView /></div>
           <div style={{ display: activeNav === "chat" ? "" : "none", flex: 1, minHeight: 0 }}>
             <div className="flex h-full" style={{ minHeight: 0 }}>
