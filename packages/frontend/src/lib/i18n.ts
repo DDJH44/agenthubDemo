@@ -1,0 +1,200 @@
+export type Locale = "zh" | "en";
+
+type TranslationMap = Record<string, Record<Locale, string>>;
+
+export const translations: TranslationMap = {
+  // Sidebar
+  "nav.dashboard": { zh: "工作台", en: "Dashboard" },
+  "nav.ai-assistant": { zh: "AI 智能助手", en: "AI Assistant" },
+  "nav.tasks": { zh: "任务", en: "Tasks" },
+  "nav.chat": { zh: "会话", en: "Chats" },
+  "nav.agents": { zh: "智能体", en: "Agents" },
+  "nav.projects": { zh: "项目", en: "Projects" },
+  "nav.knowledge": { zh: "知识库", en: "Knowledge" },
+  "nav.files": { zh: "文件", en: "Files" },
+  "nav.contacts": { zh: "通讯录", en: "Contacts" },
+  "nav.agent-market": { zh: "智能体市场", en: "Agent Market" },
+  "nav.my-agents": { zh: "我的智能体", en: "My Agents" },
+  "nav.mcp": { zh: "MCP", en: "MCP" },
+  "nav.workflows": { zh: "工作流", en: "Workflows" },
+  "nav.settings": { zh: "设置", en: "Settings" },
+  "nav.help": { zh: "帮助与支持", en: "Help & Support" },
+  "sidebar.recent": { zh: "最近会话", en: "Recent" },
+  "sidebar.noChats": { zh: "暂无会话，点击上方按钮创建", en: "No chats yet. Create one above." },
+  "sidebar.newChat": { zh: "新建会话", en: "New Chat" },
+  "sidebar.teamOwner": { zh: "团队管理员", en: "Team Owner" },
+
+  // Chat panel
+  "chat.title": { zh: "智能体协作", en: "Agent Collab" },
+  "chat.online": { zh: "在线", en: "Online" },
+  "chat.offline": { zh: "未连接", en: "Offline" },
+  "chat.running": { zh: "运行中", en: "Running" },
+  "chat.streaming": { zh: "实时输出", en: "Streaming" },
+  "chat.step": { zh: "步骤", en: "Step" },
+  "chat.done": { zh: "完成", en: "Done" },
+  "chat.running.status": { zh: "执行中", en: "Running" },
+  "chat.pending": { zh: "等待", en: "Pending" },
+  "chat.complete": { zh: "执行完成", en: "Completed" },
+  "chat.taskSubmitted": { zh: "任务已提交 · 全体协作", en: "Task submitted · All agents" },
+  "chat.placeholder": { zh: "输入消息，@规划者 拆解任务，@执行者 开发...", en: "Type a message, @planner to plan, @worker to code..." },
+  "chat.welcome.title": { zh: "AgentHub", en: "AgentHub" },
+  "chat.welcome.desc": { zh: "多智能体协作平台 — 通过 @mention 调度 AI 团队", en: "Multi-Agent Collaboration — orchestrate AI teams with @mentions" },
+  "chat.welcome.tip1": { zh: "@规划者 拆解任务", en: "@planner Plan task" },
+  "chat.welcome.tip2": { zh: "@执行者 开发代码", en: "@worker Write code" },
+  "chat.welcome.tip3": { zh: "@全体 完整流程", en: "@all Full pipeline" },
+
+  // Agents
+  "agent.planner": { zh: "规划者", en: "Planner" },
+  "agent.worker": { zh: "执行者", en: "Worker" },
+  "agent.critic": { zh: "审查者", en: "Critic" },
+  "agent.researcher": { zh: "研究员", en: "Researcher" },
+  "agent.refiner": { zh: "润色师", en: "Refiner" },
+  "agent.all": { zh: "全体", en: "All" },
+  "agent.planner.desc": { zh: "任务拆解与 DAG 规划", en: "Task decomposition & DAG planning" },
+  "agent.worker.desc": { zh: "代码编写与工具调用", en: "Code generation & tool calling" },
+  "agent.critic.desc": { zh: "质量审查与反馈", en: "Quality review & feedback" },
+  "agent.researcher.desc": { zh: "信息搜索与综合分析", en: "Web search & data synthesis" },
+  "agent.refiner.desc": { zh: "内容优化与润色", en: "Content polish & refinement" },
+  "agent.all.desc": { zh: "启动完整协作流水线", en: "Launch full collaboration pipeline" },
+  "agent.planner.name": { zh: "规划智能体", en: "Planner Agent" },
+  "agent.critic.review": { zh: "审查反馈", en: "Critic Review" },
+  "agent.select": { zh: "选择智能体", en: "Mention Agent" },
+
+  // Bottom tabs
+  "tab.task": { zh: "任务", en: "Tasks" },
+  "tab.files": { zh: "文件", en: "Files" },
+  "tab.diff": { zh: "变更", en: "Changes" },
+  "tab.preview": { zh: "预览", en: "Preview" },
+  "tab.deploy": { zh: "部署", en: "Deploy" },
+
+  // Drawer
+  "drawer.noTask": { zh: "暂无任务", en: "No tasks" },
+  "drawer.noTaskHint": { zh: "在聊天中 @规划者 拆解任务后查看", en: "Use @planner in chat to create tasks" },
+  "drawer.noFile": { zh: "暂无文件", en: "No files" },
+  "drawer.noDiff": { zh: "暂无变更", en: "No changes" },
+  "drawer.noPreview": { zh: "暂无预览", en: "No preview" },
+  "drawer.noDeploy": { zh: "暂无部署", en: "No deployment" },
+  "drawer.noDeployHint": { zh: "完成任务后可一键部署", en: "Deploy after task completion" },
+  "drawer.noFileHint": { zh: "任务执行后文件将显示在这里", en: "Files appear after task execution" },
+  "drawer.noDiffHint": { zh: "执行步骤后变更将显示在这里", en: "Changes appear after step execution" },
+  "drawer.expand": { zh: "展开", en: "Expand" },
+  "drawer.collapse": { zh: "收起", en: "Collapse" },
+  "drawer.deploying": { zh: "部署中...", en: "Deploying..." },
+  "drawer.deployed": { zh: "部署完成", en: "Deployed" },
+  "drawer.deployFailed": { zh: "部署失败", en: "Failed" },
+  "drawer.deployFailedHint": { zh: "部署过程中出现错误，请检查日志后重试", en: "Deployment failed, check logs and retry" },
+  "drawer.openUrl": { zh: "打开链接", en: "Open URL" },
+  "drawer.webPreview": { zh: "网页预览", en: "Web Preview" },
+  "drawer.htmlPreview": { zh: "HTML 渲染", en: "HTML Render" },
+
+  // Time
+  "time.justNow": { zh: "刚刚", en: "just now" },
+  "time.minAgo": { zh: "分钟前", en: "m ago" },
+  "time.hourAgo": { zh: "小时前", en: "h ago" },
+  "time.dayAgo": { zh: "天前", en: "d ago" },
+
+  // Language toggle
+  "lang.switch": { zh: "English", en: "中文" },
+
+  // Error Boundary
+  "error.title": { zh: "出现了一些问题", en: "Something went wrong" },
+  "error.message": { zh: "发生了未知错误，请刷新页面重试", en: "An unknown error occurred. Please refresh the page." },
+  "error.refresh": { zh: "刷新页面", en: "Refresh Page" },
+
+  // Dashboard
+  "dashboard.title": { zh: "工作台", en: "Dashboard" },
+  "dashboard.subtitle": { zh: "开始你的第一个任务吧", en: "Start your first task" },
+  "dashboard.progress": { zh: "任务进度", en: "Task Progress" },
+  "dashboard.newTask": { zh: "新建任务", en: "New Task" },
+  "dashboard.activeSessions": { zh: "活跃会话", en: "Active Sessions" },
+  "dashboard.runningAgents": { zh: "运行中 Agent", en: "Running Agents" },
+  "dashboard.completedTasks": { zh: "已完成任务", en: "Completed Tasks" },
+  "dashboard.onlineAgents": { zh: "在线 Agent", en: "Online Agents" },
+  "dashboard.total": { zh: "总计", en: "Total" },
+  "dashboard.online": { zh: "在线", en: "Online" },
+
+  // Chat
+  "chat.send": { zh: "发送", en: "Send" },
+  "chat.attach": { zh: "附加文件", en: "Attach File" },
+  "chat.mention": { zh: "提及智能体", en: "Mention Agent" },
+  "chat.taskPlanning": { zh: "任务规划", en: "Task Planning" },
+  "chat.taskExecution": { zh: "任务执行", en: "Task Execution" },
+  "chat.taskCompleted": { zh: "执行完成", en: "Task Completed" },
+
+  // Conversation
+  "conversation.new": { zh: "新建会话", en: "New Conversation" },
+  "conversation.delete": { zh: "删除会话", en: "Delete Conversation" },
+  "conversation.archive": { zh: "归档会话", en: "Archive Conversation" },
+  "conversation.pin": { zh: "置顶会话", en: "Pin Conversation" },
+  "conversation.unpin": { zh: "取消置顶", en: "Unpin Conversation" },
+  "conversation.search": { zh: "搜索会话", en: "Search Conversations" },
+  "conversation.noResults": { zh: "未找到会话", en: "No conversations found" },
+
+  // Agent Creator
+  "agentCreator.title": { zh: "创建智能体", en: "Create Agent" },
+  "agentCreator.describe": { zh: "描述你想要的智能体", en: "Describe your agent" },
+  "agentCreator.describeHint": { zh: "用自然语言描述智能体的角色、能力和行为", en: "Describe the agent's role, capabilities, and behavior in natural language" },
+  "agentCreator.review": { zh: "确认配置", en: "Confirm Configuration" },
+  "agentCreator.create": { zh: "创建智能体", en: "Create Agent" },
+  "agentCreator.cancel": { zh: "取消", en: "Cancel" },
+  "agentCreator.back": { zh: "返回", en: "Back" },
+  "agentCreator.name": { zh: "智能体名称", en: "Agent Name" },
+  "agentCreator.role": { zh: "角色描述", en: "Role Description" },
+  "agentCreator.model": { zh: "AI 模型", en: "AI Model" },
+  "agentCreator.tools": { zh: "工具", en: "Tools" },
+  "agentCreator.systemPrompt": { zh: "系统提示词", en: "System Prompt" },
+
+  // Settings
+  "settings.title": { zh: "设置", en: "Settings" },
+  "settings.language": { zh: "语言", en: "Language" },
+  "settings.theme": { zh: "主题", en: "Theme" },
+  "settings.notifications": { zh: "通知", en: "Notifications" },
+  "settings.apiKey": { zh: "API Key", en: "API Key" },
+  "settings.update": { zh: "更新", en: "Update" },
+  "settings.save": { zh: "保存", en: "Save" },
+  "settings.cancel": { zh: "取消", en: "Cancel" },
+
+  // Help
+  "help.title": { zh: "帮助与支持", en: "Help & Support" },
+  "help.faq": { zh: "常见问题", en: "FAQ" },
+  "help.contact": { zh: "联系我们", en: "Contact Us" },
+  "help.docs": { zh: "文档", en: "Documentation" },
+
+  // Common
+  "common.loading": { zh: "加载中...", en: "Loading..." },
+  "common.error": { zh: "错误", en: "Error" },
+  "common.success": { zh: "成功", en: "Success" },
+  "common.confirm": { zh: "确认", en: "Confirm" },
+  "common.cancel": { zh: "取消", en: "Cancel" },
+  "common.save": { zh: "保存", en: "Save" },
+  "common.delete": { zh: "删除", en: "Delete" },
+  "common.edit": { zh: "编辑", en: "Edit" },
+  "common.close": { zh: "关闭", en: "Close" },
+  "common.back": { zh: "返回", en: "Back" },
+  "common.next": { zh: "下一步", en: "Next" },
+  "common.previous": { zh: "上一步", en: "Previous" },
+  "common.search": { zh: "搜索", en: "Search" },
+  "common.filter": { zh: "筛选", en: "Filter" },
+  "common.sort": { zh: "排序", en: "Sort" },
+  "common.refresh": { zh: "刷新", en: "Refresh" },
+  "common.export": { zh: "导出", en: "Export" },
+  "common.import": { zh: "导入", en: "Import" },
+  "common.upload": { zh: "上传", en: "Upload" },
+  "common.download": { zh: "下载", en: "Download" },
+  "common.share": { zh: "分享", en: "Share" },
+  "common.copy": { zh: "复制", en: "Copy" },
+  "common.paste": { zh: "粘贴", en: "Paste" },
+  "common.clear": { zh: "清空", en: "Clear" },
+  "common.selectAll": { zh: "全选", en: "Select All" },
+  "common.noData": { zh: "暂无数据", en: "No data" },
+  "common.noResults": { zh: "未找到结果", en: "No results found" },
+  "common.tryAgain": { zh: "重试", en: "Try Again" },
+  "common.learnMore": { zh: "了解更多", en: "Learn More" },
+  "common.viewAll": { zh: "查看全部", en: "View All" },
+  "common.showMore": { zh: "显示更多", en: "Show More" },
+  "common.showLess": { zh: "显示更少", en: "Show Less" },
+};
+
+export function t(key: string, locale: Locale): string {
+  return translations[key]?.[locale] ?? key;
+}

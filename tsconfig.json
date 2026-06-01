@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./packages/frontend/src/*"],
+      "@agenthub/shared": ["./packages/shared/src/index.ts"],
+      "@agenthub/adapter": ["./packages/adapter/src/index.ts"]
     }
   },
   "include": [

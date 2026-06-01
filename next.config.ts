@@ -1,7 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  reactStrictMode: false,
+  transpilePackages: ["@agenthub/shared", "@agenthub/adapter"],
+  turbopack: {
+    resolveAlias: {
+      "@": "./packages/frontend/src",
+    },
+  },
 };
 
 export default nextConfig;

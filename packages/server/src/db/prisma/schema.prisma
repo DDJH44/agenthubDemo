@@ -1,0 +1,332 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ═══ User & Workspace ═══
+
+model User {
+  id           String            @id @default(uuid())
+  name         String
+  email        String            @unique
+  password     String
+  avatarUrl    String?
+  createdAt    DateTime          @default(now())
+  members      WorkspaceMember[]
+  sessions     Session[]
+  agentConfigs UserAgentConfig[]
+  mcpServers   McpServerConfig[]
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Workspace {
+  id            String            @id @default(uuid())
+  name          String
+  ownerId       String
+  createdAt     DateTime          @default(now())
+  members       WorkspaceMember[]
+  conversations      Conversation[]
+  conversationGroups ConversationGroup[]
+  agents             Agent[]
+  jobs               Job[]
+  knowledgeBases     KnowledgeBase[]
+  workspaceFiles     WorkspaceFile[]
+}
+
+model WorkspaceMember {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  role        String    @default("member") // owner | admin | member
+  joinedAt    DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@unique([workspaceId, userId])
+}
+
+// ═══ Agent ═══
+
+model Agent {
+  id          String    @id @default(uuid())
+  workspaceId String
+  name        String    // planner | worker | critic | researcher | refiner
+  type        String    // planner | worker | critic | researcher | refiner
+  adapterType String    @default("openai") // openai | claude-code | codex | generic-openai
+  config      String    @default("{}") // JSON: { model, apiKeyRef, cliPath }
+  status      String    @default("idle") // idle | running | error | offline
+  createdAt   DateTime  @default(now())
+  workspace   Workspace @relation(fields: [workspaceId], references: [id])
+}
+
+// ═══ Conversation & Message ═══
+
+model Conversation {
+  id            String        @id @default(uuid())
+  workspaceId   String
+  title         String
+  type          String        @default("group") // direct | group | task_room
+  status        String        @default("active") // active | archived
+  pinned        Boolean       @default(false)
+  pinnedAt      DateTime?
+  participants        String        @default("[]") // JSON array of user/agent IDs
+  createdBy           String?       // userId who created this conversation
+  lastMessage         String?
+  lastMessageAt       DateTime?
+  summary             String?
+  topics              String        @default("[]")  // JSON array of topic labels
+  messageCount        Int           @default(0)
+  importance          Float         @default(0.0)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  workspace           Workspace     @relation(fields: [workspaceId], references: [id])
+  messages            Message[]
+  jobs                Job[]
+  conversationAgents  ConversationAgent[]
+  files               FileEntity[]
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String
+  type           String       // user_message | agent_message | system | plan | tool_call | stream | error
+  sender         String       // "user" | agent name
+  senderId       String?      // user ID or agent ID
+  content        String
+  payload        String?      // JSON
+  mentions       String       @default("[]") // JSON array
+  embedding      Unsupported("vector(2048)")?
+  timestamp      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+
+  @@index([conversationId])
+  @@index([timestamp])
+}
+
+// ═══ Job ═══
+
+model Job {
+  id             String       @id @default(uuid())
+  workspaceId    String
+  conversationId String?
+  title          String
+  description    String?
+  status         String       @default("pending") // pending | queued | running | completed | failed | cancelled
+  priority       String       @default("normal") // low | normal | high | urgent
+  plan           String?      // JSON: PlanNode[]
+  stepResults    String?      // JSON: StepResult[]
+  summary        String?
+  error          String?
+  stats          String?      // JSON: JobStats
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime     @default(now())
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id])
+  conversation   Conversation? @relation(fields: [conversationId], references: [id])
+  events         JobEvent[]
+  artifacts      Artifact[]
+
+  @@index([workspaceId])
+  @@index([conversationId])
+  @@index([status])
+}
+
+model JobEvent {
+  id        String   @id @default(uuid())
+  jobId     String
+  type      String   // task:created | step:started | agent:stream | critic:review | ...
+  agentId   String?
+  nodeId    String?
+  payload   String   @default("{}") // JSON
+  timestamp DateTime @default(now())
+  job       Job      @relation(fields: [jobId], references: [id])
+
+  @@index([jobId])
+}
+
+model Artifact {
+  id        String   @id @default(uuid())
+  jobId     String
+  type      String   // markdown | code | json | html | preview_url | deploy_url
+  content   String
+  filename  String?
+  metadata  String?  // JSON
+  createdAt DateTime @default(now())
+  job       Job      @relation(fields: [jobId], references: [id])
+}
+
+// ═══ Conversation Agent Control ═══
+
+model ConversationAgent {
+  id             String       @id @default(uuid())
+  conversationId String
+  agentName      String       // planner | worker | critic | researcher | refiner
+  enabled        Boolean      @default(false)
+  addedAt        DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, agentName])
+}
+
+// ═══ File Management ═══
+
+model FileEntity {
+  id             String       @id @default(uuid())
+  conversationId String
+  uploaderId     String       // userId
+  name           String
+  path           String       // relative path on disk
+  size           Int
+  mimeType       String       @default("application/octet-stream")
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+// ═══ Workspace File Tree ═══
+
+model WorkspaceFile {
+  id          String         @id @default(uuid())
+  workspaceId String
+  parentId    String?        // NULL = root directory
+  name        String
+  isFolder    Boolean        @default(false)
+  size        Int            @default(0)
+  mimeType    String         @default("application/octet-stream")
+  path        String?        // disk path (files only)
+  uploadedBy  String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  parent      WorkspaceFile? @relation("FileTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children    WorkspaceFile[] @relation("FileTree")
+  workspace   Workspace      @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId])
+  @@index([parentId])
+}
+
+// ═══ Conversation Grouping ═══
+
+model ConversationGroup {
+  id          String                @id @default(uuid())
+  workspaceId String
+  name        String
+  description String?
+  ownerId     String                // userId
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  workspace   Workspace             @relation(fields: [workspaceId], references: [id])
+  items       ConversationGroupItem[]
+}
+
+model ConversationGroupItem {
+  id             String            @id @default(uuid())
+  groupId        String
+  conversationId String
+  addedAt        DateTime          @default(now())
+  group          ConversationGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, conversationId])
+}
+
+// ═══ User Agent Config ═══
+
+model UserAgentConfig {
+  id          String   @id @default(uuid())
+  userId      String
+  name        String
+  type        String   // openai | claude-code | codex | generic-openai
+  config      String   @default("{}") // JSON: { apiKey, baseUrl, model, ... }
+  status      String   @default("idle") // idle | running | error | offline
+  permissions String   @default("[]") // JSON: ["chat", "task", "file"]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+// ═══ Knowledge Base & RAG ═══
+
+model KnowledgeBase {
+  id          String     @id @default(uuid())
+  workspaceId String
+  name        String
+  description String?
+  visibility  String     @default("private")
+  ownerId     String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  documents   Document[]
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id])
+
+  @@index([workspaceId])
+}
+
+model Document {
+  id              String        @id @default(uuid())
+  knowledgeBaseId String
+  title           String
+  sourceType      String        @default("upload")
+  fileType        String?
+  fileSize        Int?
+  status          String        @default("uploaded")
+  errorMessage    String?
+  metadata        Json          @default("{}")
+  uploadedBy      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  chunks          Chunk[]
+  knowledgeBase   KnowledgeBase @relation(fields: [knowledgeBaseId], references: [id], onDelete: Cascade)
+
+  @@index([knowledgeBaseId, status])
+}
+
+model Chunk {
+  id           String   @id @default(uuid())
+  documentId   String
+  chunkIndex   Int
+  content      String
+  tokenCount   Int      @default(0)
+  sectionTitle String?
+  chunkType    String   @default("paragraph")
+  prevChunkId  String?
+  nextChunkId  String?
+  metadata     Json     @default("{}")
+  createdAt    DateTime @default(now())
+  document     Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+}
+
+// ═══ MCP Server Configuration ═══
+
+model McpServerConfig {
+  id        String    @id @default(uuid())
+  userId    String
+  name      String
+  protocol  String    @default("sse")
+  command   String?
+  url       String?
+  env       String    @default("{}")
+  status    String    @default("disconnected")
+  lastSeen  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}

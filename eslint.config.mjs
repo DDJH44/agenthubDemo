@@ -12,7 +12,24 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local scratch scripts and generated verification artifacts.
+    "_test_*.js",
+    "test_*.js",
+    "tmp_*",
+    "*.py",
+    "start-brainstorm-server.js",
+    "packages/**/node_modules/**",
+    "packages/**/tsconfig.tsbuildinfo",
   ]),
+  {
+    rules: {
+      "@typescript-eslint/no-unused-vars": ["warn", {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }],
+    },
+  },
 ]);
 
 export default eslintConfig;

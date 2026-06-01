@@ -1,0 +1,1 @@
+{"name":"@agenthub/adapter","version":"0.1.0","private":true,"main":"./src/index.ts","dependencies":{"@agenthub/shared":"*","openai":"^6.39.0"},"devDependencies":{"typescript":"^5"}}

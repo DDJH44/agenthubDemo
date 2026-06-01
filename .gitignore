@@ -12,6 +12,32 @@
 
 # testing
 /coverage
+/test-screenshots/
+/test_screenshots/
+/screenshots/
+tmp_*
+verification_*.png
+frontend-screenshot-*.png
+test_results.json
+
+# local scratch scripts
+_test_*.js
+/test_*.js
+/test_*.py
+/test_*.html
+tmp_*.py
+tmp_*.ts
+tmp_*.js
+check_*.py
+cleanup_*.py
+create_*.py
+diagnose.py
+verify_*.py
+run_verify.py
+run_simple_project.py
+full_integration_check.py
+debug.log
+temp-ref.jpg
 
 # next.js
 /.next/
@@ -23,6 +49,9 @@
 # misc
 .DS_Store
 *.pem
+.claude/
+.superpowers/
+.trae/
 
 # debug
 npm-debug.log*

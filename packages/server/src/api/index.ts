@@ -1,0 +1,1201 @@
+import type { IncomingMessage, ServerResponse } from "http";
+import { parseMentions, type PlanNode } from "@agenthub/shared";
+import { createOrchestrator, type StreamEvent } from "../orchestrator/index";
+import { createAdapterFromEnv } from "@agenthub/adapter";
+import { hashPassword, verifyPassword, createSession, deleteSession } from "../auth/session";
+import { requireAuth } from "../auth/middleware";
+import { userRepo } from "../db/repositories/user";
+import { fileRepo } from "../db/repositories/file";
+import { conversationRepo } from "../db/repositories/conversation";
+import { userAgentConfigRepo } from "../db/repositories/user-agent-config";
+import { jobRepo } from "../db/repositories/job";
+import { knowledgeBaseRepo, documentRepo } from "../db/repositories/knowledge";
+import { mcpRepo } from "../db/repositories/mcp";
+import { prisma } from "../db/index";
+import { mcpManager } from "../mcp/manager";
+import { workspaceFileRepo } from "../db/repositories/workspace-file";
+import { config } from "../config";
+import { logger } from "../utils/logger";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, unlinkSync, statSync, readdirSync } from "fs";
+import path from "path";
+
+interface RequestWithParams extends IncomingMessage {
+  params?: Record<string, string>;
+}
+
+type RouteHandler = (req: RequestWithParams, res: ServerResponse) => Promise<void>;
+
+const routes: Record<string, RouteHandler> = {};
+const paramRoutes: Array<{ method: string; pattern: RegExp; keys: string[]; handler: RouteHandler }> = [];
+
+export function registerRoute(method: string, path: string, handler: RouteHandler) {
+  // Check if path has params (e.g. /api/files/:id/download)
+  if (path.includes(":")) {
+    const keys: string[] = [];
+    const pattern = path.replace(/:([^/]+)/g, (_, key) => {
+      keys.push(key);
+      return "([^/]+)";
+    });
+    paramRoutes.push({ method: method.toUpperCase(), pattern: new RegExp(`^${pattern}$`), keys, handler });
+  } else {
+    routes[`${method.toUpperCase()} ${path}`] = handler;
+  }
+}
+
+export async function handleApiRequest(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+  const url = new URL(req.url || "/", `http://${req.headers.host}`);
+  const key = `${req.method} ${url.pathname}`;
+
+  // Try exact match first
+  let handler = routes[key];
+  const params: Record<string, string> = {};
+
+  // Try param routes if no exact match
+  if (!handler) {
+    for (const route of paramRoutes) {
+      if (req.method !== route.method) continue;
+      const match = url.pathname.match(route.pattern);
+      if (match) {
+        handler = route.handler;
+        route.keys.forEach((k, i) => { params[k] = match[i + 1]; });
+        break;
+      }
+    }
+  }
+
+  if (!handler) return false;
+
+  // Attach params to request for handlers
+  (req as RequestWithParams).params = params;
+
+  try {
+    await handler(req, res);
+    return true;
+  } catch (err) {
+    logger.error(`Error handling ${key}`, err as Error, 'API');
+    if (!res.headersSent) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: err instanceof Error ? err.message : "Internal error" }));
+    }
+    return true;
+  }
+}
+
+/* ── POST /api/assistant ── */
+registerRoute("POST", "/api/assistant", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req);
+  const { text, history, systemPrompt } = body as { text?: string; history?: Array<{ role: string; content: string }>; systemPrompt?: string };
+
+  if (!text) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "缺少 text 参数" }));
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "Access-Control-Allow-Origin": config.cors.origin,
+  });
+
+  const emit = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  try {
+    const OpenAI = (await import("openai")).default;
+    const client = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.OPENAI_BASE_URL,
+    });
+
+    const systemContent = `你是 AgentHub 的 AI 智能助手，用户的 AI 协作伙伴。中文交流，语气专业但不生硬。
+
+=== 文档类任务回复模板（必须严格遵守）===
+
+当用户要求生成文档、PRD、方案、手册、报告时，按以下模板回复：
+
+收到，正在为你生成[文档类型]...
+
+文档已完成。
+
+核心内容包括：
+
+✓ [章节1]
+✓ [章节2]
+✓ [章节3]
+...
+
+预计开发周期/工作量：
+[X]~[Y]周
+
+我认为风险最高的是/最需要注意的是：
+[关键风险或注意点]。
+
+完整文档如下：
+
+# [文档标题]
+
+## [章节1]
+[内容]
+
+## [章节2]
+[内容]
+
+...
+
+---
+📌 总结：[一句话核心结论]
+🚀 接下来你可以选择：
+① [后续选项1]
+② [后续选项2]
+③ [后续选项3]
+回复数字即可继续。
+
+=== 非文档类对话 ===
+简短问答直接回答，代码问题给出示例，技术讨论分享见解。
+
+=== 禁止 ===
+- 不要说"无法生成文件"、"请复制到 Word"
+- 不要跳过模板结构直接输出文档正文`;
+
+    const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+      { role: "system", content: systemPrompt ? `${systemContent}\n\n=== 用户自定义规则 ===\n${systemPrompt}` : systemContent },
+    ];
+    if (history) {
+      for (const h of history.slice(-10)) {
+        messages.push({ role: h.role as "user" | "assistant", content: h.content });
+      }
+    }
+    messages.push({ role: "user", content: text });
+
+    const model = process.env.LLM_MODEL ?? "gpt-4o-mini";
+    logger.info(`[Assistant] Streaming with model=${model}, messages=${messages.length}`, "Assistant");
+
+    const controller = new AbortController();
+    req.on("close", () => controller.abort());
+
+    const stream = await client.chat.completions.create({
+      model,
+      temperature: 0.7,
+      max_tokens: 4096,
+      stream: true,
+      messages,
+    }, { signal: controller.signal });
+
+    for await (const chunk of stream) {
+      if (controller.signal.aborted) break;
+      const delta = chunk.choices?.[0]?.delta?.content;
+      if (delta) emit({ type: "stream", msg: delta });
+    }
+    emit({ type: "done" });
+  } catch (err) {
+    if ((err as Error).name === "AbortError") { res.end(); return; }
+    logger.error("[Assistant] Error", err as Error, "Assistant");
+    emit({ type: "error", content: err instanceof Error ? err.message : "Unknown error" });
+  } finally {
+    res.end();
+  }
+});
+
+/* ── POST /api/chat ── */
+registerRoute("POST", "/api/chat", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req);
+  const { text, conversationId } = body as { text?: string; conversationId?: string };
+  const { cleanText } = parseMentions(text || "");
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  const emit = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  const adapter = createAdapterFromEnv();
+
+  try {
+    await adapter.connect();
+    const orchestrator = createOrchestrator(adapter);
+    const result = await orchestrator.run(cleanText, (event: StreamEvent) => emit(event), undefined, undefined, conversationId);
+    emit({ type: "done", result });
+  } catch (err) {
+    emit({ type: "error", content: err instanceof Error ? err.message : "Unknown error" });
+  } finally {
+    await adapter.disconnect();
+    res.end();
+  }
+});
+
+/* ── POST /api/run ── */
+registerRoute("POST", "/api/run", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req);
+  const { task, plan, edges, conversationId } = body as { task?: string; plan?: PlanNode[]; edges?: Array<{ source: string; target: string; label?: string }>; conversationId?: string };
+
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+    "Access-Control-Allow-Origin": config.cors.origin,
+  });
+
+  const emit = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);
+
+  const adapter = createAdapterFromEnv();
+
+  try {
+    await adapter.connect();
+    const orchestrator = createOrchestrator(adapter);
+    const result = await orchestrator.run(task || "", (event: StreamEvent) => emit(event), plan, edges, conversationId);
+    emit({ type: "done", result });
+  } catch (err) {
+    emit({ type: "error", content: err instanceof Error ? err.message : "Unknown error" });
+  } finally {
+    await adapter.disconnect();
+    res.end();
+  }
+});
+
+/* ── GET /api/health ── */
+registerRoute("GET", "/api/health", async (_req, res) => {
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ status: "ok", service: "agenthub-server" }));
+});
+
+/* ── GET /api/config/status ── */
+registerRoute("GET", "/api/config/status", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({
+    adapter: {
+      type: config.adapter.type,
+      model: process.env.LLM_MODEL ?? config.adapter.model,
+      baseURL: process.env.OPENAI_BASE_URL ?? null,
+      apiKeyConfigured: !!process.env.OPENAI_API_KEY,
+      apiKeyPrefix: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.slice(0, 6) + "..." : null,
+    },
+  }));
+});
+
+async function writeEnvVar(envPath: string, key: string, value: string) {
+  const fs = await import("fs");
+  let envContent = "";
+  try { envContent = fs.readFileSync(envPath, "utf-8"); } catch { envContent = ""; }
+  const lines = envContent.split("\n");
+  let found = false;
+  const updated = lines.map((line: string) => {
+    if (line.startsWith(`${key}=`)) { found = true; return `${key}=${value}`; }
+    return line;
+  });
+  if (!found) updated.push(`${key}=${value}`);
+  fs.writeFileSync(envPath, updated.join("\n"), "utf-8");
+  process.env[key] = value;
+}
+
+/* ── POST /api/config/api-key ── */
+registerRoute("POST", "/api/config/api-key", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req);
+  const { key, baseURL, model } = body as { key?: string; baseURL?: string; model?: string };
+  const path = await import("path");
+  const envPath = path.resolve(process.cwd(), "../../.env.local");
+
+  if (key !== undefined) {
+    if (typeof key !== "string" || key.trim().length < 10) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid API key (min 10 chars)" }));
+      return;
+    }
+    await writeEnvVar(envPath, "OPENAI_API_KEY", key.trim());
+  }
+  if (baseURL !== undefined) {
+    if (typeof baseURL !== "string" || !baseURL.trim()) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid baseURL" }));
+      return;
+    }
+    await writeEnvVar(envPath, "OPENAI_BASE_URL", baseURL.trim());
+  }
+  if (model !== undefined) {
+    if (typeof model !== "string" || !model.trim()) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Invalid model" }));
+      return;
+    }
+    await writeEnvVar(envPath, "LLM_MODEL", model.trim());
+    config.adapter.model = model.trim();
+  }
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({
+    success: true,
+    apiKeyPrefix: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.slice(0, 6) + "..." : null,
+    baseURL: process.env.OPENAI_BASE_URL ?? null,
+    model: process.env.LLM_MODEL ?? config.adapter.model,
+  }));
+});
+
+/* ── GET /api/stats/task-trend ── */
+registerRoute("GET", "/api/stats/task-trend", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const url = new URL(req.url || "/", `http://${req.headers.host}`);
+  const days = Math.min(30, Math.max(1, Number(url.searchParams.get("days")) || 7));
+  const trend = await jobRepo.getTaskTrend("default", days);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ trend }));
+});
+
+/* ── POST /api/auth/register ── */
+registerRoute("POST", "/api/auth/register", async (req, res) => {
+  const body = await readJsonBody(req);
+  const { name, email, password } = body as { name?: string; email?: string; password?: string };
+
+  if (!name || !email || !password) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "name, email, password are required" }));
+    return;
+  }
+  if (password.length < 6) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Password must be at least 6 characters" }));
+    return;
+  }
+
+  const existing = await userRepo.getByEmail(email);
+  if (existing) {
+    res.writeHead(409, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Email already registered" }));
+    return;
+  }
+
+  const hashed = await hashPassword(password);
+  const user = await userRepo.create({ name, email, password: hashed });
+
+  // 为新用户创建默认智能体
+  const defaultAgents = [
+    { name: "PM Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是项目管理智能体。负责分析用户需求、拆解任务、制定执行计划，并协调其他智能体完成项目。你擅长需求分析、任务分解、进度跟踪和风险管理。用中文回复。" }), permissions: JSON.stringify(["chat", "task"]) },
+    { name: "Frontend Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是前端开发智能体。精通 HTML、CSS、JavaScript、TypeScript、React、Vue、Next.js 等前端技术栈。你负责实现用户界面、交互逻辑和响应式设计。生成的代码要完整可运行，注重用户体验和视觉效果。用中文回复。" }), permissions: JSON.stringify(["chat", "task", "file"]) },
+    { name: "Backend Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是后端开发智能体。精通 Node.js、Python、Go、数据库设计、API 开发、系统架构。你负责设计数据模型、开发 RESTful API、处理业务逻辑和性能优化。用中文回复。" }), permissions: JSON.stringify(["chat", "task", "file"]) },
+    { name: "Design Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是 UI/UX 设计智能体。精通界面设计、用户体验、配色方案、布局设计。你负责提供设计建议、优化界面视觉效果、确保设计一致性和可用性。用中文回复。" }), permissions: JSON.stringify(["chat"]) },
+    { name: "Test Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是测试智能体。精通单元测试、集成测试、端到端测试。你负责编写测试用例、发现 bug、验证功能完整性、提供测试报告。用中文回复。" }), permissions: JSON.stringify(["chat", "task"]) },
+  ];
+  for (const agent of defaultAgents) {
+    await userAgentConfigRepo.create({ userId: user.id, ...agent });
+  }
+
+  const { token, expiresAt } = await createSession(user.id);
+
+  res.writeHead(201, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({
+    token,
+    user: { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl },
+    expiresAt: expiresAt.getTime(),
+  }));
+});
+
+/* ── POST /api/auth/login ── */
+registerRoute("POST", "/api/auth/login", async (req, res) => {
+  const body = await readJsonBody(req);
+  const { email, password } = body as { email?: string; password?: string };
+
+  if (!email || !password) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "email and password are required" }));
+    return;
+  }
+
+  const user = await userRepo.getByEmail(email);
+  if (!user) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Invalid email or password" }));
+    return;
+  }
+
+  const valid = await verifyPassword(password, user.password);
+  if (!valid) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Invalid email or password" }));
+    return;
+  }
+
+  const { token, expiresAt } = await createSession(user.id);
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({
+    token,
+    user: { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl },
+    expiresAt: expiresAt.getTime(),
+  }));
+});
+
+/* ── POST /api/auth/logout ── */
+registerRoute("POST", "/api/auth/logout", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.slice(7);
+  if (token) await deleteSession(token);
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+});
+
+/* ── GET /api/auth/me ── */
+registerRoute("GET", "/api/auth/me", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ user }));
+});
+
+/* ── GET /api/users ── */
+registerRoute("GET", "/api/users", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const url = new URL(req.url || "/", `http://${req.headers.host}`);
+  const search = url.searchParams.get("search");
+  const cursor = url.searchParams.get("cursor");
+  const limit = Math.min(parseInt(url.searchParams.get("limit") || "20"), 50);
+
+  try {
+    const result = search
+      ? await userRepo.search(search, { cursor, limit })
+      : await userRepo.listAll(user.id, { cursor, limit });
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      users: result.users.map(u => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        avatarUrl: u.avatarUrl,
+        createdAt: u.createdAt?.getTime() ?? 0,
+      })),
+      nextCursor: result.nextCursor,
+      hasMore: result.hasMore,
+    }));
+  } catch (_err) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Failed to list users" }));
+  }
+});
+
+/* ── POST /api/conversations/:id/files (upload) ── */
+registerRoute("POST", "/api/conversations/:id/files", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const convId = (req as RequestWithParams).params?.id;
+  if (!convId) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "conversation id required" }));
+    return;
+  }
+
+  // Parse multipart form manually (lightweight, no formidable dependency issues)
+  const contentType = req.headers["content-type"] || "";
+  if (!contentType.includes("multipart/form-data")) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "multipart/form-data required" }));
+    return;
+  }
+
+  const boundary = contentType.split("boundary=")[1];
+  if (!boundary) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "missing boundary" }));
+    return;
+  }
+
+  // Collect body chunks
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.from(chunk));
+  }
+  const body = Buffer.concat(chunks);
+
+  // Parse multipart
+  const boundaryBuf = Buffer.from(`--${boundary}`);
+  const parts: Buffer[] = [];
+  let start = body.indexOf(boundaryBuf) + boundaryBuf.length + 2; // skip \r\n
+
+  while (start < body.length) {
+    const end = body.indexOf(boundaryBuf, start);
+    if (end === -1) break;
+    parts.push(body.slice(start, end - 2)); // -2 for \r\n before boundary
+    start = end + boundaryBuf.length + 2;
+  }
+
+  const uploadedFiles = [];
+
+  for (const part of parts) {
+    const headerEnd = part.indexOf("\r\n\r\n");
+    if (headerEnd === -1) continue;
+
+    const headerStr = part.slice(0, headerEnd).toString("utf-8");
+    const fileData = part.slice(headerEnd + 4);
+
+    const filenameMatch = headerStr.match(/filename="([^"]+)"/);
+    const typeMatch = headerStr.match(/Content-Type:\s*(.+)/i);
+
+    if (!filenameMatch) continue; // skip non-file parts
+
+    const rawFileName = filenameMatch[1];
+    const mimeType = typeMatch ? typeMatch[1].trim() : "application/octet-stream";
+
+    // Sanitize filename to prevent path traversal
+    const fileName = path.basename(rawFileName).replace(/[^a-zA-Z0-9._\-一-鿿]/g, "_");
+
+    // Check file size limit
+    const maxSize = config.files.maxSizeMb * 1024 * 1024;
+    if (fileData.length > maxSize) {
+      continue;
+    }
+
+    // Save file
+    const uploadDir = path.join(config.files.uploadDir, convId);
+    if (!existsSync(uploadDir)) mkdirSync(uploadDir, { recursive: true });
+
+    const fileId = crypto.randomUUID();
+    const filePath = path.join(convId, `${fileId}_${fileName}`);
+    const fullPath = path.join(config.files.uploadDir, filePath);
+
+    const ws = createWriteStream(fullPath);
+    ws.write(fileData);
+    ws.end();
+    await new Promise<void>((resolve) => ws.on("finish", resolve));
+
+    const fileEntity = await fileRepo.create({
+      conversationId: convId,
+      uploaderId: user.id,
+      name: fileName,
+      path: filePath,
+      size: fileData.length,
+      mimeType,
+    });
+
+    uploadedFiles.push({
+      id: fileEntity.id,
+      conversationId: fileEntity.conversationId,
+      uploaderId: fileEntity.uploaderId,
+      name: fileEntity.name,
+      size: fileEntity.size,
+      mimeType: fileEntity.mimeType,
+      createdAt: fileEntity.createdAt.getTime(),
+    });
+  }
+
+  res.writeHead(201, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ files: uploadedFiles }));
+});
+
+/* ── GET /api/files/:id/download ── */
+registerRoute("GET", "/api/files/:id/download", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const fileId = (req as RequestWithParams).params?.id;
+  if (!fileId) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "file id required" }));
+    return;
+  }
+
+  const file = await fileRepo.getById(fileId);
+  if (!file) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "File not found" }));
+    return;
+  }
+
+  // Check access
+  const conv = await conversationRepo.getById(file.conversationId);
+  if (!conv) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Conversation not found" }));
+    return;
+  }
+
+  let participants: string[] = [];
+  try { participants = JSON.parse(conv.participants ?? "[]"); } catch {}
+  if (!participants.includes(user.id)) {
+    res.writeHead(403, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Access denied" }));
+    return;
+  }
+
+  const fullPath = path.join(config.files.uploadDir, file.path);
+  if (!existsSync(fullPath)) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "File not found on disk" }));
+    return;
+  }
+
+  res.writeHead(200, {
+    "Content-Type": file.mimeType,
+    "Content-Disposition": `attachment; filename="${encodeURIComponent(file.name)}"`,
+    "Content-Length": String(file.size),
+  });
+
+  const readStream = createReadStream(fullPath);
+  readStream.on("error", (err) => {
+    logger.error(`File read error: ${file.path}`, err, 'API');
+    if (!res.headersSent) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Failed to read file" }));
+    }
+  });
+  readStream.pipe(res);
+});
+
+/* ── GET /api/download/:id (静态部署包下载) ── */
+registerRoute("GET", "/api/download/:id", async (req, res) => {
+  const deployId = (req as RequestWithParams).params?.id;
+  if (!deployId) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "deployId required" }));
+    return;
+  }
+
+  const outputDir = path.join(process.cwd(), "deploy-output");
+  const deployDir = path.join(outputDir, deployId);
+
+  if (!existsSync(deployDir)) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Deploy package not found" }));
+    return;
+  }
+
+  const zipPath = path.join(deployDir, "bundle.zip");
+  const tarPath = path.join(deployDir, "bundle.tar.gz");
+  const bundlePath = existsSync(zipPath) ? zipPath : (existsSync(tarPath) ? tarPath : null);
+
+  if (bundlePath) {
+    const stat = statSync(bundlePath);
+    const ext = bundlePath.endsWith(".zip") ? ".zip" : ".tar.gz";
+    res.writeHead(200, {
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${deployId}${ext}"`,
+      "Content-Length": String(stat.size),
+    });
+    const readStream = createReadStream(bundlePath);
+    readStream.on("error", () => {
+      if (!res.headersSent) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Failed to read bundle" }));
+      }
+    });
+    readStream.pipe(res);
+    return;
+  }
+
+  const files = readdirSync(deployDir).filter((f) => f !== "bundle.tar.gz" && f !== "bundle.zip");
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({
+    deployId,
+    files: files.map((f) => {
+      const fp = path.join(deployDir, f);
+      try {
+        return { name: f, size: statSync(fp).size };
+      } catch {
+        return { name: f, size: 0 };
+      }
+    }),
+  }));
+});
+
+/* ── DELETE /api/files/:id ── */
+registerRoute("DELETE", "/api/files/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const fileId = (req as RequestWithParams).params?.id;
+  if (!fileId) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "file id required" }));
+    return;
+  }
+
+  const file = await fileRepo.getById(fileId);
+  if (!file) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "File not found" }));
+    return;
+  }
+
+  // Delete from disk
+  const fullPath = path.join(config.files.uploadDir, file.path);
+  try { if (existsSync(fullPath)) unlinkSync(fullPath); } catch {}
+
+  await fileRepo.delete(fileId);
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+});
+
+/* ── GET /api/user-agents ── */
+registerRoute("GET", "/api/user-agents", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  let agents = await userAgentConfigRepo.listByUser(user.id);
+
+  // 新用户或老用户首次访问时自动创建默认智能体
+  if (agents.length === 0) {
+    const defaults = [
+      { name: "PM Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是项目管理智能体。负责分析用户需求、拆解任务、制定执行计划，并协调其他智能体完成项目。" }), permissions: JSON.stringify(["chat", "task"]) },
+      { name: "Frontend Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是前端开发智能体。精通 HTML、CSS、JavaScript、TypeScript、React、Vue、Next.js。负责实现用户界面、交互逻辑和响应式设计。生成的代码要完整可运行。" }), permissions: JSON.stringify(["chat", "task", "file"]) },
+      { name: "Backend Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是后端开发智能体。精通 Node.js、Python、Go、数据库设计、API 开发、系统架构。负责数据模型、RESTful API、业务逻辑和性能优化。" }), permissions: JSON.stringify(["chat", "task", "file"]) },
+      { name: "Design Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是 UI/UX 设计智能体。精通界面设计、用户体验、配色方案、布局设计。负责提供设计建议、优化视觉效果、确保设计一致性。" }), permissions: JSON.stringify(["chat"]) },
+      { name: "Test Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是测试智能体。精通单元测试、集成测试、端到端测试。负责编写测试用例、发现 bug、验证功能完整性、提供测试报告。" }), permissions: JSON.stringify(["chat", "task"]) },
+    ];
+    for (const agent of defaults) {
+      await userAgentConfigRepo.create({ userId: user.id, ...agent });
+    }
+    agents = await userAgentConfigRepo.listByUser(user.id);
+  }
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ agents }));
+});
+
+/* ── POST /api/user-agents ── */
+registerRoute("POST", "/api/user-agents", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const body = await readJsonBody(req);
+  const { name, type, config: agentConfig, permissions } = body as { name?: string; type?: string; config?: object; permissions?: string[] };
+
+  if (!name || !type) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "name and type are required" }));
+    return;
+  }
+
+  const agent = await userAgentConfigRepo.create({
+    userId: user.id,
+    name,
+    type,
+    config: agentConfig ? JSON.stringify(agentConfig) : "{}",
+    permissions: permissions ? JSON.stringify(permissions) : "[]",
+  });
+
+  res.writeHead(201, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ agent }));
+});
+
+/* ── PUT /api/user-agents/:id ── */
+registerRoute("PUT", "/api/user-agents/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const agentId = (req as RequestWithParams).params?.id;
+  if (!agentId) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Agent ID required" }));
+    return;
+  }
+  const existing = await userAgentConfigRepo.getById(agentId);
+  if (!existing || existing.userId !== user.id) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Agent not found" }));
+    return;
+  }
+
+  const body = await readJsonBody(req) as Record<string, unknown>;
+  const updates: Record<string, string> = {};
+  if (body.name) updates.name = String(body.name);
+  if (body.config) updates.config = JSON.stringify(body.config);
+  if (body.permissions) updates.permissions = JSON.stringify(body.permissions);
+  if (body.status) updates.status = String(body.status);
+
+  const agent = await userAgentConfigRepo.update(agentId, updates);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ agent }));
+});
+
+/* ── DELETE /api/user-agents/:id ── */
+registerRoute("DELETE", "/api/user-agents/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const agentId = (req as RequestWithParams).params?.id;
+  if (!agentId) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Agent ID required" }));
+    return;
+  }
+  const existing = await userAgentConfigRepo.getById(agentId);
+  if (!existing || existing.userId !== user.id) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Agent not found" }));
+    return;
+  }
+
+  await userAgentConfigRepo.delete(agentId);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+});
+
+// ═══ Knowledge Base ═══
+
+/* ── GET /api/knowledge-bases ── */
+registerRoute("GET", "/api/knowledge-bases", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const workspaceId = (req as unknown as { query?: Record<string, string> }).query?.workspaceId ?? "default";
+  const bases = await knowledgeBaseRepo.listByWorkspace(workspaceId);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ bases }));
+});
+
+/* ── POST /api/knowledge-bases ── */
+registerRoute("POST", "/api/knowledge-bases", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req) as { name?: string; description?: string; workspaceId?: string };
+  if (!body.name) { res.writeHead(400); res.end(JSON.stringify({ error: "name required" })); return; }
+  const kb = await knowledgeBaseRepo.create({ workspaceId: body.workspaceId ?? "default", name: body.name, description: body.description, ownerId: user.id });
+  res.writeHead(201, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ base: kb }));
+});
+
+/* ── DELETE /api/knowledge-bases/:id ── */
+registerRoute("DELETE", "/api/knowledge-bases/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const kbId = (req as RequestWithParams).params?.id;
+  if (kbId) await knowledgeBaseRepo.delete(kbId);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+});
+
+/* ── GET /api/knowledge-bases/:id/documents ── */
+registerRoute("GET", "/api/knowledge-bases/:id/documents", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const kbId = (req as RequestWithParams).params?.id;
+  if (!kbId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
+  const docs = await documentRepo.listByKnowledgeBase(kbId);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ documents: docs }));
+});
+
+/* ── POST /api/knowledge-bases/:id/documents ── */
+registerRoute("POST", "/api/knowledge-bases/:id/documents", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const kbId = (req as RequestWithParams).params?.id;
+  if (!kbId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
+  const body = await readJsonBody(req) as { title?: string; content?: string; sourceType?: string };
+  if (!body.title || !body.content) { res.writeHead(400); res.end(JSON.stringify({ error: "title and content required" })); return; }
+  const doc = await documentRepo.create({ knowledgeBaseId: kbId, title: body.title, sourceType: body.sourceType ?? "manual", fileType: "txt", fileSize: Buffer.byteLength(body.content, "utf-8"), uploadedBy: user.id });
+  // 写入临时文件供管线读取
+  const uploadDir = config.files.uploadDir;
+  if (!existsSync(uploadDir)) mkdirSync(uploadDir, { recursive: true });
+  const tmpPath = path.join(uploadDir, `${doc.id}_content.txt`);
+  createWriteStream(tmpPath).end(Buffer.from(body.content, "utf-8"));
+  const { ingestDocument } = await import("../knowledge/pipeline");
+  ingestDocument(doc.id).catch(() => {});
+  res.writeHead(201, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ document: doc }));
+});
+
+/* ── POST /api/knowledge-bases/:id/upload ── */
+registerRoute("POST", "/api/knowledge-bases/:id/upload", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const kbId = (req as RequestWithParams).params?.id;
+  if (!kbId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
+  // 使用 JSON body 接收文本内容
+  const body = await readJsonBody(req) as { title?: string; content?: string; sourceType?: string; fileType?: string };
+  if (!body.title || !body.content) { res.writeHead(400); res.end(JSON.stringify({ error: "title and content required" })); return; }
+  const doc = await documentRepo.create({
+    knowledgeBaseId: kbId,
+    title: body.title,
+    sourceType: body.sourceType ?? "upload",
+    fileType: body.fileType ?? "txt",
+    fileSize: Buffer.byteLength(body.content, "utf-8"),
+    uploadedBy: user.id,
+  });
+  const { ingestDocument } = await import("../knowledge/pipeline");
+  ingestDocument(doc.id).catch(() => {});
+  res.writeHead(202, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ document: doc, status: "processing" }));
+});
+
+/* ── GET /api/documents/:id/status ── */
+registerRoute("GET", "/api/documents/:id/status", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const docId = (req as RequestWithParams).params?.id;
+  if (!docId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
+  const doc = await documentRepo.getById(docId);
+  if (!doc) { res.writeHead(404); res.end(JSON.stringify({ error: "not found" })); return; }
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ id: doc.id, status: doc.status, errorMessage: doc.errorMessage }));
+});
+
+/* ── DELETE /api/documents/:id ── */
+registerRoute("DELETE", "/api/documents/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const docId = (req as RequestWithParams).params?.id;
+  if (docId) await documentRepo.delete(docId);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+});
+
+/* ── POST /api/knowledge-bases/:id/search ── */
+registerRoute("POST", "/api/knowledge-bases/:id/search", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const kbId = (req as RequestWithParams).params?.id;
+  if (!kbId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
+  const body = await readJsonBody(req) as { query?: string; topK?: number; rerankTopK?: number };
+  if (!body.query) { res.writeHead(400); res.end(JSON.stringify({ error: "query required" })); return; }
+  try {
+    const adapter = createAdapterFromEnv();
+    await adapter.connect();
+    const { hybridSearch } = await import("../knowledge/search");
+    const results = await hybridSearch(adapter, { query: body.query, knowledgeBaseId: kbId, topK: body.topK, rerankTopK: body.rerankTopK });
+    await adapter.disconnect();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ results }));
+  } catch (err) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: err instanceof Error ? err.message : "Search failed" }));
+  }
+});
+
+// ═══ Workspace Files ═══
+
+registerRoute("GET", "/api/workspace-files", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const url = new URL(req.url!, `http://${req.headers.host}`);
+  const parentId = url.searchParams.get("parentId") ?? null;
+  const files = parentId
+    ? await workspaceFileRepo.listByParent("default", parentId)
+    : await workspaceFileRepo.listByParent("default", null);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ files }));
+});
+
+registerRoute("GET", "/api/workspace-files/tree", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const files = await workspaceFileRepo.getTree("default");
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ files }));
+});
+
+registerRoute("GET", "/api/workspace-files/search", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const url = new URL(req.url!, `http://${req.headers.host}`);
+  const q = url.searchParams.get("q") ?? "";
+  const files = q ? await workspaceFileRepo.search("default", q) : [];
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ files }));
+});
+
+registerRoute("POST", "/api/workspace-files", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req) as { name?: string; parentId?: string | null; isFolder?: boolean };
+  if (!body.name) { res.writeHead(400); res.end(JSON.stringify({ error: "name required" })); return; }
+  const file = await workspaceFileRepo.create({ workspaceId: "default", parentId: body.parentId ?? null, name: body.name, isFolder: body.isFolder ?? false, uploadedBy: user.id });
+  res.writeHead(201, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ file }));
+});
+
+registerRoute("PATCH", "/api/workspace-files/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const fileId = (req as RequestWithParams).params?.id;
+  if (!fileId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
+  const body = await readJsonBody(req) as { name?: string; parentId?: string | null };
+  if (body.name) await workspaceFileRepo.rename(fileId, body.name);
+  if (body.parentId !== undefined) await workspaceFileRepo.move(fileId, body.parentId);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+});
+
+registerRoute("DELETE", "/api/workspace-files/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const fileId = (req as RequestWithParams).params?.id;
+  if (fileId) await workspaceFileRepo.delete(fileId);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+});
+
+// ═══ Memory Search ═══
+
+registerRoute("POST", "/api/memory/search", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req) as { query?: string; conversationId?: string; topK?: number };
+  if (!body.query) { res.writeHead(400); res.end(JSON.stringify({ error: "query required" })); return; }
+  const { searchMemory } = await import("../memory/ingestion");
+  const results = await searchMemory("default", body.query, { conversationId: body.conversationId, topK: body.topK });
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ results }));
+});
+
+registerRoute("POST", "/api/memory/summarize", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req) as { conversationId?: string };
+  if (!body.conversationId) { res.writeHead(400); res.end(JSON.stringify({ error: "conversationId required" })); return; }
+  const { generateConversationSummary } = await import("../memory/ingestion");
+  generateConversationSummary(body.conversationId).catch(() => {});
+  res.writeHead(202, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ status: "processing" }));
+});
+
+/* ── GET /api/memory/state ── */
+registerRoute("GET", "/api/memory/state", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const url = new URL(req.url || "/", `http://${req.headers.host}`);
+  const conversationId = url.searchParams.get("conversationId");
+  if (!conversationId) { res.writeHead(400); res.end(JSON.stringify({ error: "conversationId required" })); return; }
+
+  try {
+    const msgCount = await prisma.message.count({ where: { conversationId } });
+    const recentJobs = await jobRepo.listByConversation(conversationId, { limit: 5 });
+    const completedJobs = recentJobs.filter(j => j.status === "completed");
+    const conv = await conversationRepo.getById(conversationId);
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      messageCount: msgCount,
+      completedJobCount: completedJobs.length,
+      recentJobs: completedJobs.map(j => ({
+        id: j.id, title: j.title, summary: j.summary?.slice(0, 200), completedAt: j.completedAt,
+      })),
+      conversationSummary: conv?.summary ?? null,
+      topics: (() => { try { return conv?.topics ? JSON.parse(conv.topics as string) : []; } catch { return []; } })(),
+    }));
+  } catch (err) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: err instanceof Error ? err.message : "Failed to load memory state" }));
+  }
+});
+
+// ═══ MCP Servers ═══
+
+/* ── GET /api/mcp/servers ── */
+registerRoute("GET", "/api/mcp/servers", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const servers = await mcpRepo.listByUser(user.id);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ servers }));
+});
+
+/* ── POST /api/mcp/servers ── */
+registerRoute("POST", "/api/mcp/servers", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req) as { name?: string; protocol?: string; command?: string; url?: string };
+  if (!body.name || !body.protocol) { res.writeHead(400); res.end(JSON.stringify({ error: "name and protocol required" })); return; }
+  const server = await mcpRepo.create({ userId: user.id, name: body.name, protocol: body.protocol, command: body.command, url: body.url });
+  res.writeHead(201, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ server }));
+});
+
+/* ── PUT /api/mcp/servers/:id ── */
+registerRoute("PUT", "/api/mcp/servers/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const serverId = (req as RequestWithParams).params?.id;
+  if (!serverId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
+  const body = await readJsonBody(req) as { name?: string; protocol?: string; command?: string; url?: string };
+  const server = await mcpRepo.update(serverId, body);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ server }));
+});
+
+/* ── DELETE /api/mcp/servers/:id ── */
+registerRoute("DELETE", "/api/mcp/servers/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const serverId = (req as RequestWithParams).params?.id;
+  if (serverId) await mcpManager.removeServer(serverId);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+});
+
+/* ── POST /api/mcp/servers/:id/connect ── */
+registerRoute("POST", "/api/mcp/servers/:id/connect", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const serverId = (req as RequestWithParams).params?.id;
+  if (!serverId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
+  try {
+    const result = await mcpManager.connectServer(serverId);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ connected: true, toolNames: result.toolNames }));
+  } catch (err) {
+    res.writeHead(500, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: err instanceof Error ? err.message : "Connect failed" }));
+  }
+});
+
+/* ── POST /api/mcp/servers/:id/disconnect ── */
+registerRoute("POST", "/api/mcp/servers/:id/disconnect", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const serverId = (req as RequestWithParams).params?.id;
+  if (serverId) await mcpManager.disconnectServer(serverId);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+});
+
+/* ── GET /api/mcp/servers/:id/tools ── */
+registerRoute("GET", "/api/mcp/servers/:id/tools", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const serverId = (req as RequestWithParams).params?.id;
+  const serverTools = mcpManager.listServerTools().find(s => s.serverId === serverId);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ tools: serverTools?.tools ?? [] }));
+});
+
+const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
+
+function readJsonBody(req: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    let size = 0;
+    req.on("data", (chunk: Buffer | string) => {
+      size += typeof chunk === "string" ? Buffer.byteLength(chunk) : chunk.length;
+      if (size > MAX_BODY_SIZE) {
+        req.destroy();
+        reject(new Error("Request body too large"));
+        return;
+      }
+      body += chunk;
+    });
+    req.on("end", () => {
+      try { resolve(body ? JSON.parse(body) : {}); }
+      catch (err) { reject(err); }
+    });
+    req.on("error", reject);
+  });
+}

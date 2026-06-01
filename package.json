@@ -1,26 +1,52 @@
 {
-  "name": "temp-app",
+  "name": "agenthub",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "next dev",
+    "dev:server": "cd packages/server && tsx src/index.ts",
+    "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit --pretty false",
+    "check": "npm run lint && npm run typecheck && npm test -- --runInBand",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.3",
+    "@monaco-editor/react": "^4.7.0",
+    "@prisma/adapter-libsql": "^7.8.0",
+    "@xyflow/react": "^12.10.2",
+    "dotenv": "^17.4.2",
+    "framer-motion": "^12.40.0",
     "next": "16.2.6",
+    "openai": "^6.39.0",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "uuid": "^14.0.0",
+    "ws": "^8.21.0",
+    "zustand": "^5.0.13"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/jest": "^29.5.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "jest": "^29.7.0",
+    "playwright": "^1.60.0",
     "tailwindcss": "^4",
+    "ts-jest": "^29.3.0",
+    "tsx": "^4.22.3",
     "typescript": "^5"
   }
 }
