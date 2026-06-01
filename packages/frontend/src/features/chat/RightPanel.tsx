@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import dynamic from "next/dynamic";
-import type { Artifact, Message, ResourceItem, StepResult } from "@agenthub/shared";
+import type { Artifact, Message, ResourceItem, SessionAgentStatus, StepResult } from "@agenthub/shared";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { DeployPanel as DeployWorkflowPanel } from "./DeployPanel";
@@ -113,6 +113,15 @@ function SectionHeader({ title, desc }: { title: string; desc?: string }) {
   );
 }
 
+interface TaskPanelItem {
+  id: string;
+  taskName: string;
+  taskDescription: string;
+  agentName: string;
+  status: string;
+  progress: number;
+}
+
 function getArtifactLanguage(artifact: Artifact) {
   const ext = artifact.filename?.split(".").pop()?.toLowerCase();
   return LANG_MAP[ext ?? ""] ?? LANG_MAP[artifact.type] ?? "plaintext";
@@ -201,7 +210,157 @@ function applyUnifiedDiff(source: string, diff: string) {
   return output.join("\n");
 }
 
-function TaskPanel() {
+function statusText(status: string) {
+  if (status === "done") return "已完成";
+  if (status === "running") return "运行中";
+  if (status === "failed") return "需降级";
+  return "等待中";
+}
+
+function statusColor(status: string) {
+  if (status === "done") return "var(--success)";
+  if (status === "running") return "#174ea6";
+  if (status === "failed") return "var(--danger)";
+  return "var(--fg-tertiary)";
+}
+
+function OrchestrationBoard({
+  items,
+  messages,
+  sessionAgentStatuses,
+}: {
+  items: TaskPanelItem[];
+  messages: Message[];
+  sessionAgentStatuses: SessionAgentStatus[];
+}) {
+  const pmoItem = items.find((item) => /pmo|主 Agent|理解|拆解/i.test(`${item.agentName} ${item.taskName}`));
+  const conflictEvents = messages.filter((message) => message.type === "critic_review" || message.type === "diff_card" || /冲突|降级|接管/.test(message.content));
+  const deployEvents = messages.filter((message) => message.type === "deploy_card");
+  const runningAgents = sessionAgentStatuses.filter((agent) => agent.status === "running");
+  const completedAgents = sessionAgentStatuses.filter((agent) => agent.status === "done");
+  const lanes = [
+    {
+      title: "并行批次 A",
+      desc: "需求引用与网页产物同步推进",
+      agents: ["Researcher", "Codex"],
+      progress: Math.round(
+        items
+          .filter((item) => /Researcher|Codex/.test(item.agentName))
+          .reduce((sum, item, _, list) => sum + item.progress / Math.max(1, list.length), 0)
+      ),
+    },
+    {
+      title: "降级通道",
+      desc: "冲突文件交给 Claude Code 接管",
+      agents: ["Claude Code"],
+      progress: sessionAgentStatuses.find((agent) => agent.agentId === "claude-code")?.progress ?? (conflictEvents.length ? 76 : 0),
+    },
+    {
+      title: "发布与复核",
+      desc: "部署完成后进入 UX 验收",
+      agents: ["Open Code", "UX Reviewer"],
+      progress: Math.round(
+        items
+          .filter((item) => /Open Code|UX Reviewer/.test(item.agentName))
+          .reduce((sum, item, _, list) => sum + item.progress / Math.max(1, list.length), 0)
+      ),
+    },
+  ];
+
+  return (
+    <div className="mb-4 space-y-3">
+      <div className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+        <div className="flex items-start gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: "#174ea6" }}>
+            PMO
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)" }}>主 Agent 调度中枢</p>
+              <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+                协调器
+              </span>
+            </div>
+            <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.6 }}>
+              {pmoItem?.taskDescription || "PMO 负责理解目标、拆解任务、派发子 Agent、监听风险并在失败时切换执行者。"}
+            </p>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {[
+                { label: "运行中", value: runningAgents.length },
+                { label: "已完成", value: completedAgents.length },
+                { label: "风险事件", value: conflictEvents.length },
+              ].map((item) => (
+                <div key={item.label} className="rounded-md px-2 py-1.5" style={{ background: "var(--surface-low)" }}>
+                  <p className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{item.label}</p>
+                  <p className="mt-0.5 text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{item.value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>并行调度队列</p>
+          <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>按依赖收敛</span>
+        </div>
+        <div className="grid gap-2">
+          {lanes.map((lane) => (
+            <div key={lane.title} className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+              <div className="mb-2 flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{lane.title}</p>
+                  <p className="mt-0.5 text-[11px]" style={{ color: "var(--fg-tertiary)" }}>{lane.desc}</p>
+                </div>
+                <span className="shrink-0 text-xs font-bold" style={{ color: "#174ea6" }}>{lane.progress}%</span>
+              </div>
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {lane.agents.map((agent) => (
+                  <span key={agent} className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)" }}>
+                    {agent}
+                  </span>
+                ))}
+              </div>
+              <div className="h-1 overflow-hidden rounded-sm" style={{ background: "var(--surface-low)" }}>
+                <div className="h-full rounded-sm" style={{ width: `${Math.max(0, Math.min(lane.progress, 100))}%`, background: "#174ea6" }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {(conflictEvents.length > 0 || deployEvents.length > 0) && (
+        <div className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>失败降级与冲突处理</p>
+            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--danger)", background: "var(--danger-subtle)" }}>
+              自动兜底
+            </span>
+          </div>
+          <div className="space-y-2">
+            {conflictEvents.slice(-2).map((event) => (
+              <div key={event.id} className="rounded-md px-2 py-2" style={{ background: "var(--surface-low)" }}>
+                <p className="text-[10px] font-semibold" style={{ color: event.type === "diff_card" ? "#174ea6" : "var(--danger)" }}>
+                  {event.type === "diff_card" ? "Diff 已生成" : "PMO 风险判断"} · {formatTime(event.timestamp)}
+                </p>
+                <p className="mt-1 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>{event.content}</p>
+              </div>
+            ))}
+            {deployEvents.slice(-1).map((event) => (
+              <div key={event.id} className="rounded-md px-2 py-2" style={{ background: "var(--success-subtle)" }}>
+                <p className="text-[10px] font-semibold" style={{ color: "var(--success)" }}>发布回调 · {formatTime(event.timestamp)}</p>
+                <p className="mt-1 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>{event.content}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TaskPanel({ messages }: { messages: Message[] }) {
   const taskFlow = useChatStore((state) => state.taskFlow);
   const taskProgress = useChatStore((state) => state.taskProgress);
   const sessionAgentStatuses = useChatStore((state) => state.sessionAgentStatuses);
@@ -225,6 +384,7 @@ function TaskPanel() {
   return (
     <div>
       <SectionHeader title="任务拆解" desc="主 Agent 的计划、子 Agent 分工与执行状态。" />
+      <OrchestrationBoard items={items} messages={messages} sessionAgentStatuses={sessionAgentStatuses} />
       {taskProgress && (
         <div className="mb-3 rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
           <div className="mb-2 flex items-center justify-between text-xs">
@@ -242,8 +402,8 @@ function TaskPanel() {
 
       <div className="space-y-2">
         {items.map((item, index) => {
-          const status = item.status === "done" ? "已完成" : item.status === "running" ? "运行中" : "等待中";
-          const color = item.status === "done" ? "var(--success)" : item.status === "running" ? "#174ea6" : "var(--fg-tertiary)";
+          const status = statusText(item.status);
+          const color = statusColor(item.status);
           return (
             <div key={item.id} className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
               <div className="flex items-start gap-3">
@@ -1086,7 +1246,7 @@ export function RightPanel() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar">
-        {activeTab === "tasks" && <TaskPanel />}
+        {activeTab === "tasks" && <TaskPanel messages={convMessages} />}
         {activeTab === "code" && <CodePanel artifacts={workspace.artifacts} messages={convMessages} />}
         {activeTab === "preview" && <PreviewPanel artifacts={workspace.artifacts} />}
         {activeTab === "diff" && <DiffPanel messages={convMessages} artifacts={workspace.artifacts} />}

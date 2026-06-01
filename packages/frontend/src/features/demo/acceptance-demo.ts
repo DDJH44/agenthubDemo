@@ -485,10 +485,13 @@ export function seedAcceptanceDemo() {
   chat.setResources(resources);
   chat.addPlan(plan.map((node) => ({ id: node.id, task: node.task })));
   chat.clearAnalysis();
-  chat.addAnalysisResult({ agentId: "pmo", agentName: "PMO 主 Agent", content: "已拆解为 6 个验收步骤，其中 3 个步骤并行执行。" });
-  chat.addAnalysisResult({ agentId: "claude-code", agentName: "Claude Code", content: "发现同文件冲突，接管 Diff 合并并保留 v1/v2 版本。" });
+  chat.addAnalysisResult({ agentId: "pmo", agentName: "PMO 主 Agent", content: "已拆解为 6 个验收步骤：上下文整理与网页产物并行，冲突处理完成后再进入部署和 UX 复核。" });
+  chat.addAnalysisResult({ agentId: "claude-code", agentName: "Claude Code", content: "发现同文件冲突，已从 Codex 降级接管 Diff 合并，并保留 v1/v2 版本。" });
+  chat.addAnalysisResult({ agentId: "open-code", agentName: "Open Code", content: "部署已完成，PMO 将发布回调纳入最终验收上下文。" });
   chat.addTaskAssignment({ targetAgent: "Codex", task: "生成 HTML 产物和可编辑代码", status: "done" });
+  chat.addTaskAssignment({ targetAgent: "Claude Code", task: "接管冲突文件并输出 Diff", status: "running" });
   chat.addTaskAssignment({ targetAgent: "Open Code", task: "部署到第三方预览平台", status: "done" });
+  chat.addTaskAssignment({ targetAgent: "UX Reviewer", task: "复核验收演示路径", status: "pending" });
   chat.setCurrentPreview({
     artifactId: "demo-artifact-html-v2",
     type: "html",
@@ -528,6 +531,13 @@ export function seedAcceptanceDemo() {
     result: "Claude Code 合并 H1 文案冲突并生成 Diff。",
     toolUsed: "claude-code-adapter",
     duration: 65,
+  });
+  workspace.addStepResult({
+    id: "demo-result-deploy",
+    task: "发布回调",
+    result: "Open Code 返回第三方预览链接，部署状态写入消息卡片和右侧部署面板。",
+    toolUsed: "open-code-adapter",
+    duration: 38,
   });
   for (const artifact of artifacts) {
     workspace.addArtifact(artifact);
