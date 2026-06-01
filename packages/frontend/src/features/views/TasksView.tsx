@@ -89,7 +89,7 @@ export function TasksView() {
             <thead>
               <tr style={{ borderBottom: "1px solid var(--divider)" }}>
                 {["智能体", "任务名称", "状态", "进度", "时间"].map((h) => (
-                  <th key={h} className="text-left px-2 py-2" style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-tertiary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{h}</th>
+                  <th key={h} className="text-left px-2 py-2" style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-tertiary)", textTransform: "uppercase", letterSpacing: 0 }}>{h}</th>
                 ))}
               </tr>
             </thead>

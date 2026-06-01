@@ -122,7 +122,7 @@ export function ContextPanel({ steps, plan, artifacts, dagNodes, taskSummary }: 
             )}
 
             {/* Agent status list */}
-            <p style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-tertiary)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}>智能体状态</p>
+            <p style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-tertiary)", marginBottom: 8, textTransform: "uppercase", letterSpacing: 0 }}>智能体状态</p>
             <div className="space-y-1.5">
               {["planner", "worker", "critic", "researcher", "refiner"].map((name) => {
                 const state = chat.agentStates[name];

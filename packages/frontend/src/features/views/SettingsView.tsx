@@ -56,7 +56,7 @@ export function SettingsView() {
   return (
     <div className="flex h-full" style={{ background: "var(--page-bg)" }}>
       <div className="shrink-0 py-6 px-4" style={{ width: 220, borderRight: "1px solid var(--divider)", background: "var(--surface-white)" }}>
-        <h3 style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--fg-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em", padding: "0 8px 12px" }}>设置</h3>
+        <h3 style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--fg-tertiary)", textTransform: "uppercase", letterSpacing: 0, padding: "0 8px 12px" }}>设置</h3>
         <div className="space-y-0.5">
           {TABS.map((item) => (
             <button key={item.key} onClick={() => setTab(item.key)}

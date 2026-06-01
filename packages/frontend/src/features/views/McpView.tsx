@@ -186,7 +186,7 @@ export function McpView() {
 function Field({ label, value, children }: { label: string; value?: string; children?: React.ReactNode }) {
   return (
     <div>
-      <span style={{ fontSize: "var(--text-2xs)", color: "var(--fg-tertiary)", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.04em" }}>{label}</span>
+      <span style={{ fontSize: "var(--text-2xs)", color: "var(--fg-tertiary)", fontWeight: 500, textTransform: "uppercase", letterSpacing: 0 }}>{label}</span>
       <div style={{ fontSize: "var(--text-xs)", color: "var(--fg-primary)", marginTop: 3, fontWeight: 450, wordBreak: "break-all" }}>
         {children ?? value}
       </div>

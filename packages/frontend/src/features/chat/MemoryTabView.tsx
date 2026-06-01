@@ -97,7 +97,7 @@ export function MemoryTabView({ conversationId }: { conversationId: string }) {
       {/* 会话摘要 */}
       {state.conversationSummary && (
         <div className="rounded-xl border p-3" style={{ borderColor: "var(--border)", background: "var(--bg-surface)" }}>
-          <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-tertiary)", textTransform: "uppercase", letterSpacing: 0 }}>
             会话摘要
           </span>
           <p className="mt-1.5" style={{ fontSize: "var(--text-xs)", color: "var(--fg-secondary)", lineHeight: 1.6 }}>
@@ -121,7 +121,7 @@ export function MemoryTabView({ conversationId }: { conversationId: string }) {
       {/* 近期任务 */}
       {state.recentJobs.length > 0 && (
         <div>
-          <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-tertiary)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+            <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-tertiary)", textTransform: "uppercase", letterSpacing: 0 }}>
             近期完成的任务
           </span>
           <div className="flex flex-col gap-2 mt-2">

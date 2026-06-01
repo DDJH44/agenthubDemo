@@ -143,7 +143,7 @@ function ExpandedNav({
           <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 overflow-hidden" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
             <Image src="/brand/logo-mark.png" alt="AgentHub" width={28} height={28} style={{ width: 28, height: 28, objectFit: "contain" }} />
           </div>
-          <h1 className="flex-1" style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-heading)", lineHeight: 1.2, letterSpacing: "-0.01em", color: "var(--fg-primary)" }}>
+          <h1 className="flex-1" style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-heading)", lineHeight: 1.2, letterSpacing: 0, color: "var(--fg-primary)" }}>
             AgentHub
           </h1>
           <button
@@ -196,7 +196,7 @@ function ExpandedNav({
           if (sectionItems.length === 0) return null;
           return (
             <div key={section.key} style={{ marginBottom: 2 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, color: "var(--fg-tertiary)", padding: "8px 10px 4px", letterSpacing: "0.05em", textTransform: "uppercase" }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "var(--fg-tertiary)", padding: "8px 10px 4px", letterSpacing: 0, textTransform: "uppercase" }}>
                 {section.label}
               </p>
               {sectionItems.map((item) => (

@@ -98,7 +98,7 @@ function FilesView({ artifacts }: { artifacts: Artifact[] }) {
               <span style={{ fontSize: "var(--text-sm)", fontWeight: 500, color: "var(--fg-primary)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {a.filename || `${a.type}_${a.id.slice(0, 8)}`}
               </span>
-              <span className="px-1.5 py-0.5 rounded font-bold" style={{ fontSize: 9, background: "var(--accent-subtle)", color: "var(--accent)", letterSpacing: "0.04em" }}>
+              <span className="px-1.5 py-0.5 rounded font-bold" style={{ fontSize: 9, background: "var(--accent-subtle)", color: "var(--accent)", letterSpacing: 0 }}>
                 {TYPE_BADGE[a.type] ?? a.type.toUpperCase()}
               </span>
               <button onClick={() => toggle(a.id)} className="w-5 h-5 rounded flex items-center justify-center shrink-0" style={{ color: "var(--fg-tertiary)", fontSize: 10 }}>

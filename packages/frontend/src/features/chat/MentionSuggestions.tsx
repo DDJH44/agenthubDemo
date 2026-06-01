@@ -83,7 +83,7 @@ export function MentionSuggestions({ query, onSelect, onDismiss, position }: Pro
     <div ref={ref} className="absolute z-50 rounded-xl overflow-hidden animate-fade-in-up"
       style={{ bottom: "100%", left: position.left, marginBottom: 8, minWidth: 240, background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-lg)" }}>
       <div className="px-3 py-2" style={{ borderBottom: "1px solid var(--border)" }}>
-        <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-tertiary)", letterSpacing: "0.04em" }}>{t("agent.select")}</span>
+        <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-tertiary)", letterSpacing: 0 }}>{t("agent.select")}</span>
       </div>
       {filtered.map((agent, i) => (
         <button key={agent.name} onClick={() => selectItem(agent.name)}

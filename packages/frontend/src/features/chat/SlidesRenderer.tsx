@@ -128,7 +128,7 @@ export function SlidesRenderer({ artifact }: { artifact: Artifact }) {
               className="shrink-0 px-8 py-5"
               style={{ borderBottom: "1px solid var(--border)", background: "linear-gradient(135deg, var(--accent), #6366f1)" }}
             >
-              <h2 style={{ fontSize: 22, fontWeight: 700, color: "#fff", margin: 0, letterSpacing: "-0.02em" }}>
+              <h2 style={{ fontSize: 22, fontWeight: 700, color: "#fff", margin: 0, letterSpacing: 0 }}>
                 {slide.title || `幻灯片 ${currentSlide + 1}`}
               </h2>
               {slide.notes && (

@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --font-inter: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  --font-jetbrains-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  --font-jakarta-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-inter: "Inter", "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-jetbrains-mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Code", Consolas, "Liberation Mono", monospace;
+  --font-jakarta-sans: "Manrope", "Inter", "SF Pro Display", "Segoe UI Variable Display", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
 
   --page-bg: #f5f7fc;
   --surface-white: #ffffff;
@@ -75,9 +75,9 @@
   --text-xl: 1.375rem;
   --text-2xl: 1.75rem;
 
-  --font-sans: var(--font-inter), "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Hiragino Sans GB", sans-serif;
-  --font-mono: var(--font-jetbrains-mono), "PingFang SC", "Microsoft YaHei", monospace;
-  --font-heading: var(--font-jakarta-sans), "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --font-sans: var(--font-inter), "MiSans", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "MiSans", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", monospace;
+  --font-heading: var(--font-jakarta-sans), "MiSans", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", sans-serif;
 
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -92,8 +92,8 @@
   --color-background: var(--page-bg);
   --color-foreground: var(--fg-primary);
   --color-accent: var(--accent);
-  --font-sans: var(--font-inter), "PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Hiragino Sans GB", sans-serif;
-  --font-mono: var(--font-jetbrains-mono), "PingFang SC", "Microsoft YaHei", monospace;
+  --font-sans: var(--font-inter), "MiSans", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans SC", "Hiragino Sans GB", sans-serif;
+  --font-mono: var(--font-jetbrains-mono), "MiSans", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", monospace;
 }
 
 /* ═══ Coze Dark Theme ═══ */
@@ -176,9 +176,30 @@ body {
   color: var(--fg-primary);
   font-family: var(--font-sans);
   font-size: var(--text-base);
-  line-height: 1.6;
+  line-height: 1.55;
+  font-feature-settings: "liga" 1, "calt" 1;
+  font-variant-numeric: tabular-nums;
+  text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+  letter-spacing: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
+  letter-spacing: 0;
 }
 
 body::before {
@@ -408,7 +429,7 @@ body::before {
 }
 .prose-chat h1, .prose-chat h2, .prose-chat h3 {
   font-family: var(--font-heading);
-  font-weight: 700;
+  font-weight: 650;
   margin-top: 1.2em;
   margin-bottom: 0.5em;
   color: var(--fg-primary);
