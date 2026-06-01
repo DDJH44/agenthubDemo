@@ -178,13 +178,13 @@ export function AgentChatPanel({
         </button>
       </div>
 
-      <div className="flex min-h-0 flex-1" style={{ background: "var(--page-bg)" }}>
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden p-4">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
-            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar" style={{ background: "var(--page-bg)" }}>
+      <div className="flex min-h-0 flex-1" style={{ background: "var(--surface-white)" }}>
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--surface-white)" }}>
+            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar" style={{ background: "var(--surface-white)" }}>
               {!hasContent ? (
                 <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-                  <BrandMascot variant="wave" size={156} className="mb-4" priority />
+                  <BrandMascot variant="wave" size={126} className="mb-4" priority />
                   <h2 className="text-lg font-bold" style={{ color: "var(--fg-primary)" }}>从一个任务开始</h2>
                   <p className="mt-2 max-w-md text-sm" style={{ color: "var(--fg-tertiary)", lineHeight: 1.7 }}>
                     描述目标，PMO 主 Agent 会拆解任务并分配给 Codex、Claude Code、Open Code 或自建 Agent。
@@ -195,8 +195,8 @@ export function AgentChatPanel({
                         key={action.title}
                         type="button"
                         onClick={() => setText(action.desc)}
-                        className="rounded-lg p-3 text-left transition-colors hover:bg-[var(--surface-low)]"
-                        style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}
+                        className="rounded-lg p-3 text-left transition-all hover:-translate-y-0.5 hover:bg-[var(--surface-white)]"
+                        style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}
                       >
                         <p className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{action.title}</p>
                         <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.5 }}>{action.desc}</p>

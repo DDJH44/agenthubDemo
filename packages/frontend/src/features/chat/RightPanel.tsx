@@ -98,7 +98,7 @@ function documentShell(title: string, body: string) {
 function EmptyState({ title, desc, mascot = "search" }: { title: string; desc?: string; mascot?: BrandMascotVariant }) {
   return (
     <div className="flex min-h-[220px] flex-col items-center justify-center rounded-lg px-6 text-center" style={{ background: "var(--surface-white)", border: "1px dashed var(--border)" }}>
-      <BrandMascot variant={mascot} size={126} className="mb-3" />
+      <BrandMascot variant={mascot} size={106} className="mb-3" />
       <p className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{title}</p>
       {desc && <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.6 }}>{desc}</p>}
     </div>
@@ -1297,8 +1297,8 @@ export function RightPanel() {
   }, []);
 
   return (
-    <aside className="flex h-full flex-col" style={{ background: "var(--surface-white)", borderLeft: "1px solid var(--border)" }}>
-      <div className="shrink-0 px-3 pt-3" style={{ borderBottom: "1px solid var(--border)" }}>
+    <aside className="flex h-full flex-col" style={{ background: "#f7f9fe", borderLeft: "1px solid var(--divider)" }}>
+      <div className="shrink-0 px-3 pt-3" style={{ background: "var(--surface-white)", borderBottom: "1px solid var(--divider)" }}>
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>产物工作台</h2>
@@ -1316,11 +1316,11 @@ export function RightPanel() {
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className="flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs font-semibold transition-colors"
+                className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold transition-colors"
                 style={{
-                  color: active ? "#174ea6" : "var(--fg-secondary)",
-                  background: active ? "rgba(23, 78, 166, 0.07)" : "transparent",
-                  border: `1px solid ${active ? "rgba(23, 78, 166, 0.18)" : "transparent"}`,
+                  color: active ? "var(--accent)" : "var(--fg-secondary)",
+                  background: active ? "var(--accent-subtle)" : "transparent",
+                  border: `1px solid ${active ? "var(--accent-border)" : "transparent"}`,
                 }}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -1345,10 +1345,10 @@ export function RightPanel() {
       </div>
 
       <div className="grid shrink-0 grid-cols-2 gap-2 px-3 py-2.5" style={{ borderTop: "1px solid var(--border)" }}>
-        <button type="button" onClick={() => useChatStore.getState().setStreaming(false)} className="h-8 rounded-md text-xs font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+        <button type="button" onClick={() => useChatStore.getState().setStreaming(false)} className="h-8 rounded-lg text-xs font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
           暂停生成
         </button>
-        <button type="button" onClick={() => useChatStore.getState().clearSession()} className="h-8 rounded-md text-xs font-semibold" style={{ color: "var(--danger)", background: "var(--danger-subtle)", border: "1px solid rgba(220, 53, 69, 0.16)" }}>
+        <button type="button" onClick={() => useChatStore.getState().clearSession()} className="h-8 rounded-lg text-xs font-semibold" style={{ color: "var(--danger)", background: "var(--danger-subtle)", border: "1px solid rgba(220, 53, 69, 0.16)" }}>
           清空会话状态
         </button>
       </div>

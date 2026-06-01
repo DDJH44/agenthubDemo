@@ -162,12 +162,14 @@ const ConversationItem = memo(function ConversationItem({
       type="button"
       onClick={onSelect}
       onContextMenu={onContextMenu}
-      className="group mx-2 flex w-[calc(100%-16px)] items-start gap-2.5 rounded-md px-2.5 py-2.5 text-left transition-colors"
+      className="group relative mx-2 flex w-[calc(100%-16px)] items-start gap-2.5 rounded-lg px-2.5 py-2.5 text-left transition-all"
       style={{
-        background: isActive ? "rgba(23, 78, 166, 0.07)" : "transparent",
-        border: `1px solid ${isActive ? "rgba(23, 78, 166, 0.16)" : "transparent"}`,
+        background: isActive ? "var(--surface-white)" : "transparent",
+        border: `1px solid ${isActive ? "var(--accent-border)" : "transparent"}`,
+        boxShadow: isActive ? "0 8px 22px rgba(42, 53, 91, 0.08)" : "none",
       }}
     >
+      {isActive && <span className="absolute bottom-2 left-0 top-2 w-0.5 rounded-r-full" style={{ background: "var(--accent)" }} />}
       <AgentAvatarStack conv={conv} isGroup={isGroup} userAgents={userAgents} />
 
       <div className="min-w-0 flex-1 overflow-hidden">
@@ -320,8 +322,8 @@ export function ConversationListView({
   const hasResults = pinned.length > 0 || normal.length > 0 || (showArchived && archived.length > 0);
 
   return (
-    <div className="flex h-full flex-col" style={{ background: "var(--surface-white)", borderRight: "1px solid var(--border)" }}>
-      <div className="shrink-0 px-3 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+    <div className="flex h-full flex-col" style={{ background: "#f3f6fc", borderRight: "1px solid var(--divider)" }}>
+      <div className="shrink-0 px-3 py-3" style={{ background: "rgba(255,255,255,0.58)", borderBottom: "1px solid var(--divider)" }}>
         <div className="flex items-center justify-between gap-2">
           <div>
             <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>会话</h2>
@@ -330,15 +332,15 @@ export function ConversationListView({
           <button
             type="button"
             onClick={onCreate}
-            className="grid h-8 w-8 place-items-center rounded-md text-white transition-opacity hover:opacity-90"
-            style={{ background: "#174ea6" }}
+            className="grid h-8 w-8 place-items-center rounded-lg text-white transition-opacity hover:opacity-90"
+            style={{ background: "var(--accent)", boxShadow: "var(--accent-glow)" }}
             title="新建会话"
           >
             <Icon type="plus" size={16} />
           </button>
         </div>
 
-        <div className="mt-3 flex h-9 items-center gap-2 rounded-md px-2.5" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+        <div className="mt-3 flex h-9 items-center gap-2 rounded-lg px-2.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
           <span style={{ color: "var(--fg-tertiary)" }}>
             <Icon type="search" size={15} />
           </span>
@@ -355,11 +357,11 @@ export function ConversationListView({
           <button
             type="button"
             onClick={() => setModeFilter(modeFilter === "single" ? null : "single")}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-md text-xs font-semibold"
+            className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-semibold"
             style={{
-              color: modeFilter === "single" ? "#174ea6" : "var(--fg-secondary)",
-              background: modeFilter === "single" ? "rgba(23, 78, 166, 0.07)" : "transparent",
-              border: `1px solid ${modeFilter === "single" ? "rgba(23, 78, 166, 0.16)" : "var(--border)"}`,
+              color: modeFilter === "single" ? "var(--accent)" : "var(--fg-secondary)",
+              background: modeFilter === "single" ? "var(--surface-white)" : "rgba(255,255,255,0.46)",
+              border: `1px solid ${modeFilter === "single" ? "var(--accent-border)" : "var(--border)"}`,
             }}
           >
             <Icon type="user" size={13} />
@@ -368,11 +370,11 @@ export function ConversationListView({
           <button
             type="button"
             onClick={() => setModeFilter(modeFilter === "group" ? null : "group")}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-md text-xs font-semibold"
+            className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-semibold"
             style={{
-              color: modeFilter === "group" ? "#174ea6" : "var(--fg-secondary)",
-              background: modeFilter === "group" ? "rgba(23, 78, 166, 0.07)" : "transparent",
-              border: `1px solid ${modeFilter === "group" ? "rgba(23, 78, 166, 0.16)" : "var(--border)"}`,
+              color: modeFilter === "group" ? "var(--accent)" : "var(--fg-secondary)",
+              background: modeFilter === "group" ? "var(--surface-white)" : "rgba(255,255,255,0.46)",
+              border: `1px solid ${modeFilter === "group" ? "var(--accent-border)" : "var(--border)"}`,
             }}
           >
             <Icon type="group" size={13} />
@@ -434,7 +436,7 @@ export function ConversationListView({
 
         {!hasResults && (
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <div className="mb-4 grid h-12 w-12 place-items-center rounded-md" style={{ background: "var(--surface-low)", color: "var(--fg-tertiary)" }}>
+            <div className="mb-4 grid h-12 w-12 place-items-center rounded-lg" style={{ background: "var(--surface-white)", color: "var(--fg-tertiary)", border: "1px solid var(--border)" }}>
               <Icon type={search ? "search" : "group"} size={22} />
             </div>
             <h3 className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>
@@ -447,8 +449,8 @@ export function ConversationListView({
               <button
                 type="button"
                 onClick={onCreate}
-                className="mt-4 h-8 rounded-md px-3 text-xs font-semibold text-white"
-                style={{ background: "#174ea6" }}
+                className="mt-4 h-8 rounded-lg px-3 text-xs font-semibold text-white"
+                style={{ background: "var(--accent)" }}
               >
                 新建会话
               </button>

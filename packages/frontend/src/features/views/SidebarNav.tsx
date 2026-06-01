@@ -47,6 +47,7 @@ function NavItemButton({ item, activeNav, setActiveNav, t }: {
       style={{
         color: isActive ? "var(--accent)" : "var(--fg-secondary)",
         fontSize: "var(--text-sm)", fontWeight: isActive ? 600 : 400,
+        border: `1px solid ${isActive ? "var(--accent-border)" : "transparent"}`,
       }}
     >
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
@@ -162,8 +163,8 @@ function ExpandedNav({
         <button
           type="button"
           onClick={openCommandPalette}
-          className="flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs font-semibold transition-colors hover:bg-[var(--surface-low)]"
-          style={{ color: "var(--fg-secondary)", background: "var(--surface-tinted)", border: "1px solid var(--border)" }}
+          className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs font-semibold transition-colors hover:bg-[var(--surface-low)]"
+          style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
@@ -178,7 +179,7 @@ function ExpandedNav({
         <button
           onClick={onCreateConversation}
           className="w-full rounded-lg font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] hover:opacity-90"
-          style={{ background: "var(--accent-gradient)", color: "#fff", height: 38, fontSize: "var(--text-sm)", boxShadow: "var(--shadow-sm)" }}
+          style={{ background: "var(--accent)", color: "#fff", height: 38, fontSize: "var(--text-sm)", boxShadow: "var(--accent-glow)" }}
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <path d="M12 5v14 M5 12h14" />
@@ -252,9 +253,9 @@ export function SidebarNav({
     <aside
       className="flex flex-col h-full shrink-0 overflow-hidden"
       style={{
-        background: "var(--surface-white)",
-        borderRight: "1px solid var(--border)",
-        width: sidebarCollapsed ? 48 : 240,
+        background: "#fbfcff",
+        borderRight: "1px solid var(--divider)",
+        width: sidebarCollapsed ? 48 : 232,
         transition: "width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >

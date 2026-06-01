@@ -242,7 +242,15 @@ export default function Page() {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden relative" style={{ background: "var(--bg-root)" }}>
+    <div className="h-screen w-full overflow-hidden p-0 md:p-5" style={{ background: "var(--bg-root)" }}>
+    <div
+      className="relative flex h-full w-full overflow-hidden md:rounded-[18px]"
+      style={{
+        background: "var(--surface-white)",
+        border: "1px solid rgba(255, 255, 255, 0.72)",
+        boxShadow: "0 24px 70px rgba(42, 53, 91, 0.18), 0 1px 0 rgba(255,255,255,0.9) inset",
+      }}
+    >
       {/* Mobile sidebar overlay */}
       {isMobile && showMobileSidebar && (
         <div 
@@ -303,7 +311,7 @@ export default function Page() {
               {/* 会话列表 */}
               {!isMobile && (
                 <>
-                  <div className="shrink-0 overflow-hidden" style={{ width: convListWidth, minWidth: 260, maxWidth: 420 }}>
+                    <div className="shrink-0 overflow-hidden" style={{ width: convListWidth, minWidth: 280, maxWidth: 390 }}>
                     <ConversationListView
                       conversations={chat.conversations}
                       activeConversationId={chat.activeConversationId}
@@ -324,7 +332,7 @@ export default function Page() {
                       const startX = e.clientX;
                       const startSize = convListWidth;
                       const handleMove = (ev: MouseEvent) => {
-                        setConvListWidth(Math.max(260, Math.min(420, startSize + (ev.clientX - startX))));
+                        setConvListWidth(Math.max(280, Math.min(390, startSize + (ev.clientX - startX))));
                       };
                       const handleUp = () => {
                         document.removeEventListener("mousemove", handleMove);
@@ -389,11 +397,11 @@ export default function Page() {
                     isMobile={isMobile}
                   />
                 ) : (
-                  <div className="flex-1 flex items-center justify-center" style={{ background: "var(--page-bg)" }}>
+                  <div className="flex-1 flex items-center justify-center" style={{ background: "var(--surface-white)" }}>
                     <div className="flex flex-col items-center text-center">
-                      <div className="w-24 h-24 rounded-3xl mb-6 flex items-center justify-center"
+                      <div className="w-20 h-20 rounded-2xl mb-5 flex items-center justify-center"
                         style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+                        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
                           <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
                           <path d="M8 9h8" />
                           <path d="M8 13h5" />
@@ -464,6 +472,7 @@ export default function Page() {
         onCreate={handleCreateConversation}
       />
       <CommandPalette />
+    </div>
     </div>
   );
 }

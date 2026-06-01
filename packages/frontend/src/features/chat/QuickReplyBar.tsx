@@ -101,9 +101,9 @@ export function QuickReplyBar({
   return (
     <div className="flex flex-col" style={{ background: "var(--surface-white)" }}>
       {conversationMode === "group" && (
-        <div className="mx-3 mt-2 flex items-center gap-2 rounded-md px-3 py-1.5" style={{ background: "rgba(23, 78, 166, 0.06)", border: "1px solid rgba(23, 78, 166, 0.12)" }}>
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#174ea6" }} />
-          <span className="text-[11px] font-semibold" style={{ color: "#174ea6" }}>
+        <div className="mx-3 mt-2 flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} />
+          <span className="text-[11px] font-semibold" style={{ color: "var(--accent)" }}>
             群聊模式：输入 @Agent 可以直接分配任务
           </span>
         </div>
@@ -114,7 +114,7 @@ export function QuickReplyBar({
           type="button"
           onClick={handleMentionClick}
           disabled={disabled}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--surface-low)]"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
           style={{ color: "var(--fg-tertiary)" }}
           title="提及 Agent"
         >
@@ -134,15 +134,15 @@ export function QuickReplyBar({
           placeholder={placeholder ?? (conversationMode === "group" ? "@Codex 处理这段代码，或直接输入任务" : "输入消息")}
           disabled={disabled}
           rows={1}
-          className="custom-scrollbar min-h-9 flex-1 resize-none rounded-md px-3 py-2 text-sm outline-none transition-colors focus:bg-[var(--surface-white)]"
-          style={{ color: "var(--fg-primary)", background: "var(--surface-low)", maxHeight: 132, lineHeight: 1.5, border: "1px solid var(--border)" }}
+          className="custom-scrollbar min-h-9 flex-1 resize-none rounded-lg px-3 py-2 text-sm outline-none transition-colors focus:bg-[var(--surface-white)]"
+          style={{ color: "var(--fg-primary)", background: "#f8faff", maxHeight: 132, lineHeight: 1.5, border: "1px solid var(--border)" }}
         />
 
         <button
           type="button"
           onClick={onAttach}
           disabled={disabled}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--surface-low)]"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
           style={{ color: "var(--fg-tertiary)" }}
           title="添加附件"
         >
@@ -153,9 +153,9 @@ export function QuickReplyBar({
           type="button"
           onClick={submit}
           disabled={disabled || isSending || !value.trim()}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md font-semibold transition-transform active:scale-95"
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg font-semibold transition-transform active:scale-95"
           style={{
-            background: disabled || isSending || !value.trim() ? "var(--surface-low)" : "#174ea6",
+            background: disabled || isSending || !value.trim() ? "var(--surface-low)" : "var(--accent)",
             color: disabled || isSending || !value.trim() ? "var(--fg-disabled)" : "#fff",
           }}
           title="发送"
@@ -173,7 +173,7 @@ export function QuickReplyBar({
       <div className="flex min-h-7 items-center justify-between gap-3 px-3 pb-2">
         <div className="flex min-w-0 items-center gap-1.5">
           {contextCount > 0 && (
-            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
               上下文 {contextCount}
             </span>
           )}

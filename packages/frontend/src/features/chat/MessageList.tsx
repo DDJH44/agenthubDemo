@@ -316,9 +316,9 @@ const MessageBubble = memo(function MessageBubble({
         {!isUser && (
           showAvatar ? (
             senderMeta.mascot ? (
-              <BrandMascot variant={senderMeta.mascot} size={36} className="mt-0.5" />
+              <BrandMascot variant={senderMeta.mascot} size={34} className="mt-0.5" />
             ) : (
-              <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: senderMeta.color }}>
+              <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: senderMeta.color }}>
                 {senderMeta.badge}
               </div>
             )
@@ -338,12 +338,12 @@ const MessageBubble = memo(function MessageBubble({
           )}
 
           <div
-            className="overflow-hidden rounded-lg"
+            className="overflow-hidden rounded-md"
             style={{
-              background: isUser ? "#174ea6" : "var(--surface-white)",
-              color: isUser ? "#fff" : "var(--fg-primary)",
-              border: isUser ? "none" : "1px solid var(--border)",
-              boxShadow: "var(--shadow-xs)",
+              background: isUser ? "#edf4ff" : "var(--surface-low)",
+              color: isUser ? "#173a7a" : "var(--fg-primary)",
+              border: `1px solid ${isUser ? "rgba(68, 86, 223, 0.10)" : "rgba(62, 79, 118, 0.08)"}`,
+              boxShadow: "none",
             }}
           >
             {message.type === "diff_card" && (
@@ -415,7 +415,7 @@ const MessageBubble = memo(function MessageBubble({
 
         {isUser && (
           showAvatar ? (
-            <div className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: "#174ea6" }}>
+            <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: "var(--accent)" }}>
               我
             </div>
           ) : (
@@ -442,19 +442,19 @@ function StreamDisplay({ isStreaming, streamBuffer }: { isStreaming: boolean; st
   return (
     <div className="px-4 py-2">
       <div className="flex gap-3">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: "#174ea6" }}>
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: "var(--accent)" }}>
           AI
         </div>
         <div className="min-w-0 flex-1" style={{ maxWidth: "86%" }}>
-          <div className="rounded-lg px-4 py-3" style={{ background: "var(--surface-white)", border: "1px solid rgba(23, 78, 166, 0.16)", boxShadow: "var(--shadow-xs)" }}>
+          <div className="rounded-md px-4 py-3" style={{ background: "var(--surface-low)", border: "1px solid var(--accent-border)", boxShadow: "none" }}>
             {streamBuffer ? (
               <pre className="m-0 whitespace-pre-wrap" style={{ color: "var(--fg-secondary)", fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", lineHeight: 1.65 }}>
                 {streamBuffer}
-                <span className="ml-1 inline-block h-4 w-1 animate-pulse align-text-bottom" style={{ background: "#174ea6" }} />
+                <span className="ml-1 inline-block h-4 w-1 animate-pulse align-text-bottom" style={{ background: "var(--accent)" }} />
               </pre>
             ) : (
               <div className="flex items-center gap-2 text-xs" style={{ color: "var(--fg-tertiary)" }}>
-                <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "#174ea6" }} />
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "var(--accent)" }} />
                 Agent 正在处理
               </div>
             )}
@@ -474,10 +474,10 @@ function AgentTypingIndicator() {
   return (
     <div className="px-4 py-2">
       <div className="flex items-center gap-3">
-        <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: "#5f6368" }}>
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: "#5f6368" }}>
           AG
         </div>
-        <div className="rounded-lg px-3 py-2 text-xs" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+        <div className="rounded-md px-3 py-2 text-xs" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
           {typing.map((id) => AGENT_META[id]?.label ?? id).join("、")} 正在输入
         </div>
       </div>
@@ -529,11 +529,11 @@ export const MessageList = memo(function MessageList({
       {taskSummary && !isStreaming && (
         <div className="px-4 py-3">
           <div className="flex gap-3">
-            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: "var(--success)" }}>
+            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: "var(--success)" }}>
               OK
             </div>
             <div className="min-w-0 flex-1" style={{ maxWidth: "86%" }}>
-              <div className="rounded-lg px-4 py-3" style={{ background: "var(--success-subtle)", border: "1px solid rgba(24, 128, 56, 0.18)" }}>
+              <div className="rounded-md px-4 py-3" style={{ background: "var(--success-subtle)", border: "1px solid rgba(24, 128, 56, 0.18)" }}>
                 <div className="mb-1 text-xs font-bold" style={{ color: "var(--success)" }}>任务完成</div>
                 <div className="whitespace-pre-wrap text-sm" style={{ color: "var(--fg-primary)", lineHeight: 1.65 }}>
                   {taskSummary}

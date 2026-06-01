@@ -62,7 +62,7 @@ export function ConversationNavBar() {
   return (
     <div className="relative flex h-14 shrink-0 items-center px-4" style={{ background: "var(--surface-white)", borderBottom: "1px solid var(--divider)" }}>
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="relative grid h-10 w-10 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: isGroup ? "#174ea6" : primaryAgent.color }}>
+        <div className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white" style={{ background: isGroup ? "var(--accent)" : primaryAgent.color }}>
           {isGroup ? "群" : primaryAgent.badge.slice(0, 3)}
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: "var(--success)", border: "2px solid var(--surface-white)" }} />
         </div>
@@ -79,17 +79,17 @@ export function ConversationNavBar() {
                   if (event.key === "Enter") saveTitle(titleDraft);
                   if (event.key === "Escape") setEditingTitle(false);
                 }}
-                className="rounded-md px-2 py-1 text-sm font-bold outline-none"
+                className="rounded-lg px-2 py-1 text-sm font-bold outline-none"
                 style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid rgba(23, 78, 166, 0.18)", width: 220 }}
               />
             ) : (
               <button
                 type="button"
                 onClick={() => { setTitleDraft(title); setEditingTitle(true); }}
-                className="group flex min-w-0 items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-[var(--surface-low)]"
+                className="group flex min-w-0 items-center gap-1 rounded-lg px-1 py-0.5 transition-colors hover:bg-[var(--surface-low)]"
                 title="修改会话名称"
               >
-                <h2 className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)", maxWidth: 240 }}>{title}</h2>
+                <h2 className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)", maxWidth: 320 }}>{title}</h2>
                 <span className="opacity-0 transition-opacity group-hover:opacity-70" style={{ color: "var(--fg-tertiary)" }}>
                   <Icon path="M12 20h9M16.5 3.5a2.1 2.1 0 113 3L7 19l-4 1 1-4 12.5-12.5z" size={12} />
                 </span>
@@ -98,7 +98,7 @@ export function ConversationNavBar() {
           </div>
 
           <div className="mt-0.5 flex items-center gap-1.5">
-            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: isGroup ? "#174ea6" : "#0f766e", background: isGroup ? "rgba(23, 78, 166, 0.07)" : "rgba(15, 118, 110, 0.08)" }}>
+            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: isGroup ? "var(--accent)" : "#0f766e", background: isGroup ? "var(--accent-subtle)" : "rgba(15, 118, 110, 0.08)" }}>
               {isGroup ? "群聊模式" : "单聊模式"}
             </span>
             {isGroup && (

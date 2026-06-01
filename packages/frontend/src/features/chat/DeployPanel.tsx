@@ -47,7 +47,7 @@ const PLATFORMS: PlatformOption[] = [
 
 const STATUS_META: Record<string, { label: string; color: string; bg: string; border: string }> = {
   idle: { label: "等待部署", color: "var(--fg-tertiary)", bg: "var(--surface-low)", border: "var(--border)" },
-  deploying: { label: "部署中", color: "#174ea6", bg: "rgba(23, 78, 166, 0.07)", border: "rgba(23, 78, 166, 0.18)" },
+  deploying: { label: "部署中", color: "var(--accent)", bg: "var(--accent-subtle)", border: "var(--accent-border)" },
   success: { label: "部署成功", color: "var(--success)", bg: "var(--success-subtle)", border: "var(--success-border)" },
   failed: { label: "部署失败", color: "var(--danger)", bg: "var(--danger-subtle)", border: "var(--danger-border)" },
 };
@@ -287,18 +287,18 @@ export function DeployPanel() {
                 onClick={() => setSelectedPlatform(platform.key)}
                 className="rounded-lg p-3 text-left transition-colors"
                 style={{
-                  background: selected ? "rgba(23, 78, 166, 0.07)" : "var(--surface-white)",
-                  border: `1px solid ${selected ? "rgba(23, 78, 166, 0.24)" : "var(--border)"}`,
+                  background: selected ? "var(--accent-subtle)" : "var(--surface-white)",
+                  border: `1px solid ${selected ? "var(--accent-border)" : "var(--border)"}`,
                 }}
               >
                 <div className="flex items-start gap-3">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md" style={{ color: selected ? "#fff" : "#174ea6", background: selected ? "#174ea6" : "rgba(23, 78, 166, 0.07)" }}>
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md" style={{ color: selected ? "#fff" : "var(--accent)", background: selected ? "var(--accent)" : "var(--accent-subtle)" }}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                       <path d={platform.icon} />
                     </svg>
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block text-xs font-bold" style={{ color: selected ? "#174ea6" : "var(--fg-primary)" }}>{platform.label}</span>
+                    <span className="block text-xs font-bold" style={{ color: selected ? "var(--accent)" : "var(--fg-primary)" }}>{platform.label}</span>
                     <span className="mt-1 block text-[11px]" style={{ color: "var(--fg-tertiary)", lineHeight: 1.55 }}>{platform.desc}</span>
                     <span className="mt-2 flex flex-wrap gap-1">
                       {platform.tags.map((tag) => (
@@ -309,7 +309,7 @@ export function DeployPanel() {
                     </span>
                   </span>
                 </div>
-                <p className="mt-2 text-[10px]" style={{ color: selected ? "#174ea6" : "var(--fg-tertiary)" }}>{platform.hint}</p>
+                <p className="mt-2 text-[10px]" style={{ color: selected ? "var(--accent)" : "var(--fg-tertiary)" }}>{platform.hint}</p>
               </button>
             );
           })}
@@ -344,7 +344,7 @@ export function DeployPanel() {
         <div className="space-y-2">
           {LIFECYCLE.map((step) => {
             const state = lifecycleState(step.progress, progress, normalizedStatus);
-            const color = state === "done" ? "var(--success)" : state === "failed" ? "var(--danger)" : state === "active" ? "#174ea6" : "var(--fg-disabled)";
+            const color = state === "done" ? "var(--success)" : state === "failed" ? "var(--danger)" : state === "active" ? "var(--accent)" : "var(--fg-disabled)";
             return (
               <div key={step.label} className="flex items-center gap-2">
                 <span className="h-2 w-2 rounded-full" style={{ background: color, animation: state === "active" ? "pulse-dot 1.4s ease-in-out infinite" : undefined }} />
@@ -360,13 +360,13 @@ export function DeployPanel() {
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>最近日志</p>
             {normalizedStatus === "failed" && (
-              <button type="button" data-testid="deploy-repair-codex" onClick={handoffFailureToCodex} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}>
+              <button type="button" data-testid="deploy-repair-codex" onClick={handoffFailureToCodex} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
                 交给 Codex 修复
               </button>
             )}
           </div>
           <div className="space-y-1.5">
-            {statusMessage && <p className="text-[11px]" style={{ color: "#174ea6" }}>{statusMessage}</p>}
+            {statusMessage && <p className="text-[11px]" style={{ color: "var(--accent)" }}>{statusMessage}</p>}
             {deployError && <p className="text-[11px]" style={{ color: "var(--danger)" }}>{deployError}</p>}
             {deployLogs.slice(-6).map((log, index) => (
               <p key={`${log}-${index}`} className="rounded-sm px-2 py-1 text-[11px]" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)" }}>
@@ -378,7 +378,7 @@ export function DeployPanel() {
       )}
 
       {deployUrl && normalizedStatus === "success" && (
-        <a href={deployUrl} target="_blank" rel="noopener noreferrer" className="flex min-h-9 items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs font-semibold no-underline" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.18)" }}>
+        <a href={deployUrl} target="_blank" rel="noopener noreferrer" className="flex min-h-9 items-center justify-between gap-3 rounded-lg px-3 py-2 text-xs font-semibold no-underline" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
           <span className="min-w-0 flex-1 truncate">{deployUrl}</span>
           <span>访问</span>
         </a>
@@ -392,7 +392,7 @@ export function DeployPanel() {
         className="flex h-9 items-center justify-center gap-2 rounded-lg text-xs font-bold transition-transform active:scale-[0.98]"
         style={{
           color: "#fff",
-          background: !canDeploy || isDeploying ? "var(--fg-disabled)" : "#174ea6",
+          background: !canDeploy || isDeploying ? "var(--fg-disabled)" : "var(--accent)",
           border: "none",
           cursor: !canDeploy || isDeploying ? "not-allowed" : "pointer",
         }}
