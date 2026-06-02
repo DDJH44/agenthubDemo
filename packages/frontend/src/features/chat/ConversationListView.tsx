@@ -327,25 +327,27 @@ export function ConversationListView({
   const hasResults = pinned.length > 0 || normal.length > 0 || (showArchived && archived.length > 0);
 
   return (
-    <div className="flex h-full flex-col" style={{ background: "#f3f6fc", borderRight: "1px solid var(--divider)" }}>
-      <div className="shrink-0 px-3 py-3" style={{ background: "rgba(255,255,255,0.58)", borderBottom: "1px solid var(--divider)" }}>
+    <div className="flex h-full flex-col" style={{ background: "#f5f8fd", borderRight: "1px solid var(--divider)" }}>
+      <div className="shrink-0 px-3 py-3" style={{ background: "rgba(255,255,255,0.72)", borderBottom: "1px solid var(--divider)" }}>
         <div className="flex items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>会话</h2>
-            <p className="text-[11px]" style={{ color: "var(--fg-tertiary)" }}>单聊、群聊与 Agent 联系人</p>
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)" }}>会话</h2>
+            <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
+              单聊、群聊与 Agent 联系人
+            </p>
           </div>
           <button
             type="button"
             onClick={onCreate}
-            className="grid h-8 w-8 place-items-center rounded-lg text-white transition-opacity hover:opacity-90"
-            style={{ background: "var(--accent)", boxShadow: "var(--accent-glow)" }}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white transition-opacity hover:opacity-90"
+            style={{ background: "var(--accent)", boxShadow: "0 8px 18px rgba(68,86,223,0.18)" }}
             title="新建会话"
           >
             <Icon type="plus" size={16} />
           </button>
         </div>
 
-        <div className="mt-3 flex h-9 items-center gap-2 rounded-lg px-2.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
+        <div className="mt-3 flex h-9 items-center gap-2 rounded-xl px-2.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
           <span style={{ color: "var(--fg-tertiary)" }}>
             <Icon type="search" size={15} />
           </span>
@@ -358,56 +360,54 @@ export function ConversationListView({
           />
         </div>
 
-        <div className="mt-3 grid grid-cols-3 gap-1.5">
+        <div className="mt-3 grid grid-cols-3 gap-1 rounded-xl p-1" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
           {[
-            { label: "打开", value: openCount, active: !showArchived },
-            { label: "置顶", value: pinnedCount, active: pinnedCount > 0 },
-            { label: "归档", value: archivedCount, active: showArchived },
-          ].map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              onClick={item.label === "归档" ? onToggleArchived : undefined}
-              className="rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--surface-white)]"
-              style={{
-                background: item.active ? "var(--surface-white)" : "rgba(255,255,255,0.42)",
-                border: `1px solid ${item.active ? "var(--accent-border)" : "var(--border)"}`,
-                boxShadow: item.active ? "var(--shadow-xs)" : "none",
-                cursor: item.label === "归档" ? "pointer" : "default",
-              }}
-            >
-              <span className="block text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{item.label}</span>
-              <span className="mt-0.5 block text-sm font-bold" style={{ color: item.active ? "var(--accent)" : "var(--fg-primary)" }}>{item.value}</span>
-            </button>
-          ))}
+            { key: null, label: "全部", value: openCount, icon: "group" as const },
+            { key: "single" as const, label: "单聊", value: singleCount, icon: "user" as const },
+            { key: "group" as const, label: "群聊", value: groupCount, icon: "group" as const },
+          ].map((item) => {
+            const active = modeFilter === item.key;
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => setModeFilter(item.key)}
+                className="flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-lg px-1.5 text-xs font-semibold transition-colors"
+                style={{
+                  color: active ? "var(--accent)" : "var(--fg-secondary)",
+                  background: active ? "var(--surface-white)" : "transparent",
+                  boxShadow: active ? "var(--shadow-xs)" : "none",
+                }}
+              >
+                <Icon type={item.icon} size={12} />
+                <span className="truncate">{item.label}</span>
+                <span style={{ color: active ? "var(--accent)" : "var(--fg-tertiary)" }}>{item.value}</span>
+              </button>
+            );
+          })}
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "rgba(255,255,255,0.64)", border: "1px solid var(--border)" }}>
+              置顶 {pinnedCount}
+            </span>
+            <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "rgba(255,255,255,0.64)", border: "1px solid var(--border)" }}>
+              打开 {openCount}
+            </span>
+          </div>
           <button
             type="button"
-            onClick={() => setModeFilter(modeFilter === "single" ? null : "single")}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-semibold"
+            onClick={onToggleArchived}
+            className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-white)]"
             style={{
-              color: modeFilter === "single" ? "var(--accent)" : "var(--fg-secondary)",
-              background: modeFilter === "single" ? "var(--surface-white)" : "rgba(255,255,255,0.46)",
-              border: `1px solid ${modeFilter === "single" ? "var(--accent-border)" : "var(--border)"}`,
+              color: showArchived ? "var(--accent)" : "var(--fg-tertiary)",
+              background: showArchived ? "var(--surface-white)" : "rgba(255,255,255,0.48)",
+              border: `1px solid ${showArchived ? "var(--accent-border)" : "var(--border)"}`,
             }}
           >
-            <Icon type="user" size={13} />
-            单聊 {singleCount}
-          </button>
-          <button
-            type="button"
-            onClick={() => setModeFilter(modeFilter === "group" ? null : "group")}
-            className="flex h-8 items-center justify-center gap-1.5 rounded-lg text-xs font-semibold"
-            style={{
-              color: modeFilter === "group" ? "var(--accent)" : "var(--fg-secondary)",
-              background: modeFilter === "group" ? "var(--surface-white)" : "rgba(255,255,255,0.46)",
-              border: `1px solid ${modeFilter === "group" ? "var(--accent-border)" : "var(--border)"}`,
-            }}
-          >
-            <Icon type="group" size={13} />
-            群聊 {groupCount}
+            <Icon type="archive" size={11} />
+            归档 {archivedCount}
           </button>
         </div>
       </div>
