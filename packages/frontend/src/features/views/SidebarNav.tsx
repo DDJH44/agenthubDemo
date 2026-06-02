@@ -1,11 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import { useRef, type RefObject } from "react";
 import { useT } from "@/hooks/useT";
 import { useNavigationStore, type NavKey } from "@/stores/navigation-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
-import { UserIcon } from "@/components/ui";
+import { BotIcon, UserIcon, type BotIconHandle } from "@/components/ui";
 
 const NAV_ITEMS: { key: NavKey; icon: string; section: string }[] = [
   { key: "dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", section: "main" },
@@ -31,7 +32,46 @@ const SECTIONS = [
   { key: "system", label: "系统" },
 ];
 
-function NavIcon({ path, active }: { path: string; active: boolean }) {
+function NavIconGlyph({
+  path,
+  isBot,
+  botIconRef,
+  size,
+}: {
+  path: string;
+  isBot: boolean;
+  botIconRef?: RefObject<BotIconHandle | null>;
+  size: number;
+}) {
+  if (isBot) {
+    return (
+      <BotIcon
+        ref={botIconRef}
+        aria-hidden="true"
+        className="grid place-items-center"
+        size={size}
+      />
+    );
+  }
+
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={path} />
+    </svg>
+  );
+}
+
+function NavIcon({
+  path,
+  active,
+  isBot,
+  botIconRef,
+}: {
+  path: string;
+  active: boolean;
+  isBot: boolean;
+  botIconRef?: RefObject<BotIconHandle | null>;
+}) {
   return (
     <span
       className="grid h-6 w-6 shrink-0 place-items-center rounded-md transition-colors"
@@ -40,9 +80,7 @@ function NavIcon({ path, active }: { path: string; active: boolean }) {
         color: active ? "var(--accent)" : "var(--fg-tertiary)",
       }}
     >
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d={path} />
-      </svg>
+      <NavIconGlyph path={path} isBot={isBot} botIconRef={botIconRef} size={isBot ? 15 : 14} />
     </span>
   );
 }
@@ -54,12 +92,20 @@ function NavItemButton({ item, activeNav, setActiveNav, t }: {
   t: (key: string) => string;
 }) {
   const isActive = activeNav === item.key;
+  const isMyAgentsItem = item.key === "my-agents";
+  const botIconRef = useRef<BotIconHandle | null>(null);
+  const startBotIcon = () => botIconRef.current?.startAnimation();
+  const stopBotIcon = () => botIconRef.current?.stopAnimation();
 
   return (
     <button
       key={item.key}
       data-nav-key={item.key}
       onClick={() => setActiveNav(item.key)}
+      onBlur={isMyAgentsItem ? stopBotIcon : undefined}
+      onFocus={isMyAgentsItem ? startBotIcon : undefined}
+      onMouseEnter={isMyAgentsItem ? startBotIcon : undefined}
+      onMouseLeave={isMyAgentsItem ? stopBotIcon : undefined}
       className="group relative flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors"
       style={{
         background: isActive ? "var(--surface-white)" : "transparent",
@@ -71,7 +117,7 @@ function NavItemButton({ item, activeNav, setActiveNav, t }: {
       }}
     >
       {isActive && <span className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-r-full" style={{ background: "var(--accent)" }} />}
-      <NavIcon path={item.icon} active={isActive} />
+      <NavIcon path={item.icon} active={isActive} isBot={isMyAgentsItem} botIconRef={botIconRef} />
       <span className="min-w-0 flex-1 truncate">{t(`nav.${item.key}`)}</span>
     </button>
   );
@@ -84,12 +130,20 @@ function CollapsedIconItem({ item, activeNav, setActiveNav, t }: {
   t: (key: string) => string;
 }) {
   const isActive = activeNav === item.key;
+  const isMyAgentsItem = item.key === "my-agents";
+  const botIconRef = useRef<BotIconHandle | null>(null);
+  const startBotIcon = () => botIconRef.current?.startAnimation();
+  const stopBotIcon = () => botIconRef.current?.stopAnimation();
 
   return (
     <button
       key={item.key}
       data-nav-key={item.key}
       onClick={() => setActiveNav(item.key)}
+      onBlur={isMyAgentsItem ? stopBotIcon : undefined}
+      onFocus={isMyAgentsItem ? startBotIcon : undefined}
+      onMouseEnter={isMyAgentsItem ? startBotIcon : undefined}
+      onMouseLeave={isMyAgentsItem ? stopBotIcon : undefined}
       className="relative grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors"
       style={{
         background: isActive ? "var(--surface-white)" : "transparent",
@@ -100,9 +154,7 @@ function CollapsedIconItem({ item, activeNav, setActiveNav, t }: {
       title={t(`nav.${item.key}`)}
     >
       {isActive && <span className="absolute -left-1 h-4 w-0.5 rounded-r-full" style={{ background: "var(--accent)" }} />}
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d={item.icon} />
-      </svg>
+      <NavIconGlyph path={item.icon} isBot={isMyAgentsItem} botIconRef={botIconRef} size={15} />
     </button>
   );
 }
