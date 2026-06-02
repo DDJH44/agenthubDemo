@@ -1,72 +1,96 @@
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { useChatStore } from "@/stores/chat-store";
 
-const TOOL_ICONS: Record<string, string> = {
-  read_file: "📖",
-  write_file: "✏️",
-  edit_file: "🔧",
-  bash: "⚡",
-  glob: "🔍",
-  grep: "🔎",
-  search: "🌐",
-  code: "💻",
-  "web-fetch": "📥",
-  deploy: "🚀",
+const TOOL_META: Record<string, { label: string; short: string }> = {
+  read_file: { label: "读取文件", short: "READ" },
+  write_file: { label: "写入文件", short: "WRITE" },
+  edit_file: { label: "编辑文件", short: "EDIT" },
+  bash: { label: "执行命令", short: "CMD" },
+  glob: { label: "搜索文件", short: "GLOB" },
+  grep: { label: "搜索内容", short: "GREP" },
+  search: { label: "网络搜索", short: "WEB" },
+  code: { label: "代码沙箱", short: "CODE" },
+  "web-fetch": { label: "网页抓取", short: "FETCH" },
+  deploy: { label: "一键部署", short: "DEPLOY" },
 };
 
-const TOOL_LABELS: Record<string, string> = {
-  read_file: "读取文件",
-  write_file: "写入文件",
-  edit_file: "编辑文件",
-  bash: "执行命令",
-  glob: "搜索文件",
-  grep: "搜索内容",
-  search: "网络搜索",
-  code: "代码沙箱",
-  "web-fetch": "网页抓取",
-  deploy: "一键部署",
-};
+function StepIcon({ final }: { final: boolean }) {
+  return final ? (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6 9 17l-5-5" />
+    </svg>
+  ) : (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 2" />
+    </svg>
+  );
+}
 
 export function AgentStepList() {
   const agentSteps = useChatStore((s) => s.agentSteps);
   const isStreaming = useChatStore((s) => s.isStreaming);
   const [expanded, setExpanded] = useState(false);
+  const latestStep = agentSteps[agentSteps.length - 1];
 
   if (agentSteps.length === 0) return null;
 
   return (
     <div className="px-4 py-2">
-      <div className="rounded-xl overflow-hidden" style={{ border: "1px solid var(--accent-border)", background: "var(--surface-white)" }}>
+      <div
+        className="overflow-hidden rounded-xl"
+        style={{ border: "1px solid var(--border)", background: "var(--surface-tinted)" }}
+      >
         <button
           onClick={() => setExpanded(!expanded)}
-          className="w-full px-4 py-2.5 flex items-center justify-between"
-          style={{ background: "var(--accent-subtle)", borderBottom: expanded ? "1px solid var(--accent-border)" : "none" }}
+          className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left"
+          style={{ background: expanded ? "var(--surface-white)" : "transparent", borderBottom: expanded ? "1px solid var(--border)" : "none" }}
         >
-          <div className="flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 6v6l4 2" />
-            </svg>
-            <span style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--accent)" }}>
-              Agent 执行过程
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+              style={{ color: "var(--accent)", background: "var(--surface-white)", border: "1px solid var(--accent-border)" }}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 18 22 12 16 6" />
+                <path d="M8 6 2 12l6 6" />
+                <path d="m14 4-4 16" />
+              </svg>
             </span>
-            <span style={{ fontSize: "var(--text-2xs)", color: "var(--fg-tertiary)" }}>
-              {agentSteps.length} 步
-            </span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>
+                  Agent 执行过程
+                </span>
+                <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
+                  {agentSteps.length} 步
+                </span>
+              </div>
+              <div className="truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+                {latestStep?.isFinal ? "最终结果已生成" : `最近更新：第 ${latestStep?.iteration ?? agentSteps.length} 步`}
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex shrink-0 items-center gap-2">
             {isStreaming && (
-              <span className="flex items-center gap-1" style={{ fontSize: "var(--text-2xs)", color: "var(--accent)" }}>
-                <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: "var(--accent)" }} />
+              <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full" style={{ background: "var(--accent)" }} />
                 执行中
               </span>
             )}
             <svg
-              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--fg-tertiary)"
-              strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="var(--fg-tertiary)"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
               style={{ transform: expanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s" }}
             >
               <path d="M6 9l6 6 6-6" />
@@ -74,71 +98,98 @@ export function AgentStepList() {
           </div>
         </button>
 
-        {expanded && (
-        <div className="divide-y" style={{ borderColor: "var(--divider)" }}>
-          <AnimatePresence>
-            {agentSteps.map((step) => (
-              <motion.div
-                key={step.timestamp}
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.2 }}
-                className="px-4 py-2.5"
-              >
-                {/* 轮次标题 */}
-                <div className="flex items-center gap-2 mb-1.5">
-                  <span className="flex items-center justify-center w-5 h-5 rounded text-[10px] font-bold text-white"
-                    style={{ background: step.isFinal ? "var(--success)" : "var(--accent)" }}>
-                    {step.iteration}
-                  </span>
-                  <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-secondary)" }}>
-                    {step.isFinal ? "完成" : "思考与行动"}
-                  </span>
-                </div>
+        <AnimatePresence initial={false}>
+          {expanded && (
+            <motion.div
+              key="agent-steps"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.18 }}
+              className="px-3 py-3"
+            >
+              <div className="relative space-y-2">
+                <span className="absolute left-4 top-6 bottom-6 w-px" style={{ background: "var(--divider)" }} />
+                {agentSteps.map((step) => {
+                  const tool = step.action ? TOOL_META[step.action.tool] ?? { label: step.action.tool, short: "TOOL" } : null;
 
-                {/* 思考 */}
-                {step.thought && (
-                  <div className="mb-1.5 rounded-lg px-3 py-2" style={{ background: "var(--surface-low)" }}>
-                    <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--fg-tertiary)", marginBottom: 2, display: "block" }}>
-                      💭 思考
-                    </span>
-                    <p style={{ fontSize: "var(--text-xs)", color: "var(--fg-secondary)", lineHeight: 1.5, margin: 0 }}>
-                      {step.thought.slice(0, 300)}
-                      {step.thought.length > 300 && "..."}
-                    </p>
-                  </div>
-                )}
+                  return (
+                    <motion.article
+                      key={step.timestamp}
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="relative pl-9"
+                    >
+                      <span
+                        className="absolute left-0 top-2 grid h-8 w-8 place-items-center rounded-lg text-[10px] font-bold"
+                        style={{
+                          background: step.isFinal ? "var(--success-subtle)" : "var(--surface-white)",
+                          border: step.isFinal ? "1px solid rgba(0, 108, 73, 0.22)" : "1px solid var(--accent-border)",
+                          color: step.isFinal ? "var(--success)" : "var(--accent)",
+                        }}
+                      >
+                        <StepIcon final={step.isFinal} />
+                      </span>
 
-                {/* 行动 */}
-                {step.action && (
-                  <div className="mb-1.5 rounded-lg px-3 py-2" style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
-                    <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: "var(--accent)", marginBottom: 2, display: "block" }}>
-                      {TOOL_ICONS[step.action.tool] || "🔨"} {TOOL_LABELS[step.action.tool] || step.action.tool}
-                    </span>
-                    <code style={{ fontSize: "var(--text-2xs)", color: "var(--fg-secondary)", fontFamily: "var(--font-mono)", wordBreak: "break-all" }}>
-                      {step.action.input.slice(0, 200)}
-                      {step.action.input.length > 200 && "..."}
-                    </code>
-                  </div>
-                )}
+                      <div className="rounded-lg px-3 py-2.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>
+                            {step.isFinal ? "完成输出" : `第 ${step.iteration} 轮`}
+                          </span>
+                          <span className="text-[10px] font-semibold" style={{ color: step.isFinal ? "var(--success)" : "var(--fg-tertiary)" }}>
+                            {step.isFinal ? "FINAL" : "RUNNING"}
+                          </span>
+                        </div>
 
-                {/* 观察 */}
-                {step.observation && (
-                  <div className="rounded-lg px-3 py-2" style={{ background: step.action ? "var(--surface-low)" : "rgba(0,108,73,0.06)", border: step.action ? "none" : "1px solid rgba(0,108,73,0.2)" }}>
-                    <span style={{ fontSize: "var(--text-2xs)", fontWeight: 600, color: step.action ? "var(--fg-tertiary)" : "var(--success)", marginBottom: 2, display: "block" }}>
-                      {step.action ? "📋 结果" : "✅ 最终答案"}
-                    </span>
-                    <p style={{ fontSize: "var(--text-xs)", color: "var(--fg-secondary)", lineHeight: 1.5, margin: 0, whiteSpace: "pre-wrap" }}>
-                      {step.observation.slice(0, 500)}
-                      {step.observation.length > 500 && "..."}
-                    </p>
-                  </div>
-                )}
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-        )}
+                        {step.thought && (
+                          <div className="mb-2">
+                            <div className="mb-1 text-[10px] font-bold uppercase" style={{ color: "var(--fg-tertiary)", letterSpacing: 0 }}>
+                              思考
+                            </div>
+                            <p className="text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>
+                              {step.thought.slice(0, 300)}
+                              {step.thought.length > 300 && "..."}
+                            </p>
+                          </div>
+                        )}
+
+                        {step.action && tool && (
+                          <div className="mb-2 rounded-lg px-2.5 py-2" style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+                            <div className="mb-1 flex items-center gap-2">
+                              <span className="rounded px-1.5 py-0.5 text-[10px] font-bold" style={{ color: "var(--accent)", background: "var(--surface-white)" }}>
+                                {tool.short}
+                              </span>
+                              <span className="text-[11px] font-bold" style={{ color: "var(--accent)" }}>
+                                {tool.label}
+                              </span>
+                            </div>
+                            <code className="block text-[10px]" style={{ color: "var(--fg-secondary)", fontFamily: "var(--font-mono)", lineHeight: 1.5, wordBreak: "break-all" }}>
+                              {step.action.input.slice(0, 200)}
+                              {step.action.input.length > 200 && "..."}
+                            </code>
+                          </div>
+                        )}
+
+                        {step.observation && (
+                          <div className="rounded-lg px-2.5 py-2" style={{ background: step.isFinal ? "var(--success-subtle)" : "var(--surface-low)", border: step.isFinal ? "1px solid rgba(0, 108, 73, 0.18)" : "1px solid transparent" }}>
+                            <div className="mb-1 text-[10px] font-bold uppercase" style={{ color: step.isFinal ? "var(--success)" : "var(--fg-tertiary)", letterSpacing: 0 }}>
+                              {step.isFinal ? "最终答案" : "结果"}
+                            </div>
+                            <p className="text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                              {step.observation.slice(0, 500)}
+                              {step.observation.length > 500 && "..."}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </motion.article>
+                  );
+                })}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
