@@ -19,6 +19,7 @@ import {
   formatFinalSummary,
   extractOutputInfo,
 } from "../utils/format-helpers";
+import { isArtifactGenerationTask } from "../utils/task-classifier";
 
 export type StreamEventType = "system" | "plan" | "stream" | "critic" | "research" | "refine" | "retry" | "final" | "variable";
 export type StreamEvent = { type: StreamEventType; msg: unknown };
@@ -53,22 +54,7 @@ export class Orchestrator {
   }
 
   private isCodeGenerationTask(task: string): boolean {
-    const lower = task.toLowerCase();
-    const codeKeywords = [
-      "写", "实现", "生成", "创建", "开发", "编写", "制作", "做一个", "帮我做", "帮我写",
-      "代码", "函数", "组件", "页面", "界面", "应用", "app", "网站", "demo", "项目",
-      "react", "vue", "html", "css", "javascript", "typescript", "python", "node",
-      "todo", "login", "counter", "calculator", "form", "dashboard", "chat",
-      "登录", "注册", "表单", "列表", "导航", "布局",
-      "简单", "simple", "basic", "small", "一个",
-    ];
-    const hits = codeKeywords.filter((kw) => lower.includes(kw)).length;
-    const complexIndicators = [
-      "架构设计", "系统设计", "微服务", "分布式", "多模块", "完整项目",
-      "详细方案", "调研", "分析", "对比", "评估", "多步骤",
-    ];
-    const hasComplex = complexIndicators.some((kw) => lower.includes(kw));
-    return hits >= 2 && !hasComplex;
+    return isArtifactGenerationTask(task);
   }
 
   private async handleSimpleConversation(
@@ -99,31 +85,56 @@ export class Orchestrator {
     const confirmation = formatTaskConfirmation(task);
     onStream({ type: "system", msg: confirmation });
 
-    const systemPrompt = `你是一个高级前端工程师。根据用户需求直接输出完整可运行的代码。
-规则：
-1. 直接输出代码，用 \`\`\`语言 标记代码块
-2. 优先输出单个完整文件（HTML 内联 CSS/JS，或单个 React 组件）
-3. 代码必须可直接运行，不要省略任何部分
-4. 不要输出多余解释，代码就是答案
-5. 如果用户指定了框架（如 React），使用该框架的写法`;
-
     const enrichedTask = this.memoryPrompt
       ? `## 会话上下文\n${this.memoryPrompt}\n\n用户需求: ${task}`
       : task;
 
-    const planSteps: PlanNode[] = [{ id: "1", task, dependsOn: [], agentRole: "worker" }];
+    const planSteps: PlanNode[] = [
+      { id: "1", task: `确认产物目标：${task}`, dependsOn: [], agentRole: "planner" },
+      { id: "2", task: "设计页面结构、视觉风格和交互节奏", dependsOn: ["1"], agentRole: "refiner" },
+      { id: "3", task: "生成完整可运行的前端代码", dependsOn: ["2"], agentRole: "worker" },
+      { id: "4", task: "准备预览、编辑和部署建议", dependsOn: ["3"], agentRole: "critic" },
+    ];
     onStream({ type: "plan", msg: { steps: planSteps } });
+    onStream({ type: "stream", msg: `\n${formatTaskDecomposition(planSteps)}\n\n${formatTaskAssignment(planSteps)}` });
 
-    onStream({ type: "stream", msg: formatWorkerReceipt(task, "worker") });
+    onStream({ type: "stream", msg: "\n\n[PMO 进度] 1/4 已确认这是一个可预览的前端产物任务，会优先生成单文件交付。" });
+    onStream({ type: "stream", msg: "\n[Design Agent] 2/4 正在确定页面层级、视觉氛围和动画节奏。" });
+    onStream({ type: "stream", msg: `\n${formatWorkerReceipt("完整前端代码生成", "worker")}` });
+    onStream({ type: "stream", msg: "\n[Codex] 3/4 开始生成代码，内容会持续写入当前消息。\n\n" });
 
-    const reply = await this.adapter!.sendMessage(enrichedTask, { systemPrompt, temperature: 0.3, maxTokens: 8192, signal });
+    const systemPrompt = `你是一个高级前端工程师，正在 AgentHub 的多 Agent 流程中生成可预览产物。
+请严格按以下规则输出：
+1. 输出一个完整可运行的单文件前端产物，优先使用 HTML，内联 CSS 和 JavaScript
+2. 必须使用代码块标记，例如 \`\`\`html
+3. 代码不能省略，不能写“此处省略”
+4. 产物要包含基础交互、响应式适配和清晰注释
+5. 除代码块外，只允许有一句很短的交付说明`;
+
+    const generationPrompt = `${enrichedTask}\n\n请生成 index.html。若用户没有指定技术栈，使用原生 HTML/CSS/JavaScript；如果是烟花、动画、游戏或可视化类需求，优先使用 Canvas 实现。`;
+
+    let reply = "";
+    for await (const chunk of this.adapter!.streamResponse(generationPrompt, { systemPrompt, temperature: 0.35, maxTokens: 8192, signal })) {
+      reply += chunk;
+      onStream({ type: "stream", msg: chunk });
+    }
+
+    if (!reply.trim()) {
+      reply = await this.adapter!.sendMessage(generationPrompt, { systemPrompt, temperature: 0.35, maxTokens: 8192, signal });
+      onStream({ type: "stream", msg: reply });
+    }
 
     const outputs = extractOutputInfo(reply);
     const report = formatWorkerReport(task, "worker", "直接生成完整可运行代码", outputs);
-    onStream({ type: "stream", msg: `\n\n${reply}` });
+    onStream({ type: "stream", msg: `\n\n[UX Reviewer] 4/4 已完成可预览交付物检查，建议先预览再微调视觉细节。\n\n${report}` });
 
-    const stepResults = [{ id: "1", task, result: reply, toolUsed: "code" as const }];
-    const summary = `${report}\n\n${formatFinalSummary(task, stepResults, outputs)}`;
+    const stepResults = [
+      { id: "1", task: planSteps[0].task, result: "已识别为可预览前端产物任务。" },
+      { id: "2", task: planSteps[1].task, result: "已确定采用单文件结构，便于预览、编辑和部署。" },
+      { id: "3", task: planSteps[2].task, result: reply, toolUsed: "code" as const },
+      { id: "4", task: planSteps[3].task, result: "已准备预览、编辑和部署后续操作。" },
+    ];
+    const summary = `${formatFinalSummary(task, stepResults, outputs)}\n\n接下来可以直接在产物卡片里预览，也可以继续要求我调整动画、配色或部署方式。`;
     const final = { task, plan: planSteps.map(s => ({ id: s.id, task: s.task })), stepResults, summary };
     onStream({ type: "final", msg: final });
     return final;

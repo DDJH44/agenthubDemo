@@ -18,22 +18,11 @@ import { deployManager } from "../deploy/index";
 import type { DeployConfig } from "../deploy/index";
 import { validateConversationId, validateWorkspaceId, validateMessageText, validateConversationTitle, validateConversationType, validateParticipants, validateSearchQuery, validateString } from "../utils/validators";
 import { validateSession } from "../auth/session";
+import { isArtifactGenerationTask, isSimpleChat } from "../utils/task-classifier";
 
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
   userName?: string;
-}
-
-const CHAT_PATTERNS = [/^(你好|hi|hello|hey|嗨|哈喽|早上好|下午好|晚上好|早安|晚安|在吗|在不在|谢谢|感谢|ok|好的|嗯|是|否|对|再见|拜拜)\s*[!！?？。.~～]*$/i, /^(你是谁|你叫什么|介绍|介绍一下你自己|what|how are you|who are you)\s*[!！?？。.~～]*$/i];
-const TASK_PATTERNS = [/^(帮我|请|做|写|开发|创建|分析|搜索|部署|优化|修复|重构|实现|设计|生成|构建|运行|执行)/i, /@(planner|worker|critic|researcher|refiner|all)/i];
-
-function isSimpleChat(text: string): boolean {
-  const trimmed = text.trim();
-  if (trimmed.length > 80) return false;
-  if (TASK_PATTERNS.some((p) => p.test(trimmed))) return false;
-  if (CHAT_PATTERNS.some((p) => p.test(trimmed))) return true;
-  if (trimmed.length <= 15 && trimmed.split(/\s+/).length <= 5 && !/[，。；：！？、]/.test(trimmed)) return true;
-  return false;
 }
 
 const rooms = new Map<string, Set<WebSocket>>();
@@ -370,11 +359,12 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
 
             const isDirectConv = convType === "direct";
             const simpleChat = isSimpleChat(text);
+            const artifactTask = isArtifactGenerationTask(text);
 
             const convAgents = await conversationAgentRepo.listByConversation(conversationId);
             const hasEnabledAgents = convAgents.some(a => a.enabled);
 
-            if (!hasEnabledAgents || isDirectConv || simpleChat) {
+            if (simpleChat || ((!hasEnabledAgents || isDirectConv) && !artifactTask)) {
               const userMsg = await messageRepo.createAndUpdateConv({
                 conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: [],
                 id: clientMsgId,
@@ -430,7 +420,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             } else if (agents.length === 0) {
               const matched = matchByKeywords(cleanText || text);
               matchedAgents = matched.map((m) => m.agentId);
-              matchSummary = matched.length > 0
+              matchSummary = artifactTask
+                ? "产物型任务 · 已切换为 PMO 编排流程"
+                : matched.length > 0
                 ? `AI 自动匹配: ${matched.map((m) => m.label).join("、")}`
                 : "完整流水线";
             }

@@ -10,6 +10,27 @@ const DEFAULT_TIMEOUT = 300_000;
 
 interface QueuedJob { jobId: string; payload: JobPayload; enqueuedAt: number; }
 
+function extractPrimaryCodeArtifact(result: string, stepId: string) {
+  const match = result.match(/```(\w*)\n([\s\S]*?)```/);
+  const language = match?.[1]?.toLowerCase() || "";
+  const content = match?.[2]?.trim() || result;
+
+  if (language === "html" || /<!doctype html|<html/i.test(content)) {
+    return { type: "html" as const, filename: "index.html", content };
+  }
+
+  const extensionMap: Record<string, string> = {
+    javascript: "js",
+    typescript: "ts",
+    python: "py",
+    markdown: "md",
+    bash: "sh",
+    shell: "sh",
+  };
+  const extension = extensionMap[language] ?? language ?? "txt";
+  return { type: "code" as const, filename: `output-${stepId}.${extension || "txt"}`, content };
+}
+
 export class MemoryQueue implements IJobQueue {
   private handlers: Array<(result: JobResult) => void> = [];
   private statuses = new Map<string, "pending" | "running" | "completed" | "failed">();
@@ -221,8 +242,9 @@ export class MemoryQueue implements IJobQueue {
 
           for (const sr of stepResults) {
             if (sr.toolUsed === "code" || sr.toolUsed === "search") {
-              const artifactType = sr.toolUsed === "code" ? "code" : "markdown";
-              const filename = sr.toolUsed === "code" ? `output-${sr.id}.ts` : `research-${sr.id}.md`;
+              const codeArtifact = sr.toolUsed === "code" ? extractPrimaryCodeArtifact(sr.result, sr.id) : null;
+              const artifactType = codeArtifact?.type ?? "markdown";
+              const filename = codeArtifact?.filename ?? `research-${sr.id}.md`;
               b?.({
                 type: "artifact:created", jobId,
                 artifact: {
@@ -230,7 +252,7 @@ export class MemoryQueue implements IJobQueue {
                   jobId,
                   type: artifactType,
                   filename,
-                  content: sr.result,
+                  content: codeArtifact?.content ?? sr.result,
                   createdAt: Date.now(),
                 },
               });
@@ -253,7 +275,12 @@ export class MemoryQueue implements IJobQueue {
               java: "java", cpp: "cpp", c: "c", php: "php", md: "markdown", markdown: "markdown",
             };
             const ext = lang.toLowerCase();
-            const artifactType = ["html", "css", "javascript", "typescript", "json", "python", "go", "rust", "java", "cpp", "c", "php", "sql", "shell", "yaml", "xml"].includes(extMap[ext] || ext) ? "code" : "markdown";
+            const normalizedExt = extMap[ext] || ext;
+            const artifactType = normalizedExt === "html"
+              ? "html"
+              : ["css", "javascript", "typescript", "json", "python", "go", "rust", "java", "cpp", "c", "php", "sql", "shell", "yaml", "xml"].includes(normalizedExt)
+                ? "code"
+                : "markdown";
             const filename = extMap[ext] ? `index.${ext}` : `file-${codeIdx}.${ext || "txt"}`;
             b?.({
               type: "artifact:created", jobId,
