@@ -100,16 +100,25 @@ export function QuickReplyBar({
 
   return (
     <div className="flex flex-col" style={{ background: "var(--surface-white)" }}>
-      {conversationMode === "group" && (
-        <div className="mx-3 mt-2 flex items-center gap-2 rounded-lg px-3 py-1.5" style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
-          <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} />
-          <span className="text-[11px] font-semibold" style={{ color: "var(--accent)" }}>
-            群聊模式：输入 @Agent 可以直接分配任务
+      <div className="flex min-h-8 items-center justify-between gap-3 px-3 pt-2">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="border-b-2 px-0.5 pb-1 text-xs font-bold" style={{ color: "var(--accent)", borderColor: "var(--accent)" }}>
+            回复
           </span>
+          {conversationMode === "group" && (
+            <span className="truncate text-[11px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>
+              群聊协作
+            </span>
+          )}
         </div>
-      )}
+        {conversationMode === "group" && (
+          <span className="hidden shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold sm:inline-flex" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+            @Agent 分配
+          </span>
+        )}
+      </div>
 
-      <div className="flex items-end gap-2 px-3 py-3">
+      <div className="flex items-end gap-2 px-3 py-2.5">
         <button
           type="button"
           onClick={handleMentionClick}

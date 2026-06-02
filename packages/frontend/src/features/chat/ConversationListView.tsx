@@ -285,7 +285,7 @@ export function ConversationListView({
     };
   }, []);
 
-  const { pinned, normal, archived, groupCount, singleCount } = useMemo(() => {
+  const { pinned, normal, archived, groupCount, singleCount, openCount, pinnedCount, archivedCount } = useMemo(() => {
     const active = conversations.filter((conversation) => conversation.status !== "archived");
     const archivedItems = conversations.filter((conversation) => conversation.status === "archived");
     const matchesSearch = (conversation: Conversation) => {
@@ -305,6 +305,9 @@ export function ConversationListView({
       archived: apply(archivedItems),
       groupCount: active.filter((conversation) => getConvMode(conversation) === "group").length,
       singleCount: active.filter((conversation) => getConvMode(conversation) === "single").length,
+      openCount: active.length,
+      pinnedCount: active.filter((conversation) => conversation.pinned).length,
+      archivedCount: archivedItems.length,
     };
   }, [conversations, getConvMode, modeFilter, search, userAgents]);
 
@@ -351,6 +354,30 @@ export function ConversationListView({
             className="min-w-0 flex-1 bg-transparent text-sm outline-none"
             style={{ color: "var(--fg-primary)" }}
           />
+        </div>
+
+        <div className="mt-3 grid grid-cols-3 gap-1.5">
+          {[
+            { label: "打开", value: openCount, active: !showArchived },
+            { label: "置顶", value: pinnedCount, active: pinnedCount > 0 },
+            { label: "归档", value: archivedCount, active: showArchived },
+          ].map((item) => (
+            <button
+              key={item.label}
+              type="button"
+              onClick={item.label === "归档" ? onToggleArchived : undefined}
+              className="rounded-lg px-2 py-2 text-left transition-colors hover:bg-[var(--surface-white)]"
+              style={{
+                background: item.active ? "var(--surface-white)" : "rgba(255,255,255,0.42)",
+                border: `1px solid ${item.active ? "var(--accent-border)" : "var(--border)"}`,
+                boxShadow: item.active ? "var(--shadow-xs)" : "none",
+                cursor: item.label === "归档" ? "pointer" : "default",
+              }}
+            >
+              <span className="block text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{item.label}</span>
+              <span className="mt-0.5 block text-sm font-bold" style={{ color: item.active ? "var(--accent)" : "var(--fg-primary)" }}>{item.value}</span>
+            </button>
+          ))}
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2">
