@@ -519,10 +519,8 @@ function DocumentCardTrigger({ title, onClick }: {
         <span className="block truncate text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{title}</span>
         <span className="mt-1 block text-[10px]" style={{ color: "var(--fg-tertiary)" }}>点击预览 · 可导出 Word / PDF</span>
       </span>
-      <span aria-hidden="true" className="hidden h-11 w-16 shrink-0 rounded-md px-2 py-1.5 sm:block" style={{ background: "#252321", border: "1px solid rgba(255,255,255,0.08)" }}>
-        <span className="mb-1 block h-1 w-7 rounded-full" style={{ background: "#8c7658" }} />
-        <span className="mb-1 block h-1 w-9 rounded-full" style={{ background: "#8c7658" }} />
-        <span className="block h-1 w-5 rounded-full" style={{ background: "#8c7658" }} />
+      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md" style={{ color: "var(--fg-disabled)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+        <Icon path="M9 18l6-6-6-6" size={12} />
       </span>
     </button>
   );
