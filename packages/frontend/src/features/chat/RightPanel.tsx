@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import type { OnMount } from "@monaco-editor/react";
 import type { Artifact, Message, ResourceItem, SessionAgentStatus, StepResult } from "@agenthub/shared";
 import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
@@ -527,14 +528,134 @@ function extractCodeItems(artifacts: Artifact[], messages: Message[]) {
   return [...artifactItems, ...messageItems];
 }
 
+interface SelectionDraft {
+  artifactId: string;
+  filename: string;
+  sourceLabel: string;
+  content: string;
+  detail?: string;
+}
+
+function quoteSelection(content: string) {
+  return content
+    .trim()
+    .slice(0, 1800)
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n");
+}
+
+function SelectionHandoffBar({
+  selection,
+  emptyText,
+  onClear,
+}: {
+  selection: SelectionDraft | null;
+  emptyText: string;
+  onClear: () => void;
+}) {
+  const activeConversationId = useChatStore((state) => state.activeConversationId);
+  const addContextReference = useChatStore((state) => state.addContextReference);
+
+  const handoffSelection = (agentId: string) => {
+    if (!activeConversationId || !selection) return;
+    const agent = AGENT_OPTIONS.find((item) => item.id === agentId) ?? AGENT_OPTIONS[0];
+    const title = `选区 · ${selection.filename}${selection.detail ? ` · ${selection.detail}` : ""}`;
+    addContextReference(activeConversationId, {
+      sourceType: "artifact",
+      sender: "User",
+      title,
+      content: selection.content,
+      pinned: true,
+    });
+    addLocalMessage(activeConversationId, {
+      type: "user_message",
+      sender: "user",
+      content: `@${agent.id} 请基于我从 ${selection.filename} 选中的内容继续处理${selection.detail ? `（${selection.detail}）` : ""}：\n\n${quoteSelection(selection.content)}`,
+      mentions: [agent.id],
+      payload: {
+        contextAction: "selection-handoff",
+        artifactId: selection.artifactId,
+        filename: selection.filename,
+        sourceLabel: selection.sourceLabel,
+        selection: selection.content,
+      },
+    });
+    addLocalMessage(activeConversationId, {
+      type: "agent_message",
+      sender: agent.sender,
+      senderId: agent.id,
+      content: `${agent.label} 已接收来自 ${selection.filename} 的选区，并已把它锁定到上下文中。`,
+      payload: {
+        contextAction: "selection-accepted",
+        artifactId: selection.artifactId,
+      },
+    });
+  };
+
+  return (
+    <div
+      className="mb-2 rounded-lg p-3"
+      style={{
+        background: selection ? "rgba(23, 78, 166, 0.05)" : "var(--surface-low)",
+        border: `1px solid ${selection ? "rgba(23, 78, 166, 0.14)" : "var(--border)"}`,
+      }}
+    >
+      {selection ? (
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-bold" style={{ color: "#174ea6" }}>{selection.sourceLabel}</p>
+            <p className="mt-1 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>
+              {selection.content}
+            </p>
+            <p className="mt-1 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+              {selection.content.length} 字符{selection.detail ? ` · ${selection.detail}` : ""}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-col gap-1.5">
+            <div className="flex gap-1">
+              {AGENT_OPTIONS.map((agent) => (
+                <button
+                  key={agent.id}
+                  type="button"
+                  onClick={() => handoffSelection(agent.id)}
+                  disabled={!activeConversationId}
+                  className="rounded-md px-2 py-1 text-[10px] font-semibold"
+                  style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid rgba(23, 78, 166, 0.16)" }}
+                >
+                  {agent.label}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={onClear} className="self-end rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+              清除选区
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-xs" style={{ color: "var(--fg-tertiary)" }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 4h16v5H4z" />
+            <path d="M4 15h7v5H4z" />
+            <path d="M15 15h5v5h-5z" />
+          </svg>
+          {emptyText}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: Message[] }) {
   const activeConversationId = useChatStore((state) => state.activeConversationId);
   const setCurrentPreview = useChatStore((state) => state.setCurrentPreview);
   const createArtifactVersion = useWorkspaceStore((state) => state.createArtifactVersion);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [selectedCode, setSelectedCode] = useState<SelectionDraft | null>(null);
   const items = extractCodeItems(artifacts, messages);
   const activeItem = items.find((item) => item.id === (activeId ?? items[0]?.id));
+  const visibleSelectedCode = selectedCode?.artifactId === activeItem?.artifactId ? selectedCode : null;
 
   const askAgent = (artifactId: string, content: string) => {
     if (!activeConversationId) return;
@@ -599,6 +720,35 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
     }
   };
 
+  const handleCodeEditorMount: OnMount = (editor) => {
+    const syncSelection = () => {
+      const selection = editor.getSelection();
+      const model = editor.getModel();
+      if (!activeItem || !selection || !model || selection.isEmpty()) {
+        setSelectedCode(null);
+        return;
+      }
+
+      const content = model.getValueInRange(selection).trim();
+      if (content.length < 4) {
+        setSelectedCode(null);
+        return;
+      }
+
+      const detail = `L${selection.startLineNumber}-${selection.endLineNumber}`;
+      setSelectedCode({
+        artifactId: activeItem.artifactId,
+        filename: activeItem.filename,
+        sourceLabel: `代码选区 · ${activeItem.filename}`,
+        content,
+        detail,
+      });
+    };
+
+    syncSelection();
+    editor.onDidChangeCursorSelection(syncSelection);
+  };
+
   return (
     <div className="flex h-full min-h-[560px] flex-col">
       <SectionHeader title="代码编辑" desc="支持查看、局部编辑、保存新版本，并将修改交给 Agent 继续处理。" />
@@ -619,6 +769,11 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
           </button>
         ))}
       </div>
+      <SelectionHandoffBar
+        selection={visibleSelectedCode}
+        emptyText="在编辑器里拖选代码行后，可直接交给 PMO、Codex 或 UX Reviewer。"
+        onClear={() => setSelectedCode(null)}
+      />
       <div className="overflow-hidden rounded-lg" style={{ border: "1px solid var(--border)", background: "#1e1e1e" }}>
         <div className="flex h-9 items-center justify-between gap-2 px-3" style={{ background: "#2b2b2b", borderBottom: "1px solid #3b3b3b" }}>
           <div className="min-w-0">
@@ -639,11 +794,13 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
         </div>
         <div style={{ height: 420 }}>
           <MonacoEditor
+            key={activeItem.id}
             height="100%"
             language={activeItem.language}
             theme="vs-dark"
             value={value}
             onChange={(next) => setDrafts((prev) => ({ ...prev, [activeItem.id]: next ?? "" }))}
+            onMount={handleCodeEditorMount}
             options={{
               minimap: { enabled: false },
               fontSize: 12,
@@ -679,6 +836,8 @@ function findPreviewArtifact(artifacts: Artifact[]) {
 
 function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
   const currentPreview = useChatStore((state) => state.currentPreview);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [selectedPreview, setSelectedPreview] = useState<SelectionDraft | null>(null);
   const previewArtifact = currentPreview
     ? {
         artifact: {
@@ -694,6 +853,35 @@ function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
       }
     : null;
   const item = previewArtifact ?? findPreviewArtifact(artifacts);
+  const visibleSelectedPreview = selectedPreview?.artifactId === item?.artifact.id ? selectedPreview : null;
+
+  const capturePreviewSelection = () => {
+    if (!item) return;
+    try {
+      const content = iframeRef.current?.contentWindow?.getSelection()?.toString().trim() ?? "";
+      if (content.length < 4) {
+        setSelectedPreview(null);
+        return;
+      }
+
+      setSelectedPreview({
+        artifactId: item.artifact.id,
+        filename: item.artifact.filename || item.artifact.type,
+        sourceLabel: `${item.type === "html" ? "页面选区" : "文档选区"} · ${item.artifact.filename || item.artifact.type}`,
+        content,
+        detail: currentPreview ? "临时预览" : item.artifact.version ? `v${item.artifact.version}` : "当前版本",
+      });
+    } catch {
+      setSelectedPreview(null);
+    }
+  };
+
+  const handlePreviewLoad = () => {
+    const doc = iframeRef.current?.contentDocument;
+    doc?.addEventListener("mouseup", capturePreviewSelection);
+    doc?.addEventListener("keyup", capturePreviewSelection);
+  };
+
   if (!item) {
     return <EmptyState title="暂无预览" desc="HTML、文档或部署链接生成后会在这里渲染。" mascot="search" />;
   }
@@ -722,9 +910,16 @@ function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
           </a>
         )}
       </div>
+      <SelectionHandoffBar
+        selection={visibleSelectedPreview}
+        emptyText={srcDoc ? "在预览中选中文本后，可直接交给指定 Agent 继续修改或审查。" : "外部链接预览受浏览器安全限制，可在新窗口打开后复制片段加入上下文。"}
+        onClear={() => setSelectedPreview(null)}
+      />
       <iframe
+        ref={iframeRef}
         src={src}
         srcDoc={srcDoc}
+        onLoad={handlePreviewLoad}
         className="min-h-0 flex-1 rounded-lg"
         style={{ width: "100%", border: "1px solid var(--border)", background: "#fff" }}
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
