@@ -55,6 +55,28 @@ class VercelProvider implements IDeployProvider {
   readonly id = "vercel";
   readonly name = "Vercel";
 
+  private normalizeProjectName(name: string): string {
+    const normalized = name
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 80);
+    return normalized || "agenthub-deploy";
+  }
+
+  private withTeamId(url: string, teamId?: string): string {
+    if (!teamId) return url;
+    const next = new URL(url);
+    next.searchParams.set("teamId", teamId);
+    return next.toString();
+  }
+
+  private formatUrl(url?: string): string | undefined {
+    if (!url) return undefined;
+    return /^https?:\/\//i.test(url) ? url : `https://${url}`;
+  }
+
   async deploy(
     deployId: string,
     artifacts: DeployArtifact[],
@@ -77,19 +99,23 @@ class VercelProvider implements IDeployProvider {
         "Content-Type": "application/json",
       };
 
+      const files = artifacts.map((artifact) => ({
+        file: artifact.path.replace(/\\/g, "/").replace(/^\/+/, "") || "index.html",
+        data: artifact.content,
+      }));
+
       const body: Record<string, unknown> = {
-        name: config.projectName || "agenthub-deploy",
+        name: this.normalizeProjectName(config.projectName || "agenthub-deploy"),
         target: "production",
-        projectSettings: {
-          framework: config.framework || "static",
-        },
+        files,
       };
 
-      if (config.vercelTeamId) {
-        body.teamId = config.vercelTeamId;
+      if (config.framework && config.framework !== "static") {
+        body.projectSettings = { framework: config.framework };
       }
 
-      const createRes = await fetch("https://api.vercel.com/v13/deployments", {
+      const createUrl = this.withTeamId("https://api.vercel.com/v13/deployments", config.vercelTeamId);
+      const createRes = await fetch(createUrl, {
         method: "POST",
         headers,
         body: JSON.stringify(body),
@@ -100,50 +126,36 @@ class VercelProvider implements IDeployProvider {
         throw new Error(`Vercel API 错误: ${createRes.status} - ${errText}`);
       }
 
-      const deployment = await createRes.json() as { id: string; url?: string; alias?: string[] };
+      const deployment = await createRes.json() as { id: string; url?: string; alias?: string[]; readyState?: string; state?: string; status?: string };
       onProgress(30, `部署已创建: ${deployment.id}`);
       logs.push(`部署 ID: ${deployment.id}`);
-
-      const totalFiles = artifacts.length;
-      for (let i = 0; i < artifacts.length; i++) {
-        const artifact = artifacts[i];
-        const progress = 30 + Math.round((i / totalFiles) * 40);
-        onProgress(progress, `上传文件: ${artifact.path}`);
-        logs.push(`上传: ${artifact.path}`);
-
-        const fileRes = await fetch(
-          `https://api.vercel.com/v13/deployments/${deployment.id}/files`,
-          {
-            method: "POST",
-            headers: { ...headers },
-            body: JSON.stringify({ file: artifact.path, data: artifact.content }),
-          }
-        );
-
-        if (!fileRes.ok) {
-          logs.push(`文件上传警告: ${artifact.path} - ${fileRes.status}`);
-        }
-      }
+      logs.push(`已提交 ${files.length} 个文件`);
 
       onProgress(80, "等待部署完成...");
       logs.push("等待部署完成...");
 
-      let retries = 30;
+      let retries = Number(process.env.VERCEL_MAX_POLLS ?? 30);
+      const pollIntervalMs = Number(process.env.VERCEL_POLL_INTERVAL_MS ?? 2000);
       while (retries > 0) {
-        await new Promise((r) => setTimeout(r, 2000));
+        await new Promise((r) => setTimeout(r, pollIntervalMs));
         const statusRes = await fetch(
-          `https://api.vercel.com/v13/deployments/${deployment.id}`,
+          this.withTeamId(`https://api.vercel.com/v13/deployments/${deployment.id}`, config.vercelTeamId),
           { headers }
         );
 
         if (statusRes.ok) {
           const status = await statusRes.json() as {
+            readyState?: string;
             state: string;
+            status?: string;
             alias?: string[];
             url?: string;
+            errorMessage?: string;
           };
-          if (status.state === "READY") {
-            const url = `https://${status.alias?.[0] ?? status.url ?? deployment.url ?? "unknown.vercel.app"}`;
+          const readyState = status.readyState ?? status.state ?? status.status;
+          logs.push(`Vercel 状态: ${readyState ?? "UNKNOWN"}`);
+          if (readyState === "READY") {
+            const url = this.formatUrl(status.alias?.[0] ?? status.url ?? deployment.url) ?? "https://unknown.vercel.app";
             onProgress(100, `部署成功: ${url}`);
             logs.push(`部署成功: ${url}`);
             return {
@@ -154,8 +166,8 @@ class VercelProvider implements IDeployProvider {
               logs,
             };
           }
-          if (status.state === "ERROR") {
-            throw new Error("Vercel 部署状态错误");
+          if (readyState === "ERROR" || readyState === "CANCELED") {
+            throw new Error(status.errorMessage || `Vercel 部署状态: ${readyState}`);
           }
         }
         retries--;

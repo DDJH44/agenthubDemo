@@ -14,6 +14,17 @@ export function getGlobalSend(): (msg: WSClientMessage) => void {
   return _globalSend ?? (() => { console.warn("[WS] No global send registered"); });
 }
 
+function getDefaultWsUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_WS_URL;
+  if (configured) return configured;
+
+  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const host = window.location.port === "3000"
+    ? `${window.location.hostname}:3002`
+    : window.location.host;
+  return `${protocol}://${host}/api/ws`;
+}
+
 export function createAgentSocket(serverUrl?: string, token?: string) {
   if (typeof window === "undefined") {
     const noop = () => {};
@@ -25,7 +36,7 @@ export function createAgentSocket(serverUrl?: string, token?: string) {
       onReady: (_cb: () => void) => {},
     };
   }
-  const url = serverUrl ?? `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/api/ws`;
+  const url = serverUrl ?? getDefaultWsUrl();
   const ws = new WebSocket(url);
   const handlers: WSEventHandler[] = [];
   let readyCallback: (() => void) | null = null;

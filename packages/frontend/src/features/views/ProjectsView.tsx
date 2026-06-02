@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { useChatStore } from "@/stores/chat-store";
 import { useNavigationStore } from "@/stores/navigation-store";
-import { useWebSocket } from "@/hooks/useWebSocket";
+import { getGlobalSend } from "@/lib/ws-client";
 
 export function ProjectsView() {
   const { conversations } = useChatStore();
@@ -11,7 +11,6 @@ export function ProjectsView() {
   const [filter, setFilter] = useState("all");
   const [showCreate, setShowCreate] = useState(false);
   const [newTitle, setNewTitle] = useState("");
-  const { send } = useWebSocket();
 
   const handleProjectClick = useCallback((convId: string) => {
     useChatStore.getState().setActiveConversation(convId);
@@ -22,10 +21,10 @@ export function ProjectsView() {
 
   const handleCreateProject = useCallback(() => {
     if (!newTitle.trim()) return;
-    send({ type: "conversation:create", title: newTitle.trim(), convType: "group", workspaceId: "default" });
+    getGlobalSend()({ type: "conversation:create", title: newTitle.trim(), convType: "group", workspaceId: "default" });
     setNewTitle("");
     setShowCreate(false);
-  }, [newTitle, send]);
+  }, [newTitle]);
 
   const filtered = filter === "all"
     ? groupConvs

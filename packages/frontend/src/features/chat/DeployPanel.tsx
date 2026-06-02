@@ -131,6 +131,7 @@ export function DeployPanel() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   const activeConversationId = useChatStore((state) => state.activeConversationId);
+  const connected = useChatStore((state) => state.connected);
   const addTaskAssignment = useChatStore((state) => state.addTaskAssignment);
   const {
     artifacts,
@@ -159,6 +160,16 @@ export function DeployPanel() {
   const submitDeploy = () => {
     if (!activeConversationId) {
       setStatusMessage("请先选择一个会话。");
+      return;
+    }
+    if (!connected) {
+      setStatusMessage("部署服务未连接，请确认后端服务和 WebSocket 已启动。");
+      setDeployStatus("failed", undefined, {
+        progress: 100,
+        providerId: selectedPlatform,
+        logs: ["部署请求未发送：WebSocket 未连接。"],
+        error: "部署服务未连接",
+      });
       return;
     }
     if (!deployableArtifact || deployFiles.length === 0) {

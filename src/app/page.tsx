@@ -178,7 +178,7 @@ export default function Page() {
   const chat = useChatStore();
   const { activeNav, setActiveNav, sidebarCollapsed } = useNavigationStore();
   const { pinConversation, unpinConversation, archiveConversation, unarchiveConversation, deleteConversation, setShowArchived, showArchived } = useChatStore();
-  const ws = useWebSocket("ws://localhost:3002/api/ws", isAuthenticated && !authLoading);
+  const ws = useWebSocket(undefined, isAuthenticated && !authLoading);
   const [rightSize, setRightSize] = useState(300);
   const [convListWidth, setConvListWidth] = useState(320);
   const mountedRef = useRef(false);
