@@ -5,6 +5,7 @@ import { useT } from "@/hooks/useT";
 import { useNavigationStore, type NavKey } from "@/stores/navigation-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
+import { UserIcon } from "@/components/ui";
 
 const NAV_ITEMS: { key: NavKey; icon: string; section: string }[] = [
   { key: "dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", section: "main" },
@@ -111,7 +112,6 @@ function CollapsedNav() {
   const user = useAuthStore((state) => state.user);
   const t = useT();
   const openCommandPalette = () => window.dispatchEvent(new CustomEvent("command-palette:open"));
-  const initial = (user?.name ?? "U").charAt(0).toUpperCase();
 
   return (
     <div className="flex h-full w-12 flex-col items-center gap-1 py-3">
@@ -139,13 +139,17 @@ function CollapsedNav() {
           <CollapsedIconItem key={item.key} item={item} activeNav={activeNav} setActiveNav={setActiveNav} t={t} />
         ))}
       </div>
-      <div
-        className="mt-2 grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white"
-        style={{ background: "var(--accent-gradient)", boxShadow: "0 6px 14px rgba(68,86,223,0.18)" }}
+      <UserIcon
+        className="mt-2 grid h-8 w-8 shrink-0 place-items-center rounded-full transition-colors hover:bg-[var(--surface-white)]"
+        size={16}
+        style={{
+          background: "var(--surface-white)",
+          border: "1px solid var(--accent-border)",
+          boxShadow: "0 6px 14px rgba(68,86,223,0.12)",
+          color: "var(--accent)",
+        }}
         title={user?.name ?? "用户"}
-      >
-        {initial}
-      </div>
+      />
     </div>
   );
 }
@@ -168,7 +172,6 @@ function ExpandedNav({
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const openCommandPalette = () => window.dispatchEvent(new CustomEvent("command-palette:open"));
-  const initial = (user?.name ?? "U").charAt(0).toUpperCase();
 
   return (
     <div className="flex h-full flex-col" style={{ width: "100%" }}>
@@ -246,12 +249,16 @@ function ExpandedNav({
       <div className="px-3 py-3" style={{ borderTop: "1px solid var(--divider)" }}>
         <div className="rounded-xl p-2.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
           <div className="flex items-center gap-2.5">
-            <div
-              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white"
-              style={{ background: "var(--accent-gradient)" }}
-            >
-              {initial}
-            </div>
+            <UserIcon
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full transition-colors hover:bg-[var(--accent-subtle)]"
+              size={17}
+              style={{
+                background: "var(--accent-subtle)",
+                border: "1px solid var(--accent-border)",
+                color: "var(--accent)",
+              }}
+              title={user?.name ?? "用户"}
+            />
             <div className="min-w-0 flex-1">
               <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{user?.name ?? "用户"}</p>
               <div className="mt-1 flex items-center gap-1.5">
