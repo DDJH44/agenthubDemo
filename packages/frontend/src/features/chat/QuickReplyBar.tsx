@@ -47,12 +47,13 @@ export function QuickReplyBar({
   contextCount = 0,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const isGroup = conversationMode === "group";
 
   const fitTextarea = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = "36px";
-    el.style.height = `${Math.min(132, Math.max(36, el.scrollHeight))}px`;
+    el.style.height = "38px";
+    el.style.height = `${Math.min(132, Math.max(38, el.scrollHeight))}px`;
   }, []);
 
   const handleChange = useCallback((nextValue: string) => {
@@ -99,103 +100,117 @@ export function QuickReplyBar({
   };
 
   return (
-    <div className="flex flex-col" style={{ background: "var(--surface-white)" }}>
-      <div className="flex min-h-8 items-center justify-between gap-3 px-3 pt-2">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="border-b-2 px-0.5 pb-1 text-xs font-bold" style={{ color: "var(--accent)", borderColor: "var(--accent)" }}>
-            回复
-          </span>
-          {conversationMode === "group" && (
-            <span className="truncate text-[11px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>
-              群聊协作
+    <div className="px-3 py-2" style={{ background: "var(--surface-white)" }}>
+      <div className="overflow-hidden rounded-xl" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
+        <div className="flex min-h-9 items-center justify-between gap-3 px-2.5 pt-2">
+          <div className="flex min-w-0 items-center gap-1 rounded-lg p-0.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+            <span className="inline-flex h-6 items-center rounded-md px-2 text-[11px] font-bold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
+              回复
             </span>
-          )}
+            {isGroup && (
+              <span className="hidden h-6 items-center rounded-md px-2 text-[11px] font-semibold sm:inline-flex" style={{ color: "var(--fg-tertiary)" }}>
+                群聊协作
+              </span>
+            )}
+          </div>
+
+          <div className="flex min-w-0 shrink-0 items-center gap-1.5">
+            {contextCount > 0 && (
+              <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+                上下文 {contextCount}
+              </span>
+            )}
+            {isGroup && (
+              <button
+                type="button"
+                onClick={handleMentionClick}
+                className="hidden rounded-full px-2 py-1 text-[10px] font-semibold transition-colors hover:bg-[var(--accent-subtle)] sm:inline-flex"
+                style={{ color: "var(--accent)", border: "1px solid var(--accent-border)" }}
+              >
+                @Agent
+              </button>
+            )}
+          </div>
         </div>
-        {conversationMode === "group" && (
-          <span className="hidden shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold sm:inline-flex" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
-            @Agent 分配
-          </span>
-        )}
-      </div>
 
-      <div className="flex items-end gap-2 px-3 py-2.5">
-        <button
-          type="button"
-          onClick={handleMentionClick}
-          disabled={disabled}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
-          style={{ color: "var(--fg-tertiary)" }}
-          title="提及 Agent"
-        >
-          <Icon path="M16 8a6 6 0 10-2 4.47V14a2 2 0 104 0v-2a6 6 0 10-6 6" />
-        </button>
+        <div className="flex items-end gap-2 px-2.5 py-2">
+          <button
+            type="button"
+            onClick={handleMentionClick}
+            disabled={disabled}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)] disabled:opacity-40"
+            style={{ color: "var(--fg-tertiary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+            title="提及 Agent"
+          >
+            <Icon path="M16 8a6 6 0 10-2 4.47V14a2 2 0 104 0v-2a6 6 0 10-6 6" />
+          </button>
 
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(event) => handleChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              submit();
-            }
-          }}
-          placeholder={placeholder ?? (conversationMode === "group" ? "@Codex 处理这段代码，或直接输入任务" : "输入消息")}
-          disabled={disabled}
-          rows={1}
-          className="custom-scrollbar min-h-9 flex-1 resize-none rounded-lg px-3 py-2 text-sm outline-none transition-colors focus:bg-[var(--surface-white)]"
-          style={{ color: "var(--fg-primary)", background: "#f8faff", maxHeight: 132, lineHeight: 1.5, border: "1px solid var(--border)" }}
-        />
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(event) => handleChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                submit();
+              }
+            }}
+            placeholder={placeholder ?? (isGroup ? "@Codex 处理这段代码，或直接输入任务" : "输入消息")}
+            disabled={disabled}
+            rows={1}
+            className="custom-scrollbar min-h-10 flex-1 resize-none rounded-lg px-3 py-2 text-sm outline-none transition-colors focus:bg-[var(--surface-white)]"
+            style={{ color: "var(--fg-primary)", background: "var(--surface-white)", maxHeight: 132, lineHeight: 1.5, border: "1px solid var(--border)" }}
+          />
 
-        <button
-          type="button"
-          onClick={onAttach}
-          disabled={disabled}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
-          style={{ color: "var(--fg-tertiary)" }}
-          title="添加附件"
-        >
-          <Icon path="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-        </button>
+          <button
+            type="button"
+            onClick={onAttach}
+            disabled={disabled}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)] disabled:opacity-40"
+            style={{ color: "var(--fg-tertiary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+            title="添加附件"
+          >
+            <Icon path="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+          </button>
 
-        <button
-          type="button"
-          onClick={submit}
-          disabled={disabled || isSending || !value.trim()}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg font-semibold transition-transform active:scale-95"
-          style={{
-            background: disabled || isSending || !value.trim() ? "var(--surface-low)" : "var(--accent)",
-            color: disabled || isSending || !value.trim() ? "var(--fg-disabled)" : "#fff",
-          }}
-          title="发送"
-        >
-          {isSending ? (
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin" aria-hidden="true">
-              <path d="M21 12a9 9 0 11-6.219-8.56" />
-            </svg>
-          ) : (
-            <Icon path="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
-          )}
-        </button>
-      </div>
-
-      <div className="flex min-h-7 items-center justify-between gap-3 px-3 pb-2">
-        <div className="flex min-w-0 items-center gap-1.5">
-          {contextCount > 0 && (
-            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
-              上下文 {contextCount}
-            </span>
-          )}
-          {disabled && (
-            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--warning)", background: "var(--warning-subtle)" }}>
-              未连接
-            </span>
-          )}
+          <button
+            type="button"
+            onClick={submit}
+            disabled={disabled || isSending || !value.trim()}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg font-semibold transition-transform active:scale-95"
+            style={{
+              background: disabled || isSending || !value.trim() ? "var(--surface-white)" : "var(--accent)",
+              color: disabled || isSending || !value.trim() ? "var(--fg-disabled)" : "#fff",
+              border: `1px solid ${disabled || isSending || !value.trim() ? "var(--border)" : "var(--accent)"}`,
+              boxShadow: disabled || isSending || !value.trim() ? "none" : "var(--accent-glow)",
+            }}
+            title="发送"
+          >
+            {isSending ? (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="animate-spin" aria-hidden="true">
+                <path d="M21 12a9 9 0 11-6.219-8.56" />
+              </svg>
+            ) : (
+              <Icon path="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" />
+            )}
+          </button>
         </div>
-        {value.length > 0 && (
-          <span className="shrink-0 text-[10px]" style={{ color: value.length > 1800 ? "var(--warning)" : "var(--fg-tertiary)" }}>
-            {value.length}
-          </span>
+
+        {(disabled || value.length > 0) && (
+          <div className="flex min-h-7 items-center justify-between gap-3 px-3 pb-2">
+            <div className="flex min-w-0 items-center gap-1.5">
+              {disabled && (
+                <span className="rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: "var(--warning)", background: "var(--warning-subtle)" }}>
+                  未连接
+                </span>
+              )}
+            </div>
+            {value.length > 0 && (
+              <span className="shrink-0 text-[10px]" style={{ color: value.length > 1800 ? "var(--warning)" : "var(--fg-tertiary)" }}>
+                {value.length}
+              </span>
+            )}
+          </div>
         )}
       </div>
     </div>

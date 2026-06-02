@@ -51,6 +51,7 @@ export function ConversationNavBar() {
   const controllerAgent = participantAgents.find(({ meta }) => meta.id === "pmo")?.meta ?? primaryAgent;
   const statusLabel = contextData.messageCount > 0 ? "协作中" : "待启动";
   const statusColor = contextData.messageCount > 0 ? "var(--success)" : "var(--fg-tertiary)";
+  const modeLabel = isGroup ? "群聊模式" : "单聊模式";
 
   const saveTitle = (nextTitle: string) => {
     const trimmed = nextTitle.trim();
@@ -64,11 +65,17 @@ export function ConversationNavBar() {
   };
 
   return (
-    <div className="relative flex h-14 shrink-0 items-center px-4" style={{ background: "var(--surface-white)", borderBottom: "1px solid var(--divider)" }}>
+    <div
+      className="relative flex min-h-16 shrink-0 items-center px-4 py-2"
+      style={{ background: "rgba(255, 255, 255, 0.94)", borderBottom: "1px solid var(--divider)" }}
+    >
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <div className="relative grid h-9 w-9 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white" style={{ background: isGroup ? "var(--accent)" : primaryAgent.color }}>
+        <div
+          className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[11px] font-bold text-white"
+          style={{ background: isGroup ? "var(--accent)" : primaryAgent.color, boxShadow: "0 8px 22px rgba(37, 56, 120, 0.12)" }}
+        >
           {isGroup ? "群" : primaryAgent.badge.slice(0, 3)}
-          <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: "var(--success)", border: "2px solid var(--surface-white)" }} />
+          <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: statusColor, border: "2px solid var(--surface-white)" }} />
         </div>
 
         <div className="min-w-0 flex-1">
@@ -84,7 +91,7 @@ export function ConversationNavBar() {
                   if (event.key === "Escape") setEditingTitle(false);
                 }}
                 className="rounded-lg px-2 py-1 text-sm font-bold outline-none"
-                style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid rgba(23, 78, 166, 0.18)", width: 220 }}
+                style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--accent-border)", width: 260, maxWidth: "100%" }}
               />
             ) : (
               <button
@@ -93,7 +100,7 @@ export function ConversationNavBar() {
                 className="group flex min-w-0 items-center gap-1 rounded-lg px-1 py-0.5 transition-colors hover:bg-[var(--surface-low)]"
                 title="修改会话名称"
               >
-                <h2 className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)", maxWidth: 320 }}>{title}</h2>
+                <h2 className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)", maxWidth: 360 }}>{title}</h2>
                 <span className="opacity-0 transition-opacity group-hover:opacity-70" style={{ color: "var(--fg-tertiary)" }}>
                   <Icon path="M12 20h9M16.5 3.5a2.1 2.1 0 113 3L7 19l-4 1 1-4 12.5-12.5z" size={12} />
                 </span>
@@ -101,50 +108,57 @@ export function ConversationNavBar() {
             )}
           </div>
 
-          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden">
-            <span className="shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: isGroup ? "var(--accent)" : "#0f766e", background: isGroup ? "var(--accent-subtle)" : "rgba(15, 118, 110, 0.08)" }}>
-              {isGroup ? "群聊模式" : "单聊模式"}
+          <div className="mt-1 flex min-w-0 items-center gap-1.5 overflow-hidden">
+            <span
+              className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+              style={{ color: isGroup ? "var(--accent)" : "#0f766e", background: isGroup ? "var(--accent-subtle)" : "rgba(15, 118, 110, 0.08)", border: "1px solid var(--border)" }}
+            >
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: isGroup ? "var(--accent)" : "#0f766e" }} />
+              {modeLabel}
             </span>
-            {isGroup && (
+
+            {isGroup ? (
               <button
                 type="button"
                 onClick={() => setShowMembers((value) => !value)}
-                className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px] transition-colors hover:bg-[var(--surface-low)]"
-                style={{ color: "var(--fg-tertiary)" }}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]"
+                style={{ color: "var(--fg-tertiary)", border: "1px solid var(--border)" }}
               >
                 <Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87" size={10} />
                 {participants.length} 成员
               </button>
-            )}
-            {!isGroup && (
+            ) : (
               <>
-                <span className="shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)" }}>
+                <span className="shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
                   {primaryAgent.provider}
                 </span>
                 {primaryAgent.capabilities.slice(0, 2).map((capability) => (
-                  <span key={capability} className="shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
+                  <span key={capability} className="shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
                     {capability}
                   </span>
                 ))}
               </>
             )}
+
+            <span className="hidden min-w-0 truncate text-[10px] sm:inline" style={{ color: "var(--fg-tertiary)" }}>
+              {contextData.messageCount} 条消息
+            </span>
           </div>
         </div>
       </div>
 
       <div className="flex items-center gap-2">
-        <div className="hidden h-8 shrink-0 items-center gap-2 rounded-lg px-2 2xl:flex" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
-          <span className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white" style={{ background: controllerAgent.color }}>
+        <div className="hidden h-9 shrink-0 items-center gap-2 rounded-xl px-2 xl:flex" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
+          <span className="grid h-6 w-6 place-items-center rounded-lg text-[9px] font-bold text-white" style={{ background: controllerAgent.color }}>
             {controllerAgent.badge.slice(0, 2)}
           </span>
           <span className="min-w-0 leading-tight">
             <span className="block text-[9px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>主控</span>
-            <span className="block max-w-[118px] truncate text-[11px] font-semibold" style={{ color: "var(--fg-primary)" }}>{controllerAgent.name}</span>
+            <span className="block max-w-[120px] truncate text-[11px] font-semibold" style={{ color: "var(--fg-primary)" }}>{controllerAgent.name}</span>
           </span>
-          <Icon path="M6 9l6 6 6-6" size={12} />
         </div>
 
-        <div className="hidden h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold xl:flex" style={{ color: statusColor, background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
+        <div className="hidden h-9 shrink-0 items-center gap-1.5 rounded-xl px-2 text-[11px] font-semibold lg:flex" style={{ color: statusColor, background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
           <span className="h-1.5 w-1.5 rounded-full" style={{ background: statusColor }} />
           {statusLabel}
         </div>
@@ -158,25 +172,25 @@ export function ConversationNavBar() {
             {memberAvatars.map((participant, index) => {
               const agent = getAgentMeta(participant.name, userAgents);
               return (
-              <div
-                key={participant.id}
-                className="grid h-8 w-8 place-items-center rounded-full border-2 text-[10px] font-bold text-white"
-                style={{ background: agent.color, borderColor: "var(--surface-white)", zIndex: memberAvatars.length - index }}
-                title={`${agent.name} · ${agent.capabilities.join(" / ")}`}
-              >
-                {agent.badge.slice(0, 2)}
-              </div>
+                <div
+                  key={participant.id}
+                  className="grid h-8 w-8 place-items-center rounded-lg border-2 text-[10px] font-bold text-white"
+                  style={{ background: agent.color, borderColor: "var(--surface-white)", zIndex: memberAvatars.length - index }}
+                  title={`${agent.name} · ${agent.capabilities.join(" / ")}`}
+                >
+                  {agent.badge.slice(0, 2)}
+                </div>
               );
             })}
             {extraMembers > 0 && (
-              <div className="grid h-8 w-8 place-items-center rounded-full border-2 text-[10px] font-bold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", borderColor: "var(--surface-white)" }}>
+              <div className="grid h-8 w-8 place-items-center rounded-lg border-2 text-[10px] font-bold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", borderColor: "var(--surface-white)" }}>
                 +{extraMembers}
               </div>
             )}
           </div>
         )}
 
-        <button type="button" className="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }} title="更多操作">
+        <button type="button" className="grid h-9 w-9 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }} title="更多操作">
           <Icon path="M12 13a1 1 0 100-2 1 1 0 000 2zM19 13a1 1 0 100-2 1 1 0 000 2zM5 13a1 1 0 100-2 1 1 0 000 2z" size={16} />
         </button>
       </div>
@@ -184,21 +198,21 @@ export function ConversationNavBar() {
       {showMembers && isGroup && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setShowMembers(false)} />
-          <div className="absolute right-4 top-14 z-50 w-72 overflow-hidden rounded-lg" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-lg)" }}>
+          <div className="absolute right-4 top-16 z-50 w-72 overflow-hidden rounded-xl" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-lg)" }}>
             <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
               <h3 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>群成员</h3>
               <p className="mt-0.5 text-xs" style={{ color: "var(--fg-tertiary)" }}>{participants.length} 个参与者</p>
             </div>
             <div className="max-h-72 overflow-y-auto p-2 custom-scrollbar">
               {participantAgents.map(({ participant, meta }) => (
-                <div key={participant.id} className="flex items-center gap-3 rounded-md p-2 hover:bg-[var(--surface-low)]">
-                  <div className="grid h-8 w-8 place-items-center rounded-md text-[10px] font-bold text-white" style={{ background: meta.color }}>
+                <div key={participant.id} className="flex items-center gap-3 rounded-lg p-2 hover:bg-[var(--surface-low)]">
+                  <div className="grid h-8 w-8 place-items-center rounded-lg text-[10px] font-bold text-white" style={{ background: meta.color }}>
                     {meta.badge.slice(0, 3)}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <p className="truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{meta.name}</p>
-                      <span className="shrink-0 rounded-sm px-1 py-0.5 text-[10px]" style={{ color: meta.isCustom ? "#a50e0e" : "#174ea6", background: meta.isCustom ? "var(--danger-subtle)" : "rgba(23, 78, 166, 0.07)" }}>
+                      <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px]" style={{ color: meta.isCustom ? "var(--danger)" : "var(--accent)", background: meta.isCustom ? "var(--danger-subtle)" : "var(--accent-subtle)" }}>
                         {meta.isCustom ? "自建" : meta.provider}
                       </span>
                     </div>
