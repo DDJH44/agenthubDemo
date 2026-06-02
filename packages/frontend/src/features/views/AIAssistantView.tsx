@@ -309,6 +309,64 @@ function extractDocTitle(content: string, fallback: string): string {
   return fallback.length > 40 ? fallback.slice(0, 40) + "..." : fallback;
 }
 
+function stripMarkdownInline(text: string): string {
+  return text
+    .replace(/^#{1,6}\s*/, "")
+    .replace(/^[-*+]\s+/, "")
+    .replace(/^\d+\.\s+/, "")
+    .replace(/\*\*(.*?)\*\*/g, "$1")
+    .replace(/__(.*?)__/g, "$1")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/\[(.*?)\]\((.*?)\)/g, "$1")
+    .replace(/[：:]\s*$/, "")
+    .trim();
+}
+
+function shortenHighlight(text: string, maxLength = 42): string {
+  const cleaned = stripMarkdownInline(text).replace(/\s+/g, " ");
+  return cleaned.length > maxLength ? `${cleaned.slice(0, maxLength)}...` : cleaned;
+}
+
+function extractDocumentHighlights(content: string, maxItems = 5): string[] {
+  const genericHeadings = new Set(["目录", "摘要", "概述", "背景", "引言", "结论", "总结", "参考资料", "附录"]);
+  const lines = content.split("\n").map((line) => line.trim()).filter(Boolean);
+  const sections: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!/^#{2,4}\s+/.test(line)) continue;
+
+    const heading = stripMarkdownInline(line);
+    if (!heading || genericHeadings.has(heading)) continue;
+
+    const details: string[] = [];
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      const nextLine = lines[cursor];
+      if (/^#{1,6}\s+/.test(nextLine)) break;
+      const detail = stripMarkdownInline(nextLine);
+      if (detail) details.push(detail);
+      if (details.join("、").length > 64 || details.length >= 2) break;
+    }
+
+    sections.push(shortenHighlight(details.length > 0 ? `${heading}：${details.join("、")}` : heading, 72));
+    if (sections.length >= maxItems) break;
+  }
+
+  const bullets = lines
+    .filter((line) => /^[-*+]\s+/.test(line) || /^\d+\.\s+/.test(line))
+    .map(shortenHighlight)
+    .filter(Boolean);
+
+  const seen = new Set<string>();
+  return [...sections, ...bullets]
+    .filter((item) => {
+      if (seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    })
+    .slice(0, maxItems);
+}
+
 function isDocumentRequest(query: string): boolean {
   const patterns = [
     /生成(一份|一个|一篇)?(文档|报告|手册|方案|指南|PRD|需求|设计文档|技术文档|接口文档|用户手册|白皮书|材料|汇报)/,
@@ -448,29 +506,68 @@ function DocumentCardTrigger({ title, onClick }: {
 }) {
   return (
     <button
+      type="button"
+      data-testid="assistant-document-card"
       onClick={onClick}
-      className="flex items-center gap-2.5 w-full text-left rounded-lg px-3 py-2.5 transition-colors"
-      style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}
-      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-hover)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = "var(--accent-subtle)"; }}
+      className="flex w-full max-w-[320px] items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-low)]"
+      style={{ background: "var(--surface-tinted)", border: "1px solid var(--border-strong)" }}
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" className="shrink-0">
-        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <line x1="16" y1="13" x2="8" y2="13" />
-        <line x1="16" y1="17" x2="8" y2="17" />
-      </svg>
-      <span style={{
-        fontSize: "13px", fontWeight: 500, color: "var(--fg-primary)",
-        flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
-        {title}
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
+        <Icon path="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13h6M9 17h4" size={17} />
       </span>
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-        style={{ color: "var(--fg-tertiary)", flexShrink: 0 }}>
-        <path d="M9 18l6-6-6-6" />
-      </svg>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{title}</span>
+        <span className="mt-1 block text-[10px]" style={{ color: "var(--fg-tertiary)" }}>点击预览 · 可导出 Word / PDF</span>
+      </span>
+      <span aria-hidden="true" className="hidden h-11 w-16 shrink-0 rounded-md px-2 py-1.5 sm:block" style={{ background: "#252321", border: "1px solid rgba(255,255,255,0.08)" }}>
+        <span className="mb-1 block h-1 w-7 rounded-full" style={{ background: "#8c7658" }} />
+        <span className="mb-1 block h-1 w-9 rounded-full" style={{ background: "#8c7658" }} />
+        <span className="block h-1 w-5 rounded-full" style={{ background: "#8c7658" }} />
+      </span>
     </button>
+  );
+}
+
+function DocumentCompletionView({
+  title,
+  content,
+  fileTitle,
+  onPreview,
+}: {
+  title: string;
+  content: string;
+  fileTitle: string;
+  onPreview: () => void;
+}) {
+  const highlights = extractDocumentHighlights(content);
+
+  return (
+    <div className="space-y-3" data-testid="assistant-document-summary">
+      <div>
+        <p className="text-sm font-bold" style={{ color: "var(--fg-primary)", lineHeight: 1.65 }}>
+          {title}已生成，涵盖：
+        </p>
+        {highlights.length > 0 && (
+          <div className="mt-1.5 space-y-1">
+            {highlights.map((item) => (
+              <div key={item} className="flex items-start gap-2 text-sm" style={{ color: "var(--fg-primary)", lineHeight: 1.65 }}>
+                <span className="mt-[0.65em] h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--fg-disabled)" }} />
+                <p className="min-w-0 flex-1 break-words">{item}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <p className="mb-2 text-sm" style={{ color: "var(--fg-primary)" }}>文件在这里：</p>
+        <DocumentCardTrigger title={fileTitle} onClick={onPreview} />
+      </div>
+
+      <p className="text-sm font-semibold" style={{ color: "var(--fg-primary)", lineHeight: 1.65 }}>
+        需要转成 Word/PDF，或补充某个方向的内容，随时说。
+      </p>
+    </div>
   );
 }
 
@@ -791,9 +888,9 @@ export function AIAssistantView() {
       : `请基于这段回复继续展开，给出更具体的下一步：\n\n${message.content.slice(0, 1200)}`);
   };
 
-  const previewDocument = (message: ChatMessage) => {
+  const previewDocument = (message: ChatMessage, titleOverride?: string) => {
     setPreviewDoc({
-      title: extractDocTitle(message.content, "AI 生成文档"),
+      title: titleOverride ?? extractDocTitle(message.content, "AI 生成文档"),
       content: message.content,
       messageId: message.id,
     });
@@ -962,6 +1059,9 @@ export function AIAssistantView() {
                 {messages.map((msg) => {
                   const messageIsDocument = msg.role === "assistant" && isDocument(msg.content);
                   const savedDocument = savedDocIds.has(msg.id);
+                  const savedFile = messageIsDocument ? files.find((file) => file.messageId === msg.id) : undefined;
+                  const documentTitle = messageIsDocument ? extractDocTitle(msg.content, "AI 生成文档") : "";
+                  const documentFileTitle = savedFile?.title ?? documentTitle;
                   return (
                     <motion.div
                       key={msg.id}
@@ -998,7 +1098,12 @@ export function AIAssistantView() {
                           {msg.role === "user" ? (
                             <p style={{ fontSize: "14px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{msg.content}</p>
                           ) : messageIsDocument ? (
-                            <DocumentCardTrigger title={extractDocTitle(msg.content, "AI 生成文档")} onClick={() => previewDocument(msg)} />
+                            <DocumentCompletionView
+                              title={documentTitle}
+                              content={msg.content}
+                              fileTitle={documentFileTitle}
+                              onPreview={() => previewDocument(msg, documentFileTitle)}
+                            />
                           ) : (
                             <div className="coze-prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
                           )}
@@ -1014,7 +1119,7 @@ export function AIAssistantView() {
                           </MessageToolButton>
                           {messageIsDocument && (
                             <>
-                              <MessageToolButton title="预览文档" onClick={() => previewDocument(msg)}>
+                              <MessageToolButton title="预览文档" onClick={() => previewDocument(msg, documentFileTitle)}>
                                 <Icon path="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" size={12} />
                                 预览
                               </MessageToolButton>
