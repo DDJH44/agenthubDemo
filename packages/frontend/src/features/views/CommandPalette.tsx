@@ -58,7 +58,6 @@ export function CommandPalette() {
   const commands = useMemo<CommandItem[]>(() => {
     const navCommands: Array<{ id: string; title: string; nav: NavKey; keywords: string }> = [
       { id: "nav-dashboard", title: "工作台", nav: "dashboard", keywords: "dashboard 首页 控制台" },
-      { id: "nav-acceptance", title: "验收导览", nav: "acceptance", keywords: "acceptance 验收 导览 演示" },
       { id: "nav-chat", title: "会话", nav: "chat", keywords: "chat 对话 群聊 单聊" },
       { id: "nav-agents", title: "Agent 平台", nav: "agents", keywords: "agent codex claude open code" },
       { id: "nav-my-agents", title: "自建 Agent", nav: "my-agents", keywords: "custom agent 自建" },
@@ -76,9 +75,9 @@ export function CommandPalette() {
       })),
       {
         id: "demo-start",
-        title: "启动验收演示",
+        title: "启动演示会话",
         section: "演示",
-        keywords: "demo acceptance start 重置 演示",
+        keywords: "demo start 重置 演示 会话",
         action: () => openDemoTab(),
       },
       {

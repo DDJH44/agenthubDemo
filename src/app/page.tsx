@@ -14,8 +14,9 @@ import { AgentChatPanel } from "../../packages/frontend/src/features/chat/AgentC
 import { RightPanel } from "../../packages/frontend/src/features/chat/RightPanel";
 import { ConversationListView } from "../../packages/frontend/src/features/chat/ConversationListView";
 import { CreateConversationModal } from "../../packages/frontend/src/features/chat/CreateConversationModal";
+import { startAcceptanceDemo } from "../../packages/frontend/src/features/demo/acceptance-demo";
 import {
-  DashboardViewNew, AcceptanceGuideView, AgentsView, TasksView, ProjectsView,
+  DashboardViewNew, AgentsView, TasksView, ProjectsView,
   KnowledgeView, FilesView, AgentMarketView, MyAgentsView,
   McpView, WorkflowsView, SettingsView, HelpView,
   SidebarNav, RightPanelTabs, AIAssistantView, ContactsView, CommandPalette,
@@ -47,11 +48,11 @@ const CHAT_STARTERS = [
 function ChatEmptyState({
   onCreate,
   onPrompt,
-  onOpenAcceptance,
+  onStartDemo,
 }: {
   onCreate: () => void;
   onPrompt: (text: string) => void;
-  onOpenAcceptance: () => void;
+  onStartDemo: () => void;
 }) {
   return (
     <div
@@ -145,11 +146,11 @@ function ChatEmptyState({
             </div>
             <button
               type="button"
-              onClick={onOpenAcceptance}
+              onClick={onStartDemo}
               className="mt-4 h-8 w-full rounded-lg text-xs font-semibold transition-colors hover:bg-[var(--surface-white)]"
               style={{ color: "var(--accent)", border: "1px solid var(--accent-border)" }}
             >
-              查看验收导览
+              打开演示会话
             </button>
           </div>
         </div>
@@ -291,6 +292,12 @@ export default function Page() {
   const handleAssignAgent = useCallback((conversationId: string, agentId: string, content: string) => {
     ws.assignAgent(conversationId, agentId, content);
   }, [ws]);
+
+  const handleStartDemoConversation = useCallback(() => {
+    startAcceptanceDemo();
+    setActiveNav("chat");
+    if (isMobile) setShowMobileConvList(false);
+  }, [isMobile, setActiveNav]);
 
   // 监听会话重命名事件 → 发送 WS 持久化
   useEffect(() => {
@@ -438,7 +445,6 @@ export default function Page() {
         {/* 所有视图保持挂载，用 display 切换，避免 SSE/WS 中断 */}
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden" style={{ minHeight: 0 }}>
           <div style={{ display: activeNav === "dashboard" ? "" : "none", flex: 1, minHeight: 0 }}><DashboardViewNew /></div>
-          <div style={{ display: activeNav === "acceptance" ? "" : "none", flex: 1, minHeight: 0 }}><AcceptanceGuideView /></div>
           <div style={{ display: activeNav === "ai-assistant" ? "" : "none", flex: 1, minHeight: 0 }}><AIAssistantView /></div>
           <div style={{ display: activeNav === "chat" ? "" : "none", flex: 1, minHeight: 0 }}>
             <div className="flex h-full" style={{ minHeight: 0 }}>
@@ -534,7 +540,7 @@ export default function Page() {
                   <ChatEmptyState
                     onCreate={() => setShowCreateModal(true)}
                     onPrompt={handleSend}
-                    onOpenAcceptance={() => setActiveNav("acceptance")}
+                    onStartDemo={handleStartDemoConversation}
                   />
                 )}
               </div>

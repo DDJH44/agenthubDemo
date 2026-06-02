@@ -286,7 +286,7 @@ export function DashboardViewNew() {
               多 Agent 协作项目控制台
             </h1>
             <p className="mt-2" style={{ color: "var(--fg-tertiary)", fontSize: 13, lineHeight: 1.65 }}>
-              聚焦任务拆解、Agent 调度、产物流转和部署状态。首页只保留对演示有用的信息。
+              聚焦任务拆解、Agent 调度、产物流转和部署状态，让复杂协作保持在一个清晰工作台里。
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -297,19 +297,7 @@ export function DashboardViewNew() {
               style={{ background: "#174ea6", boxShadow: "var(--shadow-sm)" }}
             >
               <PlayIcon />
-              启动验收演示
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveNav("acceptance")}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold"
-              style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M9 11l3 3L22 4" />
-                <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
-              </svg>
-              验收导览
+              启动演示会话
             </button>
             <button
               type="button"
@@ -368,9 +356,9 @@ export function DashboardViewNew() {
           <aside className="rounded-lg p-4" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 style={{ color: "var(--fg-primary)", fontSize: 15, fontWeight: 740 }}>课题验收演示</h2>
+                <h2 style={{ color: "var(--fg-primary)", fontSize: 15, fontWeight: 740 }}>协作演示会话</h2>
                 <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.6 }}>
-                  一键注入单聊、群聊、主 Agent 调度、产物和部署状态。
+                  一键注入单聊、群聊、主 Agent 调度、产物和部署状态，便于快速体验完整流程。
                 </p>
               </div>
               <button

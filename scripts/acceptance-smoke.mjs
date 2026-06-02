@@ -5,30 +5,29 @@ const API_URL = process.env.API_URL || "http://localhost:3002";
 const SMOKE_EMAIL = process.env.SMOKE_EMAIL || "acceptance-smoke@agenthub.local";
 const SMOKE_PASSWORD = process.env.SMOKE_PASSWORD || "acceptance-smoke-2026";
 const SELECTORS = {
-  guide: '[data-testid="acceptance-guide"]',
-  reset: '[data-testid="acceptance-reset"]',
-  navAcceptance: '[data-nav-key="acceptance"]',
+  commandPalette: '[data-testid="command-palette"]',
+  deployPanel: '[data-testid="deploy-panel"]',
 };
 
 const checks = [
   {
     name: "PMO 调度中枢",
-    selector: '[data-testid="guide-item-pmo-orchestration"]',
+    command: "查看 PMO 调度",
     text: "主 Agent 调度中枢",
   },
   {
     name: "失败降级与 Diff",
-    selector: '[data-testid="guide-item-fallback-conflict"]',
-    text: "代码 Diff",
+    command: "查看 Diff 与版本",
+    text: "Diff 视图",
   },
   {
     name: "产物预览",
-    selector: '[data-testid="guide-item-artifact-preview"]',
+    command: "打开产物预览",
     text: "产物预览",
   },
   {
     name: "部署状态",
-    selector: '[data-testid="guide-item-deploy"]',
+    command: "打开部署面板",
     text: "部署状态",
     deploy: true,
   },
@@ -63,9 +62,12 @@ async function waitForText(page, text) {
   }, text, { timeout: 10000 });
 }
 
-async function openAcceptanceGuide(page) {
-  await page.locator(SELECTORS.navAcceptance).first().click();
-  await page.locator(SELECTORS.guide).waitFor({ timeout: 10000 });
+async function runCommand(page, query) {
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("command-palette:open")));
+  await page.locator(SELECTORS.commandPalette).waitFor({ timeout: 10000 });
+  const input = page.locator(`${SELECTORS.commandPalette} input`).first();
+  await input.fill(query);
+  await input.press("Enter");
 }
 
 async function requestAuth(path, body) {
@@ -114,28 +116,21 @@ async function main() {
 
     await context.addInitScript((authToken) => {
       localStorage.setItem("agenthub-auth-token", authToken);
-      localStorage.setItem("agenthub-active-nav", "acceptance");
+      localStorage.setItem("agenthub-active-nav", "dashboard");
       localStorage.setItem("agenthub-sidebar-collapsed", "false");
     }, token);
 
     const page = await context.newPage();
     await page.goto(APP_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
-    await page.locator(SELECTORS.guide).waitFor({ timeout: 15000 });
-    await page.keyboard.press("Control+K");
-    await page.locator('[data-testid="command-palette"]').waitFor({ timeout: 10000 });
-    await page.keyboard.type("部署面板");
-    await page.keyboard.press("Enter");
-    await page.locator('[data-testid="deploy-panel"]').waitFor({ timeout: 10000 });
-    await openAcceptanceGuide(page);
-    await page.locator(SELECTORS.reset).click();
-    await waitForText(page, "验收覆盖度");
+    await waitForText(page, "AgentHub 工作台");
+    await runCommand(page, "启动演示会话");
+    await waitForText(page, "课题验收演示：多 Agent 协作");
 
     for (const check of checks) {
-      await openAcceptanceGuide(page);
-      await page.locator(check.selector).click();
+      await runCommand(page, check.command);
       await waitForText(page, check.text);
       if (check.deploy) {
-        await page.locator('[data-testid="deploy-panel"]').waitFor({ timeout: 10000 });
+        await page.locator(SELECTORS.deployPanel).waitFor({ timeout: 10000 });
         await page.locator('[data-testid="deploy-platform-mock-preview"]').click();
         await page.locator('[data-testid="deploy-start"]').click();
         await waitForText(page, "部署成功");

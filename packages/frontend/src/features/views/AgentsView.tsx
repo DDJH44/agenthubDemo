@@ -249,7 +249,7 @@ export function AgentsView() {
               style={{ background: "#174ea6" }}
             >
               <Icon path="M5 3l14 9-14 9V3z" size={13} />
-              启动验收演示
+              启动演示会话
             </button>
             <button
               type="button"
