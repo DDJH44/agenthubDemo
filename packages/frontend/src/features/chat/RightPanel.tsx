@@ -135,6 +135,7 @@ interface TaskPanelItem {
   agentName: string;
   status: string;
   progress: number;
+  subTasks?: string[];
 }
 
 function getArtifactLanguage(artifact: Artifact) {
@@ -253,6 +254,15 @@ function OrchestrationBoard({
   const deployEvents = messages.filter((message) => message.type === "deploy_card");
   const runningAgents = sessionAgentStatuses.filter((agent) => agent.status === "running");
   const completedAgents = sessionAgentStatuses.filter((agent) => agent.status === "done");
+  const agentCount = new Set(items.map((item) => item.agentName).filter(Boolean)).size;
+  const dependencyCount = items.filter((item) => /依赖/.test(item.taskDescription) && !/无前置依赖/.test(item.taskDescription)).length;
+  const subTaskCount = items.reduce((sum, item) => sum + (item.subTasks?.length ?? 0), 0);
+  const evidenceItems = [
+    { label: "拆解任务", value: items.length },
+    { label: "协作 Agent", value: agentCount },
+    { label: "依赖证据", value: dependencyCount + subTaskCount },
+    { label: "降级事件", value: conflictEvents.length },
+  ];
   const lanes = [
     {
       title: "并行批次 A",
@@ -310,6 +320,20 @@ function OrchestrationBoard({
                   <p className="mt-0.5 text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{item.value}</p>
                 </div>
               ))}
+            </div>
+            <div className="mt-3 rounded-md px-2.5 py-2" style={{ background: "rgba(23, 78, 166, 0.05)", border: "1px solid rgba(23, 78, 166, 0.12)" }}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-bold" style={{ color: "#174ea6" }}>调度证据链</p>
+                <span className="truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>PMO / 子 Agent / 产物</span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {evidenceItems.map((item) => (
+                  <div key={item.label} className="rounded-sm px-2 py-1" style={{ background: "rgba(255,255,255,0.72)" }}>
+                    <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{item.label}</span>
+                    <span className="float-right text-[10px] font-bold" style={{ color: "var(--fg-primary)" }}>{item.value}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -1094,9 +1118,15 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
   const contextReferences = useChatStore((state) => state.contextReferences);
   const removeContextReference = useChatStore((state) => state.removeContextReference);
   const clearContextReferences = useChatStore((state) => state.clearContextReferences);
+  const toggleContextReferencePin = useChatStore((state) => state.toggleContextReferencePin);
   const quotes = extractQuotes(artifacts);
   const totalChars = messages.reduce((sum, message) => sum + message.content.length, 0);
   const activeRefs = activeConversationId ? (contextReferences[activeConversationId] ?? []) : [];
+  const pinnedRefs = activeRefs.filter((ref) => ref.pinned);
+  const orderedRefs = activeRefs.slice().sort((a, b) => {
+    if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
+    return (b.pinnedAt ?? b.createdAt) - (a.pinnedAt ?? a.createdAt);
+  });
   const referencedChars = activeRefs.reduce((sum, ref) => sum + ref.content.length, 0);
   const estimatedTokens = Math.ceil((totalChars + referencedChars) / 1.5);
 
@@ -1173,7 +1203,7 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
         {[
           { label: "消息", value: messages.length },
           { label: "产物", value: artifacts.length },
-          { label: "资源", value: resources.length },
+          { label: "固定", value: pinnedRefs.length },
           { label: "引用", value: activeRefs.length },
         ].map((item) => (
           <div key={item.label} className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
@@ -1196,17 +1226,36 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
           <p className="rounded-md px-3 py-2 text-xs" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>暂无消息引用，可在消息气泡下方点击“加入上下文”。</p>
         ) : (
           <div className="space-y-2">
-            {activeRefs.slice().reverse().map((ref) => (
-              <div key={ref.id} className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+            {orderedRefs.map((ref) => (
+              <div
+                key={ref.id}
+                className="rounded-lg p-3"
+                style={{
+                  background: ref.pinned ? "rgba(23, 78, 166, 0.045)" : "var(--surface-white)",
+                  border: `1px solid ${ref.pinned ? "rgba(23, 78, 166, 0.18)" : "var(--border)"}`,
+                }}
+              >
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{ref.title}</p>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      {ref.pinned && (
+                        <span className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.08)" }}>
+                          固定
+                        </span>
+                      )}
+                      <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{ref.title}</p>
+                    </div>
                     <p className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{ref.sourceType} · {formatTime(ref.createdAt)}</p>
                   </div>
                   {activeConversationId && (
-                    <button type="button" onClick={() => removeContextReference(activeConversationId, ref.id)} className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
-                      移除
-                    </button>
+                    <div className="flex shrink-0 gap-1">
+                      <button type="button" onClick={() => toggleContextReferencePin(activeConversationId, ref.id)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: ref.pinned ? "#174ea6" : "var(--fg-tertiary)", background: ref.pinned ? "rgba(23, 78, 166, 0.08)" : "var(--surface-low)" }}>
+                        {ref.pinned ? "取消固定" : "固定"}
+                      </button>
+                      <button type="button" onClick={() => removeContextReference(activeConversationId, ref.id)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
+                        移除
+                      </button>
+                    </div>
                   )}
                 </div>
                 <p className="line-clamp-4 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.65 }}>{ref.content}</p>
@@ -1297,9 +1346,10 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
 
 export function RightPanel() {
   const [activeTab, setActiveTab] = useState<PanelTab>("tasks");
-  const { messages, activeConversationId, resources, isStreaming } = useChatStore();
+  const { messages, activeConversationId, resources, isStreaming, contextReferences } = useChatStore();
   const workspace = useWorkspaceStore();
   const convMessages = activeConversationId ? (messages[activeConversationId] ?? []) : [];
+  const contextCount = activeConversationId ? (contextReferences[activeConversationId]?.length ?? 0) : 0;
   const latestArtifact = workspace.artifacts.reduce<Artifact | null>((latest, artifact) => {
     if (!latest || artifact.createdAt > latest.createdAt) return artifact;
     return latest;
@@ -1312,7 +1362,7 @@ export function RightPanel() {
   const summaryItems = [
     { label: "产物", value: workspace.artifacts.length, icon: "M4 5h16v14H4zM8 9h8M8 13h5" },
     { label: "版本", value: versionCount, icon: "M3 12a9 9 0 109-9M3 3v6h6M12 7v5l3 3" },
-    { label: "上下文", value: resources.length, icon: "M4 4h16v5H4zM4 15h7v5H4zM15 15h5v5h-5z" },
+    { label: "上下文", value: contextCount, icon: "M4 4h16v5H4zM4 15h7v5h-5z" },
   ];
 
   useEffect(() => {

@@ -207,6 +207,7 @@ function MessageActions({
 }) {
   const [copied, setCopied] = useState(false);
   const [referenced, setReferenced] = useState(false);
+  const [pinned, setPinned] = useState(false);
   const addContextReference = useChatStore((state) => state.addContextReference);
   const addMessage = useChatStore((state) => state.addMessage);
   const deleteMessage = useChatStore((state) => state.deleteMessage);
@@ -229,6 +230,67 @@ function MessageActions({
     });
     setReferenced(true);
     window.setTimeout(() => setReferenced(false), 1400);
+  };
+
+  const quoteContent = () => message.content.split("\n").slice(0, 6).join("\n").slice(0, 640);
+
+  const replyToMessage = () => {
+    const meta = getSenderMeta(message);
+    const quoted = quoteContent().replace(/\n/g, "\n> ");
+    window.dispatchEvent(new CustomEvent("chat:compose", {
+      detail: {
+        mode: "replace",
+        text: `回复 ${meta.label}：\n> ${quoted}\n\n`,
+      },
+    }));
+  };
+
+  const pinToContext = () => {
+    const meta = getSenderMeta(message);
+    addContextReference(message.conversationId, {
+      id: `pinned-${message.id}`,
+      messageId: message.id,
+      sourceType: "quote",
+      sender: meta.label,
+      senderId: message.senderId,
+      title: `固定 · ${meta.label} · ${formatTime(message.timestamp)}`,
+      content: message.content,
+      pinned: true,
+      pinnedAt: Date.now(),
+    });
+    setPinned(true);
+  };
+
+  const regenerateMessage = () => {
+    const meta = getSenderMeta(message);
+    addToContext();
+    addMessage(message.conversationId, {
+      id: crypto.randomUUID(),
+      conversationId: message.conversationId,
+      type: "user_message",
+      sender: "user",
+      content: `请重新生成 ${meta.label} 在 ${formatTime(message.timestamp)} 的这条回复，保留原上下文但给出更清晰的方案：\n\n> ${quoteContent()}`,
+      mentions: [message.senderId || message.sender || "assistant"],
+      payload: {
+        contextAction: "regenerate",
+        sourceMessageId: message.id,
+        sourceSender: meta.label,
+      },
+      timestamp: Date.now(),
+    });
+    addMessage(message.conversationId, {
+      id: crypto.randomUUID(),
+      conversationId: message.conversationId,
+      type: "agent_message",
+      sender: "planner",
+      senderId: "pmo",
+      content: `PMO 已创建重生成请求：将引用 ${meta.label} 的原回复，并要求执行 Agent 产出更清晰版本。`,
+      payload: {
+        contextAction: "regenerate-queued",
+        sourceMessageId: message.id,
+      },
+      timestamp: Date.now(),
+    });
   };
 
   const handoffToAgent = (agentId: string, label: string, sender: string) => {
@@ -281,6 +343,29 @@ function MessageActions({
           <path d="M15 15h5v5h-5z" />
         </svg>
       </ActionButton>
+      <ActionButton title="回复引用" onClick={replyToMessage}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M9 10 4 15l5 5" />
+          <path d="M4 15h10a6 6 0 0 0 0-12h-1" />
+        </svg>
+      </ActionButton>
+      <ActionButton title={pinned ? "已锁定上下文" : "锁定上下文"} onClick={pinToContext} tone={pinned ? "success" : "neutral"}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M12 17v5" />
+          <path d="M5 17h14" />
+          <path d="M7 3h10l-2 8 3 4H6l3-4z" />
+        </svg>
+      </ActionButton>
+      {!isUser && (
+        <ActionButton title="重新生成" onClick={regenerateMessage} tone="accent">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M21 12a9 9 0 0 1-15.5 6.2" />
+            <path d="M3 12A9 9 0 0 1 18.5 5.8" />
+            <path d="M18 2v4h4" />
+            <path d="M6 22v-4H2" />
+          </svg>
+        </ActionButton>
+      )}
       <ActionButton title="交给 PMO" onClick={() => handoffToAgent("pmo", "PMO", "planner")} tone="accent">PMO</ActionButton>
       <ActionButton title="交给 Codex" onClick={() => handoffToAgent("codex", "Codex", "coder")} tone="accent">CX</ActionButton>
       <ActionButton title="交给 UX Reviewer" onClick={() => handoffToAgent("ux-reviewer", "UX Reviewer", "refiner")} tone="accent">UX</ActionButton>

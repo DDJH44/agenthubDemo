@@ -108,6 +108,21 @@ export function AgentChatPanel({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "auto" });
   }, [messages.length, streamBuffer, steps.length, taskSummary]);
 
+  useEffect(() => {
+    const handleComposeDraft = (event: Event) => {
+      const detail = (event as CustomEvent<{ text?: string; mode?: "replace" | "append" }>).detail;
+      const nextText = detail?.text;
+      if (!nextText) return;
+      setText((current) => {
+        if (detail?.mode === "append" && current.trim()) return `${current.trimEnd()}\n\n${nextText}`;
+        return nextText;
+      });
+    };
+
+    window.addEventListener("chat:compose", handleComposeDraft);
+    return () => window.removeEventListener("chat:compose", handleComposeDraft);
+  }, []);
+
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed || isStreaming) return;

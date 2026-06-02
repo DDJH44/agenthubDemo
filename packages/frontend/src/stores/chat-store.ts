@@ -96,6 +96,8 @@ interface ContextReference {
   title: string;
   content: string;
   createdAt: number;
+  pinned?: boolean;
+  pinnedAt?: number;
 }
 
 function loadContextReferences(): Record<string, ContextReference[]> {
@@ -184,6 +186,7 @@ interface ChatStore {
   setCurrentPreview: (preview: ChatStore["currentPreview"]) => void;
   addAgentMessage: (convId: string, msg: { agentId: string; agentName: string; agentRole: string; content: string; timestamp: number }) => void;
   addContextReference: (convId: string, ref: Omit<ContextReference, "id" | "createdAt"> & { id?: string; createdAt?: number }) => void;
+  toggleContextReferencePin: (convId: string, refId: string) => void;
   removeContextReference: (convId: string, refId: string) => void;
   clearContextReferences: (convId: string) => void;
 
@@ -663,8 +666,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   addContextReference: (convId, ref) =>
     set((s) => {
       const existing = s.contextReferences[convId] ?? [];
-      const duplicate = ref.messageId ? existing.some((item) => item.messageId === ref.messageId) : false;
-      if (duplicate) return {};
+      const duplicate = ref.messageId ? existing.find((item) => item.messageId === ref.messageId) : null;
+      if (duplicate) {
+        const contextReferences = {
+          ...s.contextReferences,
+          [convId]: existing.map((item) =>
+            item.id === duplicate.id
+              ? {
+                  ...item,
+                  pinned: ref.pinned ?? item.pinned,
+                  pinnedAt: ref.pinned ? (ref.pinnedAt ?? Date.now()) : item.pinnedAt,
+                  title: ref.pinned ? ref.title : item.title,
+                  sourceType: ref.pinned ? ref.sourceType : item.sourceType,
+                }
+              : item
+          ),
+        };
+        saveContextReferences(contextReferences);
+        return { contextReferences };
+      }
       const nextRef: ContextReference = {
         ...ref,
         id: ref.id ?? crypto.randomUUID(),
@@ -673,6 +693,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const contextReferences = {
         ...s.contextReferences,
         [convId]: [...existing, nextRef].slice(-50),
+      };
+      saveContextReferences(contextReferences);
+      return { contextReferences };
+    }),
+
+  toggleContextReferencePin: (convId, refId) =>
+    set((s) => {
+      const contextReferences = {
+        ...s.contextReferences,
+        [convId]: (s.contextReferences[convId] ?? []).map((ref) => {
+          if (ref.id !== refId) return ref;
+          const pinned = !ref.pinned;
+          return { ...ref, pinned, pinnedAt: pinned ? Date.now() : undefined };
+        }),
       };
       saveContextReferences(contextReferences);
       return { contextReferences };
