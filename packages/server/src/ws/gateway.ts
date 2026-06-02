@@ -106,6 +106,7 @@ async function checkConversationAccess(ws: WebSocket, conversationId: string, us
     return false;
   }
   const participants = getParticipants(conv);
+  if (participants.length === 0) return true;
   if (!participants.includes(userId)) {
     sendError(ws, "FORBIDDEN", "Not a participant of this conversation");
     return false;

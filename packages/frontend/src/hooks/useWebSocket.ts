@@ -229,6 +229,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
               agentStates: {}, planSteps: [], steps: [], streamBuffer: "", isStreaming: false, taskSummary: "", agentSteps: [], resources: [], conversationDetail: null, taskFlow: [], sessionAgentStatuses: [], taskProgress: null,
             };
           });
+          useChatStore.getState().persistCurrentState();
 
           useWorkspaceStore.getState().switchConversation(isClientActive ? conv.id : null);
           useTaskTreeStore.getState().switchConversation(isClientActive ? conv.id : null);
@@ -325,10 +326,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
               timestamp: m.timestamp || Date.now(),
             }));
 
-          // Single state update for all history messages
-          useChatStore.setState((state) => ({
-            messages: { ...state.messages, [convId]: parsed }
-          }));
+          useChatStore.getState().mergeConversationHistory(convId, parsed);
           break;
         }
 

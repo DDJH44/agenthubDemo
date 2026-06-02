@@ -30,6 +30,14 @@ function saveMessages(msgs: Record<string, Message[]>) {
   } catch { /* quota exceeded */ }
 }
 
+function mergeMessageLists(existing: Message[], incoming: Message[]): Message[] {
+  const byId = new Map<string, Message>();
+  [...existing, ...incoming].forEach((message) => byId.set(message.id, message));
+  return [...byId.values()]
+    .sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0))
+    .slice(-MAX_PERSIST_MSGS);
+}
+
 function loadConversations(): Conversation[] {
   if (typeof window === "undefined") return [];
   try {
@@ -203,6 +211,8 @@ interface ChatStore {
   removeConversation: (id: string) => void;
   setActiveConversation: (id: string) => void;
   addMessage: (convId: string, msg: Message) => void;
+  mergeConversationHistory: (convId: string, messages: Message[]) => void;
+  persistCurrentState: () => void;
   addPlan: (steps: Array<{ id: string; task: string }>) => void;
   updateStepProgress: (idx: number, status: StepProgress["status"], result?: string) => void;
   updateStepById: (stepId: string, status: StepProgress["status"], result?: string) => void;
@@ -341,10 +351,29 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         c.id === convId ? { ...c, lastMessage: msg.content.slice(0, 80), lastMessageAt: msg.timestamp, updatedAt: msg.timestamp } : c
       );
       const newMessages = { ...s.messages, [convId]: updated };
+      saveConversations(conversations);
       // 异步持久化
       setTimeout(() => saveMessages(newMessages), 0);
       return { messages: newMessages, conversations };
     }),
+
+  mergeConversationHistory: (convId, messages) =>
+    set((s) => {
+      const existing = s.messages[convId] ?? [];
+      const merged = messages.length === 0 && existing.length > 0
+        ? existing
+        : mergeMessageLists(existing, messages);
+      const nextMessages = { ...s.messages, [convId]: merged };
+      saveMessages(nextMessages);
+      return { messages: nextMessages };
+    }),
+
+  persistCurrentState: () => {
+    const state = get();
+    saveConversations(state.conversations);
+    saveMessages(state.messages);
+    saveActiveConvId(state.activeConversationId);
+  },
 
   addPlan: (plan_steps) =>
     set({

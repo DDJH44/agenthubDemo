@@ -65,6 +65,7 @@ export const conversationRepo = {
     return all.filter((c) => {
       try {
         const participants: string[] = JSON.parse(c.participants ?? "[]");
+        if (participants.length === 0) return true;
         return participants.includes(userId);
       } catch { return false; }
     }).slice(0, 20);
