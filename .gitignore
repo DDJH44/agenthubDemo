@@ -15,6 +15,7 @@
 /test-screenshots/
 /test_screenshots/
 /screenshots/
+/tmp/
 tmp_*
 verification_*.png
 frontend-screenshot-*.png

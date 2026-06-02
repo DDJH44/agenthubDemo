@@ -1286,6 +1286,12 @@ export function RightPanel() {
   const { messages, activeConversationId, resources } = useChatStore();
   const workspace = useWorkspaceStore();
   const convMessages = activeConversationId ? (messages[activeConversationId] ?? []) : [];
+  const latestArtifact = workspace.artifacts.reduce<Artifact | null>((latest, artifact) => {
+    if (!latest || artifact.createdAt > latest.createdAt) return artifact;
+    return latest;
+  }, null);
+  const versionCount = workspace.artifacts.reduce((total, artifact) => total + Math.max(1, artifact.version ?? 1), 0);
+  const deployState = workspace.deployStatus === "success" ? "已部署" : workspace.deployStatus === "deploying" ? "部署中" : "待部署";
 
   useEffect(() => {
     const handleTabChange = (event: Event) => {
@@ -1298,17 +1304,31 @@ export function RightPanel() {
 
   return (
     <aside className="flex h-full flex-col" style={{ background: "#f7f9fe", borderLeft: "1px solid var(--divider)" }}>
-      <div className="shrink-0 px-3 pt-3" style={{ background: "var(--surface-white)", borderBottom: "1px solid var(--divider)" }}>
+      <div className="shrink-0 px-3 py-3" style={{ background: "var(--surface-white)", borderBottom: "1px solid var(--divider)" }}>
         <div className="mb-3 flex items-center justify-between">
           <div>
             <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>产物工作台</h2>
-            <p className="text-[11px]" style={{ color: "var(--fg-tertiary)" }}>预览、编辑、Diff、版本、部署和上下文</p>
+            <p className="max-w-[220px] truncate text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
+              {latestArtifact?.filename || latestArtifact?.type || "等待 Agent 生成产物"}
+            </p>
           </div>
-          <span className="rounded-sm px-1.5 py-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
-            {workspace.artifacts.length} 产物
+          <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+            {deployState}
           </span>
         </div>
-        <div className="flex gap-1 overflow-x-auto pb-2">
+        <div className="mb-3 grid grid-cols-3 gap-1.5">
+          {[
+            { label: "产物", value: workspace.artifacts.length },
+            { label: "版本", value: versionCount },
+            { label: "上下文", value: resources.length },
+          ].map((item) => (
+            <div key={item.label} className="rounded-lg px-2 py-2" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
+              <p className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{item.label}</p>
+              <p className="mt-0.5 text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{item.value}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-1 overflow-x-auto rounded-xl p-1" style={{ background: "var(--surface-low)" }}>
           {TABS.map((tab) => {
             const active = activeTab === tab.key;
             return (
@@ -1316,11 +1336,12 @@ export function RightPanel() {
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold transition-colors"
+                className="flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold transition-colors"
                 style={{
                   color: active ? "var(--accent)" : "var(--fg-secondary)",
-                  background: active ? "var(--accent-subtle)" : "transparent",
+                  background: active ? "var(--surface-white)" : "transparent",
                   border: `1px solid ${active ? "var(--accent-border)" : "transparent"}`,
+                  boxShadow: active ? "var(--shadow-xs)" : "none",
                 }}
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

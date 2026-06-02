@@ -48,6 +48,10 @@ export function ConversationNavBar() {
     };
   }, [activeConversationId, messages]);
 
+  const controllerAgent = participantAgents.find(({ meta }) => meta.id === "pmo")?.meta ?? primaryAgent;
+  const statusLabel = contextData.messageCount > 0 ? "协作中" : "待启动";
+  const statusColor = contextData.messageCount > 0 ? "var(--success)" : "var(--fg-tertiary)";
+
   const saveTitle = (nextTitle: string) => {
     const trimmed = nextTitle.trim();
     if (!trimmed || trimmed === title) {
@@ -67,7 +71,7 @@ export function ConversationNavBar() {
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: "var(--success)", border: "2px solid var(--surface-white)" }} />
         </div>
 
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             {editingTitle ? (
               <input
@@ -97,15 +101,15 @@ export function ConversationNavBar() {
             )}
           </div>
 
-          <div className="mt-0.5 flex items-center gap-1.5">
-            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: isGroup ? "var(--accent)" : "#0f766e", background: isGroup ? "var(--accent-subtle)" : "rgba(15, 118, 110, 0.08)" }}>
+          <div className="mt-0.5 flex min-w-0 items-center gap-1.5 overflow-hidden">
+            <span className="shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: isGroup ? "var(--accent)" : "#0f766e", background: isGroup ? "var(--accent-subtle)" : "rgba(15, 118, 110, 0.08)" }}>
               {isGroup ? "群聊模式" : "单聊模式"}
             </span>
             {isGroup && (
               <button
                 type="button"
                 onClick={() => setShowMembers((value) => !value)}
-                className="flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] transition-colors hover:bg-[var(--surface-low)]"
+                className="flex shrink-0 items-center gap-1 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px] transition-colors hover:bg-[var(--surface-low)]"
                 style={{ color: "var(--fg-tertiary)" }}
               >
                 <Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87" size={10} />
@@ -114,11 +118,11 @@ export function ConversationNavBar() {
             )}
             {!isGroup && (
               <>
-                <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)" }}>
+                <span className="shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)" }}>
                   {primaryAgent.provider}
                 </span>
                 {primaryAgent.capabilities.slice(0, 2).map((capability) => (
-                  <span key={capability} className="rounded-sm px-1.5 py-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
+                  <span key={capability} className="shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
                     {capability}
                   </span>
                 ))}
@@ -129,10 +133,28 @@ export function ConversationNavBar() {
       </div>
 
       <div className="flex items-center gap-2">
-        <ContextWindowIndicator messageCount={contextData.messageCount} totalChars={contextData.totalChars} />
+        <div className="hidden h-8 shrink-0 items-center gap-2 rounded-lg px-2 2xl:flex" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
+          <span className="grid h-5 w-5 place-items-center rounded-full text-[9px] font-bold text-white" style={{ background: controllerAgent.color }}>
+            {controllerAgent.badge.slice(0, 2)}
+          </span>
+          <span className="min-w-0 leading-tight">
+            <span className="block text-[9px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>主控</span>
+            <span className="block max-w-[118px] truncate text-[11px] font-semibold" style={{ color: "var(--fg-primary)" }}>{controllerAgent.name}</span>
+          </span>
+          <Icon path="M6 9l6 6 6-6" size={12} />
+        </div>
+
+        <div className="hidden h-8 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold xl:flex" style={{ color: statusColor, background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: statusColor }} />
+          {statusLabel}
+        </div>
+
+        <div className="hidden 2xl:block">
+          <ContextWindowIndicator messageCount={contextData.messageCount} totalChars={contextData.totalChars} />
+        </div>
 
         {isGroup && memberAvatars.length > 0 && (
-          <div className="flex -space-x-2">
+          <div className="hidden -space-x-2 2xl:flex">
             {memberAvatars.map((participant, index) => {
               const agent = getAgentMeta(participant.name, userAgents);
               return (

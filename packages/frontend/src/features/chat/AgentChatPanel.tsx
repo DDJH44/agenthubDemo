@@ -163,11 +163,12 @@ export function AgentChatPanel({
         <button
           type="button"
           onClick={() => setShowPreviewPanel((value) => !value)}
-          className="mr-2 flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-semibold"
+          className="mr-3 flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors"
           style={{
             color: showPreviewPanel ? "#fff" : "var(--fg-secondary)",
-            background: showPreviewPanel ? "#174ea6" : "var(--surface-low)",
+            background: showPreviewPanel ? "var(--accent)" : "var(--surface-tinted)",
             border: "1px solid var(--border)",
+            boxShadow: showPreviewPanel ? "var(--accent-glow)" : "none",
           }}
         >
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
