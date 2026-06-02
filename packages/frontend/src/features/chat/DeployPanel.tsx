@@ -21,10 +21,10 @@ interface PlatformOption {
 const PLATFORMS: PlatformOption[] = [
   {
     key: "mock-preview",
-    label: "Mock Preview",
-    desc: "写入本地预览环境并返回可访问链接，适合答辩现场稳定演示。",
-    hint: "本地可用，不依赖第三方密钥",
-    tags: ["稳定成功", "验收演示"],
+    label: "内置预览",
+    desc: "通过内置预览适配器写入静态产物并返回可访问链接。",
+    hint: "内置可用，不依赖第三方密钥",
+    tags: ["内置适配器", "无需密钥"],
     icon: "M4 5h16v12H4z M8 21h8 M12 17v4",
   },
   {

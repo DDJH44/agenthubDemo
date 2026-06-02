@@ -16,6 +16,8 @@
 /test_screenshots/
 /screenshots/
 /tmp/
+__pycache__/
+*.py[cod]
 tmp_*
 verification_*.png
 frontend-screenshot-*.png
@@ -48,6 +50,9 @@ temp-ref.jpg
 /build
 /deploy-output/
 /packages/server/deploy-output/
+/packages/server/db/files/
+/packages/server/db/*.db
+/packages/server/db/*.sqlite*
 
 # misc
 .DS_Store

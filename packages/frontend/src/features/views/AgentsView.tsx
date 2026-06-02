@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { startAcceptanceDemo } from "@/features/demo/acceptance-demo";
-import { AGENT_DIRECTORY, getAgentConnection, getConnectionStateMeta } from "@/features/chat/agent-directory";
+import { AGENT_DIRECTORY, getAgentConnection, getConnectionStateMeta, type AgentConnectionState } from "@/features/chat/agent-directory";
 import { useNavigationStore } from "@/stores/navigation-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
 
@@ -223,6 +223,26 @@ export function AgentsView() {
       { label: "真实/内置", value: connectionCounts.ready },
     ];
   }, [userAgents.length]);
+  const connectionHealth = useMemo(() => {
+    const counts = PLATFORM_AGENTS.reduce<Record<AgentConnectionState, number>>((acc, agent) => {
+      const state = getPlatformConnection(agent.id)?.state ?? "unconfigured";
+      acc[state] += 1;
+      return acc;
+    }, { local: 0, live: 0, demo: 0, fallback: 0, unconfigured: 0 });
+    const ready = counts.local + counts.live;
+    const total = PLATFORM_AGENTS.length;
+    return {
+      ready,
+      total,
+      readiness: Math.round((ready / total) * 100),
+      items: [
+        { state: "live" as const, label: "真实适配器", value: counts.live, desc: "已具备真实平台入口，运行时按环境配置校验。" },
+        { state: "local" as const, label: "内置能力", value: counts.local, desc: "由 AgentHub 本地流程直接支撑，无需外部密钥。" },
+        { state: "demo" as const, label: "沙盒适配器", value: counts.demo, desc: "用于稳定证明产品闭环，真实执行器可按同一接口替换。" },
+        { state: "fallback" as const, label: "降级通道", value: counts.fallback, desc: "外部执行失败时保留接管、冲突和回滚证据。" },
+      ],
+    };
+  }, []);
 
   const runMockTest = () => {
     if (!testInput.trim()) return;
@@ -270,6 +290,35 @@ export function AgentsView() {
               <p className="mt-2 text-2xl font-bold" style={{ color: "var(--fg-primary)" }}>{stat.value}</p>
             </div>
           ))}
+        </section>
+
+        <section className="mb-5 rounded-lg p-4" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
+          <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div>
+              <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>连接健康检查</h2>
+              <p className="mt-1 max-w-2xl text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.6 }}>
+                明确区分真实适配器、内置能力、沙盒适配器和失败降级通道，避免把演示数据误认为真实第三方执行。
+              </p>
+            </div>
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#174ea6" }} />
+              {connectionHealth.ready}/{connectionHealth.total} 真实或内置 · {connectionHealth.readiness}%
+            </span>
+          </div>
+          <div className="grid gap-2 md:grid-cols-4">
+            {connectionHealth.items.map((item) => {
+              const meta = getConnectionStateMeta(item.state);
+              return (
+                <div key={item.label} className="rounded-lg p-3" style={{ background: meta.bg, border: `1px solid ${meta.border}` }}>
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold" style={{ color: meta.color }}>{item.label}</p>
+                    <span className="text-sm font-bold" style={{ color: meta.color }}>{item.value}</span>
+                  </div>
+                  <p className="text-[11px]" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>{item.desc}</p>
+                </div>
+              );
+            })}
+          </div>
         </section>
 
         <section className="grid gap-3 xl:grid-cols-2">
