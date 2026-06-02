@@ -1,21 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "../../../packages/frontend/src/stores/auth-store";
-
-const CAPABILITY_ITEMS = [
-  { label: "PMO 调度", value: "多 Agent 协同" },
-  { label: "产物工作台", value: "预览 / 编辑 / 部署" },
-  { label: "上下文", value: "任务记忆同步" },
-];
-
-const STATUS_ITEMS = [
-  { label: "Codex", state: "在线" },
-  { label: "Cloud Code", state: "待命" },
-  { label: "Open Code", state: "可接入" },
-];
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,7 +22,7 @@ export default function LoginPage() {
     if (isAuthenticated) router.replace("/");
   }, [isAuthenticated, router]);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitting(true);
     try {
@@ -61,255 +49,296 @@ export default function LoginPage() {
 
   return (
     <main
-      className="min-h-dvh overflow-hidden px-4 py-4 sm:px-6 sm:py-6"
+      className="min-h-dvh px-4 py-5 sm:px-6 lg:grid lg:place-items-center"
       style={{
         background:
-          "linear-gradient(135deg, #eef2fb 0%, #f7f9fe 48%, #e7edf8 100%)",
+          "linear-gradient(135deg, #e6edf7 0%, #f7f9fd 52%, #eef2f8 100%)",
       }}
     >
-      <div className="mx-auto grid min-h-[calc(100dvh-32px)] max-w-[1280px] overflow-hidden rounded-[24px] shadow-lg lg:grid-cols-[minmax(0,1fr)_456px]">
+      <div
+        className="mx-auto grid min-h-[calc(100dvh-40px)] w-full max-w-[1120px] overflow-hidden rounded-[22px] lg:min-h-[700px] lg:grid-cols-[minmax(0,1fr)_420px]"
+        style={{
+          background: "rgba(255,255,255,0.78)",
+          border: "1px solid rgba(255,255,255,0.82)",
+          boxShadow: "0 24px 70px rgba(42, 53, 91, 0.16)",
+        }}
+      >
         <section
-          className="relative hidden min-h-[720px] overflow-hidden border-r lg:block"
+          className="relative hidden min-h-[700px] overflow-hidden lg:block"
           aria-label="AgentHub 品牌"
           style={{
             background:
-              "linear-gradient(135deg, rgba(255,255,255,0.92) 0%, rgba(246,248,253,0.82) 44%, rgba(235,240,250,0.88) 100%)",
-            borderColor: "rgba(62,79,118,0.1)",
+              "linear-gradient(145deg, rgba(255,255,255,0.96) 0%, rgba(247,248,255,0.94) 48%, rgba(230,225,255,0.82) 100%)",
+            borderRight: "1px solid rgba(62,79,118,0.1)",
           }}
         >
-          <div className="absolute inset-0 opacity-80">
-            <Image
-              src="/brand/mascot-hero.png"
-              alt="AgentHub assistant"
-              fill
-              priority
-              sizes="(min-width: 1024px) 58vw, 0vw"
-              style={{ objectFit: "cover", objectPosition: "44% center", transform: "scale(0.92)" }}
-            />
-          </div>
           <div
             className="absolute inset-0"
             style={{
               background:
-                "linear-gradient(90deg, rgba(247,249,253,0.18) 0%, rgba(247,249,253,0.38) 42%, rgba(247,249,253,0.9) 100%)",
+                "radial-gradient(circle at 62% 64%, rgba(116,91,255,0.16), transparent 34%), linear-gradient(180deg, transparent 0%, rgba(245,242,255,0.5) 58%, rgba(230,225,255,0.72) 100%)",
             }}
           />
+          <div className="absolute inset-x-0 bottom-0 h-[455px] overflow-hidden">
+            <Image
+              src="/brand/mascot-hero.png"
+              alt="AgentHub assistant"
+              width={500}
+              height={467}
+              priority
+              sizes="500px"
+              className="absolute left-1/2 bottom-[-120px]"
+              style={{
+                height: "auto",
+                width: 500,
+                opacity: 0.94,
+                transform: "translateX(-50%)",
+                WebkitMaskImage:
+                  "radial-gradient(ellipse at center, #000 38%, rgba(0,0,0,0.76) 55%, transparent 78%)",
+                maskImage:
+                  "radial-gradient(ellipse at center, #000 38%, rgba(0,0,0,0.76) 55%, transparent 78%)",
+              }}
+            />
+            <div
+              className="absolute inset-0"
+              style={{
+                background:
+                  "linear-gradient(180deg, rgba(248,249,255,0) 38%, rgba(242,238,255,0.18) 62%, rgba(232,226,255,0.74) 100%)",
+              }}
+            />
+            <div
+              className="absolute inset-y-0 left-0 w-[220px]"
+              style={{
+                background:
+                  "linear-gradient(90deg, rgba(249,250,255,0.98) 0%, rgba(248,247,255,0.86) 62%, transparent 100%)",
+              }}
+            />
+            <div
+              className="absolute inset-y-0 right-0 w-[160px]"
+              style={{
+                background:
+                  "linear-gradient(270deg, rgba(240,235,255,0.82) 0%, rgba(242,238,255,0.5) 52%, transparent 100%)",
+              }}
+            />
+          </div>
 
-          <div className="relative z-10 flex h-full min-h-[720px] flex-col justify-between p-8">
-            <div className="inline-flex w-fit rounded-2xl px-4 py-3 shadow-sm" style={{ background: "rgba(255,255,255,0.78)", border: "1px solid rgba(255,255,255,0.76)", backdropFilter: "blur(16px)" }}>
-              <Image
-                src="/brand/logo-lockup.png"
-                alt="AgentHub"
-                width={212}
-                height={60}
-                priority
-                style={{ display: "block", height: "auto", width: 212 }}
-              />
+          <div className="relative z-10 flex items-center justify-between px-9 pt-8">
+            <Image
+              src="/brand/logo-lockup.png"
+              alt="AgentHub"
+              width={202}
+              height={58}
+              priority
+              style={{ display: "block", height: "auto", width: 202 }}
+            />
+            <span
+              className="rounded-full px-3 py-1 text-[11px] font-semibold"
+              style={{
+                background: "rgba(68,86,223,0.08)",
+                color: "var(--accent)",
+                border: "1px solid rgba(68,86,223,0.16)",
+              }}
+            >
+              AI Agents · Together
+            </span>
+          </div>
+
+          <div className="relative z-10 mt-14 max-w-[540px] px-10">
+            <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--fg-tertiary)" }}>
+              AgentHub Workspace
+            </p>
+            <h1 className="text-[40px] font-[780] leading-[1.12]" style={{ color: "var(--fg-primary)" }}>
+              多 <span style={{ color: "var(--accent)" }}>Agent</span> 协作，从一个清晰入口开始。
+            </h1>
+            <p className="mt-5 max-w-[460px] text-sm leading-7" style={{ color: "var(--fg-secondary)" }}>
+              让主 Agent、代码 Agent 与产物工作流保持在同一个节奏里，高效协同，释放团队生产力。
+            </p>
+
+            <div className="mt-7 flex flex-wrap gap-2">
+              {["主 Agent 调度", "产物聚合", "上下文连接"].map((item) => (
+                <span
+                  key={item}
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold"
+                  style={{
+                    background: "rgba(255,255,255,0.72)",
+                    color: "var(--fg-secondary)",
+                    border: "1px solid rgba(62,79,118,0.1)",
+                  }}
+                >
+                  {item}
+                </span>
+              ))}
             </div>
+          </div>
 
-            <div className="max-w-[520px]">
-              <div
-                className="mb-5 inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"
-                style={{ background: "rgba(255,255,255,0.72)", color: "var(--fg-secondary)", border: "1px solid rgba(62,79,118,0.1)", backdropFilter: "blur(14px)" }}
-              >
-                <span className="h-2 w-2 rounded-full" style={{ background: "var(--success)", boxShadow: "0 0 0 4px rgba(48,161,78,0.1)" }} />
-                协作中枢已就绪
+          <div className="absolute inset-x-0 bottom-0 z-10 grid grid-cols-3 gap-4 px-10 pb-7">
+            {[
+              ["安全可靠", "企业级数据保护"],
+              ["开放集成", "与工具链无缝连接"],
+              ["持续进化", "AI 能力持续增强"],
+            ].map(([title, desc]) => (
+              <div key={title} className="flex min-w-0 items-center gap-3">
+                <span
+                  className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
+                  style={{
+                    background: "rgba(255,255,255,0.66)",
+                    color: "var(--accent)",
+                    border: "1px solid rgba(68,86,223,0.14)",
+                    boxShadow: "0 8px 22px rgba(68,86,223,0.08)",
+                  }}
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 3l7 3v5c0 4.2-2.7 8-7 10-4.3-2-7-5.8-7-10V6l7-3z" />
+                    <path d="M9 12l2 2 4-5" />
+                  </svg>
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{title}</span>
+                  <span className="mt-0.5 block truncate text-xs" style={{ color: "var(--fg-tertiary)" }}>{desc}</span>
+                </span>
               </div>
-              <h1 className="max-w-[500px] text-[34px] font-[760] leading-tight" style={{ color: "var(--fg-primary)" }}>
-                把复杂任务交给主 Agent，保持团队在同一个工作流里。
-              </h1>
-              <p className="mt-4 max-w-[480px] text-sm leading-7" style={{ color: "var(--fg-secondary)" }}>
-                AgentHub 将对话、代码产物、上下文和部署状态收束在一个轻量控制台里，让 PMO 式调度更清楚、更可追踪。
-              </p>
-
-              <div className="mt-8 grid max-w-[650px] grid-cols-3 gap-3">
-                {CAPABILITY_ITEMS.map((item) => (
-                  <div
-                    key={item.label}
-                    className="rounded-2xl px-4 py-3"
-                    style={{ background: "rgba(255,255,255,0.66)", border: "1px solid rgba(62,79,118,0.1)", backdropFilter: "blur(14px)" }}
-                  >
-                    <p className="text-[11px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{item.label}</p>
-                    <p className="mt-1 truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{item.value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+            ))}
           </div>
         </section>
 
         <section
-          className="flex min-h-[calc(100dvh-32px)] items-center justify-center px-4 py-6 sm:px-8 lg:min-h-[720px]"
-          aria-label="登录"
-          style={{ background: "rgba(247,249,253,0.86)" }}
+          className="flex min-h-[calc(100dvh-40px)] items-start justify-center px-5 pb-8 pt-16 sm:items-center sm:px-8 sm:py-8 lg:min-h-[700px]"
+          aria-label="账号入口"
+          style={{ background: "rgba(251,252,255,0.84)" }}
         >
-          <div className="w-full max-w-[392px]">
+          <div className="w-full max-w-[360px]">
             <div className="mb-8 lg:hidden">
-              <div className="mb-5 inline-flex rounded-2xl px-3 py-2 shadow-sm" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-                <Image
-                  src="/brand/logo-lockup.png"
-                  alt="AgentHub"
-                  width={172}
-                  height={50}
-                  priority
-                  style={{ display: "block", height: "auto", width: 172 }}
-                />
-              </div>
-              <div className="overflow-hidden rounded-2xl border" style={{ background: "var(--surface-white)", borderColor: "var(--border)" }}>
-                <Image
-                  src="/brand/mascot-working.png"
-                  alt="AgentHub assistant"
-                  width={276}
-                  height={155}
-                  priority
-                  style={{ display: "block", height: "auto", width: "100%" }}
-                />
+              <Image
+                src="/brand/logo-lockup.png"
+                alt="AgentHub"
+                width={186}
+                height={54}
+                priority
+                style={{ display: "block", height: "auto", width: 186 }}
+              />
+              <p className="mt-4 text-sm leading-6" style={{ color: "var(--fg-secondary)" }}>
+                多 Agent 协作工作台
+              </p>
+            </div>
+
+            <div className="mb-8 flex items-center gap-3">
+              <span
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-xl"
+                style={{
+                  background: "var(--accent-subtle)",
+                  border: "1px solid var(--accent-border)",
+                }}
+              >
+                <Image src="/brand/logo-mark.png" alt="" width={25} height={25} style={{ height: 25, width: 25 }} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold" style={{ color: "var(--fg-tertiary)" }}>
+                  欢迎回来
+                </p>
+                <h2 className="mt-1 truncate text-[26px] font-[760] leading-none" style={{ color: "var(--fg-primary)" }}>
+                  {mode === "login" ? "登录 AgentHub" : "创建账号"}
+                </h2>
               </div>
             </div>
 
             <div
-              className="rounded-[20px] p-5 shadow-md sm:p-6"
-              style={{ background: "rgba(255,255,255,0.9)", border: "1px solid rgba(62,79,118,0.1)", backdropFilter: "blur(18px)" }}
+              className="mb-6 grid grid-cols-2 rounded-xl p-1"
+              role="tablist"
+              aria-label="账号操作"
+              style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}
             >
-              <div className="mb-6 flex items-start justify-between gap-4">
-                <div>
-                  <p className="mb-2 text-xs font-semibold" style={{ color: "var(--fg-tertiary)" }}>
-                    欢迎回来
-                  </p>
-                  <h2 className="text-[26px] font-[760] leading-tight" style={{ color: "var(--fg-primary)" }}>
-                    {mode === "login" ? "登录工作台" : "创建工作台账号"}
-                  </h2>
-                  <p className="mt-2 text-xs leading-5" style={{ color: "var(--fg-secondary)" }}>
-                    进入你的 Agent 协作空间，继续处理任务、产物和部署。
-                  </p>
-                </div>
-                <div className="hidden h-11 w-11 shrink-0 items-center justify-center rounded-xl sm:flex" style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
-                  <Image src="/brand/logo-mark.png" alt="" width={26} height={26} style={{ height: 26, width: 26 }} />
-                </div>
-              </div>
-
-              <div
-                className="mb-5 grid grid-cols-2 rounded-xl p-1"
-                role="tablist"
-                aria-label="账号操作"
-                style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}
-              >
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === "login"}
-                  onClick={() => setMode("login")}
-                  className="h-10 rounded-lg text-sm font-semibold transition"
-                  style={{
-                    background: mode === "login" ? "var(--surface-white)" : "transparent",
-                    color: mode === "login" ? "var(--fg-primary)" : "var(--fg-tertiary)",
-                    boxShadow: mode === "login" ? "var(--shadow-xs)" : "none",
-                  }}
-                >
-                  登录
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={mode === "register"}
-                  onClick={() => setMode("register")}
-                  className="h-10 rounded-lg text-sm font-semibold transition"
-                  style={{
-                    background: mode === "register" ? "var(--surface-white)" : "transparent",
-                    color: mode === "register" ? "var(--fg-primary)" : "var(--fg-tertiary)",
-                    boxShadow: mode === "register" ? "var(--shadow-xs)" : "none",
-                  }}
-                >
-                  注册
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-4" aria-label={mode === "login" ? "登录表单" : "注册表单"}>
-                {mode === "register" && (
-                  <label className="block">
-                    <span className="mb-1.5 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>姓名</span>
-                    <input
-                      value={name}
-                      onChange={(event) => setName(event.target.value)}
-                      required
-                      autoComplete="name"
-                      className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)]"
-                      style={{ background: "var(--surface-white)", color: "var(--fg-primary)", border: "1px solid var(--border)" }}
-                      placeholder="请输入姓名"
-                    />
-                  </label>
-                )}
-
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>邮箱</span>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                    required
-                    autoComplete="email"
-                    className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)]"
-                    style={{ background: "var(--surface-white)", color: "var(--fg-primary)", border: "1px solid var(--border)" }}
-                    placeholder="name@example.com"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="mb-1.5 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>密码</span>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    required
-                    minLength={6}
-                    autoComplete={mode === "login" ? "current-password" : "new-password"}
-                    className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)]"
-                    style={{ background: "var(--surface-white)", color: "var(--fg-primary)", border: "1px solid var(--border)" }}
-                    placeholder="至少 6 个字符"
-                    aria-describedby={error ? "login-error" : undefined}
-                  />
-                </label>
-
-                {error && (
-                  <div
-                    id="login-error"
-                    role="alert"
-                    className="rounded-xl px-3 py-2 text-sm"
-                    style={{ background: "var(--danger-subtle)", color: "var(--danger)", border: "1px solid var(--danger-border)" }}
+              {(["login", "register"] as const).map((item) => {
+                const selected = mode === item;
+                return (
+                  <button
+                    key={item}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    onClick={() => setMode(item)}
+                    className="h-10 rounded-lg text-sm font-semibold transition-all"
+                    style={{
+                      background: selected ? "var(--surface-white)" : "transparent",
+                      color: selected ? "var(--fg-primary)" : "var(--fg-tertiary)",
+                      boxShadow: selected ? "var(--shadow-xs)" : "none",
+                    }}
                   >
-                    {error}
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                  style={{ background: "var(--accent)", opacity: submitting ? 0.72 : 1, boxShadow: "0 10px 22px rgba(68,86,223,0.2)" }}
-                >
-                  {submitting && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
-                  {submitting ? "处理中" : mode === "login" ? "进入工作台" : "创建账号"}
-                </button>
-              </form>
-
-              <div className="mt-5 rounded-xl px-3 py-3" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>Agent 接入状态</span>
-                  <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--success-subtle)", color: "var(--success)", border: "1px solid var(--success-border)" }}>健康</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {STATUS_ITEMS.map((item) => (
-                    <div key={item.label} className="min-w-0 rounded-lg px-2.5 py-2" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-                      <p className="truncate text-[11px] font-semibold" style={{ color: "var(--fg-primary)" }}>{item.label}</p>
-                      <p className="mt-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{item.state}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
+                    {item === "login" ? "登录" : "注册"}
+                  </button>
+                );
+              })}
             </div>
 
-            <p className="mt-4 text-center text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
-              本地工作台模式，密钥与会话数据仅用于当前项目运行。
+            <form onSubmit={handleSubmit} className="space-y-4" aria-label={mode === "login" ? "登录表单" : "注册表单"}>
+              {mode === "register" && (
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>姓名</span>
+                  <input
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    required
+                    autoComplete="name"
+                    className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)] focus:ring-2 focus:ring-[rgba(68,86,223,0.12)]"
+                    style={{ background: "var(--surface-white)", color: "var(--fg-primary)", border: "1px solid var(--border)" }}
+                    placeholder="请输入姓名"
+                  />
+                </label>
+              )}
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>邮箱</span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  required
+                  autoComplete="email"
+                  className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)] focus:ring-2 focus:ring-[rgba(68,86,223,0.12)]"
+                  style={{ background: "var(--surface-white)", color: "var(--fg-primary)", border: "1px solid var(--border)" }}
+                  placeholder="name@example.com"
+                />
+              </label>
+
+              <label className="block">
+                <span className="mb-1.5 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>密码</span>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  required
+                  minLength={6}
+                  autoComplete={mode === "login" ? "current-password" : "new-password"}
+                  className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)] focus:ring-2 focus:ring-[rgba(68,86,223,0.12)]"
+                  style={{ background: "var(--surface-white)", color: "var(--fg-primary)", border: "1px solid var(--border)" }}
+                  placeholder="至少 6 个字符"
+                  aria-describedby={error ? "login-error" : undefined}
+                />
+              </label>
+
+              {error && (
+                <div
+                  id="login-error"
+                  role="alert"
+                  className="rounded-xl px-3 py-2 text-sm"
+                  style={{ background: "var(--danger-subtle)", color: "var(--danger)", border: "1px solid var(--danger-border)" }}
+                >
+                  {error}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                style={{ background: "var(--accent)", opacity: submitting ? 0.72 : 1, boxShadow: "0 10px 22px rgba(68,86,223,0.2)" }}
+              >
+                {submitting && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
+                {submitting ? "处理中" : mode === "login" ? "进入工作台" : "创建账号"}
+              </button>
+            </form>
+
+            <p className="mt-6 text-center text-[11px] leading-5" style={{ color: "var(--fg-tertiary)" }}>
+              AgentHub · AI Agents Together
             </p>
           </div>
         </section>
