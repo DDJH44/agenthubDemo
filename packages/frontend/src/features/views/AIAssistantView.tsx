@@ -10,6 +10,7 @@ import { DocumentPreviewPanel } from "./DocumentPreviewPanel";
 const API_BASE = typeof window !== "undefined"
   ? `${window.location.protocol}//${window.location.hostname}:3002`
   : "http://localhost:3002";
+const ASSISTANT_AVATAR_URL = "/brand/assistant-avatar-simple.png";
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -86,33 +87,6 @@ type SpeechRecognitionWindow = Window & typeof globalThis & {
   SpeechRecognition?: SpeechRecognitionConstructor;
   webkitSpeechRecognition?: SpeechRecognitionConstructor;
 };
-
-const ASSISTANT_PRESETS = [
-  {
-    title: "拆解多 Agent 任务",
-    desc: "把一个复杂目标拆成 PMO、Codex、Claude Code、Open Code 的协作流程。",
-    prompt: "请把我的课题拆成一个多 Agent 协作执行计划，包含主 Agent 调度、子 Agent 分工、失败降级、产物预览和部署闭环。",
-    icon: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
-  },
-  {
-    title: "生成方案文档",
-    desc: "输出可进入文件面板预览的 PRD、技术方案或答辩材料。",
-    prompt: "请为 AgentHub 写一份项目优化方案文档，结构包括现状、目标、核心功能、交互流程、技术实现、风险和下一步计划。",
-    icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5",
-  },
-  {
-    title: "分析体验问题",
-    desc: "从产品视角审查 UI、信息密度、流程连贯性和可验收点。",
-    prompt: "请从 SaaS 工作台体验角度审查 AgentHub 当前产品，指出 5 个最值得优化的交互问题，并给出具体改法。",
-    icon: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
-  },
-  {
-    title: "生成代码计划",
-    desc: "把功能需求转换成前端组件、状态和测试检查清单。",
-    prompt: "请把这个功能需求转换成前端实现计划：组件拆分、状态设计、关键交互、测试点和风险边界。",
-    icon: "M16 18l6-6-6-6M8 6l-6 6 6 6",
-  },
-];
 
 const WORKFLOW_HINTS = [
   "会话会自动保留最近上下文",
@@ -204,41 +178,29 @@ function Icon({ path, size = 14 }: { path: string; size?: number }) {
   );
 }
 
+function AssistantAvatar({ size = 36, className = "" }: { size?: number; className?: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`shrink-0 rounded-full bg-center bg-no-repeat ${className}`}
+      style={{
+        width: size,
+        height: size,
+        backgroundImage: `url(${ASSISTANT_AVATAR_URL})`,
+        backgroundColor: "rgba(246, 242, 255, 0.98)",
+        backgroundSize: "130%",
+        border: "1px solid rgba(99, 102, 241, 0.14)",
+      }}
+    />
+  );
+}
+
 function AssistantMetric({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="hidden min-w-0 rounded-lg px-2.5 py-1.5 sm:block" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
       <p className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{label}</p>
       <p className="mt-0.5 truncate text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{value}</p>
     </div>
-  );
-}
-
-function PresetButton({
-  preset,
-  onClick,
-  compact = false,
-}: {
-  preset: (typeof ASSISTANT_PRESETS)[number];
-  onClick: () => void;
-  compact?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`group min-w-0 rounded-lg text-left transition-colors hover:bg-[var(--surface-white)] ${compact ? "px-2.5 py-2" : "px-3 py-3"}`}
-      style={{ background: compact ? "var(--surface-tinted)" : "rgba(255,255,255,0.96)", border: "1px solid var(--border)", boxShadow: compact ? "none" : "var(--shadow-xs)" }}
-    >
-      <div className="flex min-w-0 items-start gap-2.5">
-        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
-          <Icon path={preset.icon} size={13} />
-        </span>
-        <span className="min-w-0">
-          <span className="block truncate text-xs font-bold" style={{ color: "#202124" }}>{preset.title}</span>
-          {!compact && <span className="mt-1 line-clamp-2 block text-xs" style={{ color: "#647084", lineHeight: 1.55 }}>{preset.desc}</span>}
-        </span>
-      </div>
-    </button>
   );
 }
 
@@ -930,9 +892,7 @@ export function AIAssistantView() {
         <div className="shrink-0 px-4 py-3" style={{ borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,0.94)" }}>
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white" style={{ background: "var(--accent-gradient)", boxShadow: "var(--accent-glow)" }}>
-                <Icon path="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4zM9 12h6M9 16h6" size={17} />
-              </div>
+              <AssistantAvatar size={38} />
               <div className="min-w-0">
                 <h1 className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)" }}>AI 智能助手</h1>
                 <div className="mt-1 flex min-w-0 items-center gap-1.5">
@@ -976,15 +936,6 @@ export function AIAssistantView() {
             </div>
           </div>
 
-          {hasMessages && (
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-0.5 custom-scrollbar">
-              {ASSISTANT_PRESETS.map((preset) => (
-                <div key={preset.title} className="w-[210px] shrink-0">
-                  <PresetButton preset={preset} onClick={() => applyPreset(preset.prompt)} compact />
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         {/* Messages */}
@@ -1006,17 +957,7 @@ export function AIAssistantView() {
                         适合临时问答、文档草稿、代码计划和产品体验审查。文档型回复会自动保存到右侧文件面板。
                       </p>
                     </div>
-                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
-                      <Icon path="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4zM9 12h6M9 16h6" size={18} />
-                    </span>
-                  </div>
-
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {ASSISTANT_PRESETS.map((preset, index) => (
-                      <motion.div key={preset.title} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 * index }}>
-                        <PresetButton preset={preset} onClick={() => applyPreset(preset.prompt)} />
-                      </motion.div>
-                    ))}
+                    <AssistantAvatar size={44} />
                   </div>
                 </section>
 
@@ -1069,9 +1010,7 @@ export function AIAssistantView() {
                       className={`group flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
                     >
                       {msg.role === "assistant" && (
-                        <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-white" style={{ background: "var(--accent-gradient)" }}>
-                          <Icon path="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4z" size={14} />
-                        </div>
+                        <AssistantAvatar size={30} className="mt-0.5" />
                       )}
                       <div className={`min-w-0 ${msg.role === "user" ? "max-w-[75%]" : "max-w-[85%]"}`}>
                         <div className={`mb-1.5 flex items-center gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
@@ -1136,9 +1075,7 @@ export function AIAssistantView() {
 
               {isStreaming && (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="flex gap-3">
-                  <div className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5" style={{ background: "var(--accent-gradient)" }}>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M12 2a4 4 0 014 4v1h2a2 2 0 012 2v9a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2h2V6a4 4 0 014-4z" /></svg>
-                  </div>
+                  <AssistantAvatar size={30} className="mt-0.5" />
                   <div className="min-w-0 max-w-[85%]">
                     <div className="mb-1.5" style={{ fontSize: "12px", color: "var(--fg-tertiary)" }}>AI 智能助手</div>
                     <div className="rounded-xl px-4 py-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
@@ -1162,21 +1099,6 @@ export function AIAssistantView() {
         {/* Input */}
         <div className="shrink-0 px-4 pb-4 pt-2" style={{ background: "linear-gradient(to top, var(--surface-white), rgba(255,255,255,0.82))" }}>
           <div className="mx-auto max-w-3xl">
-            {hasMessages && !isStreaming && (
-              <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 custom-scrollbar">
-                {ASSISTANT_PRESETS.slice(0, 3).map((preset) => (
-                  <button
-                    key={preset.title}
-                    type="button"
-                    onClick={() => applyPreset(preset.prompt)}
-                    className="h-7 shrink-0 rounded-full px-2.5 text-[11px] font-semibold transition-colors hover:bg-[var(--accent-subtle)]"
-                    style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
-                  >
-                    {preset.title}
-                  </button>
-                ))}
-              </div>
-            )}
             <div
               className="rounded-xl px-3 py-2 transition-all"
               style={{ background: "var(--surface-white)", border: "1px solid var(--border-strong)", boxShadow: "var(--shadow-xs)" }}
