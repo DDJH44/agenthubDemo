@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import type { ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useConversationFilesStore } from "../../stores/conversation-files-store";
+import { useAuthStore } from "../../stores/auth-store";
 import { renderMarkdown } from "../../lib/markdown-utils";
 import { DocumentPreviewPanel } from "./DocumentPreviewPanel";
 
@@ -11,29 +12,89 @@ const API_BASE = typeof window !== "undefined"
   ? `${window.location.protocol}//${window.location.hostname}:3002`
   : "http://localhost:3002";
 const ASSISTANT_AVATAR_URL = "/brand/assistant-avatar-simple.png";
+const ASSISTANT_STORAGE_PREFIX = "agenthub-assistant-";
+const ASSISTANT_USER_STORAGE_PREFIX = `${ASSISTANT_STORAGE_PREFIX}user-`;
+const ASSISTANT_ANONYMOUS_STORAGE_KEY = `${ASSISTANT_STORAGE_PREFIX}anonymous`;
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem("agenthub-auth-token");
 }
 
-function getStorageKey(): string {
-  const token = getToken();
-  const userId = token ? token.slice(0, 8) : "anonymous";
-  return `agenthub-assistant-${userId}`;
+function getStorageKey(userId?: string | null): string {
+  return userId ? `${ASSISTANT_USER_STORAGE_PREFIX}${userId}` : ASSISTANT_ANONYMOUS_STORAGE_KEY;
 }
 
-function loadMessages(): ChatMessage[] {
+function getLegacyTokenStorageKey(): string | null {
+  const token = getToken();
+  return token ? `${ASSISTANT_STORAGE_PREFIX}${token.slice(0, 8)}` : null;
+}
+
+function isChatMessage(value: unknown): value is ChatMessage {
+  const message = value as Partial<ChatMessage> | null;
+  return Boolean(
+    message &&
+    typeof message.id === "string" &&
+    (message.role === "user" || message.role === "assistant") &&
+    typeof message.content === "string" &&
+    typeof message.timestamp === "number"
+  );
+}
+
+function loadMessagesFromKey(key: string): ChatMessage[] {
   try {
-    const data = localStorage.getItem(getStorageKey());
-    return data ? JSON.parse(data) : [];
+    const data = localStorage.getItem(key);
+    if (!data) return [];
+    const parsed = JSON.parse(data);
+    return Array.isArray(parsed) ? parsed.filter(isChatMessage) : [];
   } catch { return []; }
 }
 
-function saveMessages(msgs: ChatMessage[]) {
+function getMigrationStorageKeys(userId?: string | null): string[] {
+  if (typeof window === "undefined") return [getStorageKey(userId)];
+
+  const keys = new Set<string>([getStorageKey(userId), ASSISTANT_ANONYMOUS_STORAGE_KEY]);
+  const tokenKey = getLegacyTokenStorageKey();
+  if (tokenKey) keys.add(tokenKey);
+
+  if (userId) {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (!key?.startsWith(ASSISTANT_STORAGE_PREFIX)) continue;
+      if (key.startsWith(ASSISTANT_USER_STORAGE_PREFIX) && key !== getStorageKey(userId)) continue;
+      keys.add(key);
+    }
+  }
+
+  return [...keys];
+}
+
+function mergeMessages(...sources: ChatMessage[][]): ChatMessage[] {
+  const byId = new Map<string, ChatMessage>();
+  sources.flat().forEach((message) => byId.set(message.id, message));
+  return [...byId.values()]
+    .sort((a, b) => a.timestamp - b.timestamp)
+    .slice(-200);
+}
+
+function loadMessages(userId?: string | null): ChatMessage[] {
+  return mergeMessages(...getMigrationStorageKeys(userId).map(loadMessagesFromKey));
+}
+
+function saveMessages(key: string, msgs: ChatMessage[]) {
   try {
-    localStorage.setItem(getStorageKey(), JSON.stringify(msgs.slice(-200)));
+    localStorage.setItem(key, JSON.stringify(msgs.slice(-200)));
   } catch { /* ignore quota errors */ }
+}
+
+function removeMigratedStorageKeys(keys: string[], targetKey: string) {
+  keys.forEach((key) => {
+    if (key !== targetKey) localStorage.removeItem(key);
+  });
+}
+
+function clearStoredMessages(userId?: string | null) {
+  getMigrationStorageKeys(userId).forEach((key) => localStorage.removeItem(key));
 }
 
 interface ChatMessage {
@@ -570,7 +631,9 @@ function DocumentCompletionView({
 }
 
 export function AIAssistantView() {
-  const [messages, setMessages] = useState<ChatMessage[]>(() => loadMessages());
+  const authUserId = useAuthStore((state) => state.user?.id ?? null);
+  const assistantStorageKey = useMemo(() => getStorageKey(authUserId), [authUserId]);
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadMessages(null));
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [streamBuffer, setStreamBuffer] = useState("");
@@ -589,6 +652,7 @@ export function AIAssistantView() {
   const sendingRef = useRef(false);
   const inputRefState = useRef(input);
   const messagesRef = useRef(messages);
+  const storageHydratedRef = useRef(false);
   const isStreamingRef = useRef(isStreaming);
   const lastUserQueryRef = useRef("");
   const isDocRequestRef = useRef(false);
@@ -604,7 +668,25 @@ export function AIAssistantView() {
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   useEffect(() => { inputRefState.current = input; }, [input]);
   useEffect(() => { isStreamingRef.current = isStreaming; }, [isStreaming]);
-  useEffect(() => { saveMessages(messages); }, [messages]);
+
+  useEffect(() => {
+    const migrationKeys = getMigrationStorageKeys(authUserId);
+    const storedMessages = mergeMessages(...migrationKeys.map(loadMessagesFromKey));
+
+    setMessages((current) => {
+      const merged = mergeMessages(storedMessages, current);
+      saveMessages(assistantStorageKey, merged);
+      if (authUserId && merged.length > 0) removeMigratedStorageKeys(migrationKeys, assistantStorageKey);
+      return merged;
+    });
+
+    storageHydratedRef.current = true;
+  }, [authUserId, assistantStorageKey]);
+
+  useEffect(() => {
+    if (!storageHydratedRef.current) return;
+    saveMessages(assistantStorageKey, messages);
+  }, [messages, assistantStorageKey]);
 
   useEffect(() => {
     if (messages.length === 0 && !streamBuffer) return;
@@ -914,6 +996,7 @@ export function AIAssistantView() {
 
   const clearConversation = () => {
     if (messages.length === 0 || !window.confirm("清空当前 AI 助手会话记录？")) return;
+    clearStoredMessages(authUserId);
     setMessages([]);
     setInput("");
     setAttachments([]);
