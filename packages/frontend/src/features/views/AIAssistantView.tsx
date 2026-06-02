@@ -215,14 +215,27 @@ function MessageToolButton({
   children: ReactNode;
   active?: boolean;
 }) {
+  const [isHovered, setIsHovered] = useState(false);
+  const isEmphasized = active || isHovered;
+
   return (
     <button
       type="button"
       title={title}
       aria-label={title}
       onClick={onClick}
-      className="inline-grid h-6 w-6 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--surface-low)]"
-      style={{ color: active ? "var(--success)" : "var(--fg-tertiary)", background: active ? "var(--success-subtle)" : "transparent" }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onFocus={() => setIsHovered(true)}
+      onBlur={() => setIsHovered(false)}
+      className="inline-grid h-6 w-6 shrink-0 place-items-center rounded-md border transition-all duration-150 active:scale-95 focus-visible:outline-none"
+      style={{
+        color: active ? "var(--success)" : isHovered ? "var(--accent)" : "var(--fg-tertiary)",
+        background: active ? "var(--success-subtle)" : isHovered ? "var(--accent-subtle)" : "transparent",
+        borderColor: active ? "var(--success-border)" : isHovered ? "rgba(68,86,223,0.32)" : "transparent",
+        boxShadow: isHovered ? "0 0 0 2px rgba(68,86,223,0.16), 0 3px 10px rgba(68,86,223,0.14)" : "none",
+        opacity: isEmphasized ? 1 : 0.75,
+      }}
     >
       {children}
     </button>
@@ -466,22 +479,47 @@ function DocumentCardTrigger({ title, onClick }: {
   title: string;
   onClick: () => void;
 }) {
+  const [isHovered, setIsHovered] = useState(false);
+
   return (
     <button
       type="button"
       data-testid="assistant-document-card"
       onClick={onClick}
-      className="flex w-full max-w-[320px] items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[var(--surface-low)]"
-      style={{ background: "var(--surface-tinted)", border: "1px solid var(--border-strong)" }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onFocus={() => setIsHovered(true)}
+      onBlur={() => setIsHovered(false)}
+      className="flex w-full max-w-[320px] items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all duration-150 active:scale-[0.99] focus-visible:outline-none"
+      style={{
+        background: isHovered ? "var(--accent-subtle)" : "var(--surface-tinted)",
+        borderColor: isHovered ? "rgba(68,86,223,0.32)" : "var(--border-strong)",
+        boxShadow: isHovered ? "0 0 0 2px rgba(68,86,223,0.14), 0 8px 20px rgba(68,86,223,0.12)" : "none",
+      }}
     >
-      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
+      <span
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-all duration-150"
+        style={{
+          color: "var(--accent)",
+          background: isHovered ? "var(--surface-white)" : "var(--accent-subtle)",
+          boxShadow: isHovered ? "0 4px 10px rgba(68,86,223,0.16)" : "none",
+        }}
+      >
         <Icon path="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13h6M9 17h4" size={17} />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{title}</span>
-        <span className="mt-1 block text-[10px]" style={{ color: "var(--fg-tertiary)" }}>点击预览 · 可导出 Word / PDF</span>
+        <span className="block truncate text-xs font-bold transition-colors" style={{ color: isHovered ? "var(--accent)" : "var(--fg-primary)" }}>{title}</span>
+        <span className="mt-1 block text-[10px] transition-colors" style={{ color: isHovered ? "var(--accent)" : "var(--fg-tertiary)" }}>点击预览 · 可导出 Word / PDF</span>
       </span>
-      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md" style={{ color: "var(--fg-disabled)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+      <span
+        className="grid h-6 w-6 shrink-0 place-items-center rounded-md border transition-all duration-150"
+        style={{
+          color: isHovered ? "var(--accent)" : "var(--fg-disabled)",
+          background: "var(--surface-white)",
+          borderColor: isHovered ? "rgba(68,86,223,0.32)" : "var(--border)",
+          transform: isHovered ? "translateX(2px)" : "translateX(0)",
+        }}
+      >
         <Icon path="M9 18l6-6-6-6" size={12} />
       </span>
     </button>
