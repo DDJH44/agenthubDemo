@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import type { ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useConversationFilesStore } from "../../stores/conversation-files-store";
 import { renderMarkdown } from "../../lib/markdown-utils";
@@ -39,6 +40,119 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: number;
+}
+
+const ASSISTANT_PRESETS = [
+  {
+    title: "拆解多 Agent 任务",
+    desc: "把一个复杂目标拆成 PMO、Codex、Claude Code、Open Code 的协作流程。",
+    prompt: "请把我的课题拆成一个多 Agent 协作执行计划，包含主 Agent 调度、子 Agent 分工、失败降级、产物预览和部署闭环。",
+    icon: "M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
+  },
+  {
+    title: "生成方案文档",
+    desc: "输出可进入文件面板预览的 PRD、技术方案或答辩材料。",
+    prompt: "请为 AgentHub 写一份项目优化方案文档，结构包括现状、目标、核心功能、交互流程、技术实现、风险和下一步计划。",
+    icon: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5",
+  },
+  {
+    title: "分析体验问题",
+    desc: "从产品视角审查 UI、信息密度、流程连贯性和可验收点。",
+    prompt: "请从 SaaS 工作台体验角度审查 AgentHub 当前产品，指出 5 个最值得优化的交互问题，并给出具体改法。",
+    icon: "M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+  },
+  {
+    title: "生成代码计划",
+    desc: "把功能需求转换成前端组件、状态和测试检查清单。",
+    prompt: "请把这个功能需求转换成前端实现计划：组件拆分、状态设计、关键交互、测试点和风险边界。",
+    icon: "M16 18l6-6-6-6M8 6l-6 6 6 6",
+  },
+];
+
+const WORKFLOW_HINTS = [
+  "会话会自动保留最近上下文",
+  "文档型回复会进入文件面板",
+  "支持流式输出和中途停止",
+];
+
+function formatMessageTime(ts: number): string {
+  return new Date(ts).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+}
+
+function estimateTokens(messages: ChatMessage[], streamBuffer: string): number {
+  const chars = messages.reduce((sum, message) => sum + message.content.length, 0) + streamBuffer.length;
+  return Math.ceil(chars / 1.5);
+}
+
+function Icon({ path, size = 14 }: { path: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d={path} />
+    </svg>
+  );
+}
+
+function AssistantMetric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="hidden min-w-0 rounded-lg px-2.5 py-1.5 sm:block" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
+      <p className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{label}</p>
+      <p className="mt-0.5 truncate text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{value}</p>
+    </div>
+  );
+}
+
+function PresetButton({
+  preset,
+  onClick,
+  compact = false,
+}: {
+  preset: (typeof ASSISTANT_PRESETS)[number];
+  onClick: () => void;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`group min-w-0 rounded-lg text-left transition-colors hover:bg-[var(--surface-white)] ${compact ? "px-2.5 py-2" : "px-3 py-3"}`}
+      style={{ background: compact ? "var(--surface-tinted)" : "rgba(255,255,255,0.96)", border: "1px solid var(--border)", boxShadow: compact ? "none" : "var(--shadow-xs)" }}
+    >
+      <div className="flex min-w-0 items-start gap-2.5">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+          <Icon path={preset.icon} size={13} />
+        </span>
+        <span className="min-w-0">
+          <span className="block truncate text-xs font-bold" style={{ color: "#202124" }}>{preset.title}</span>
+          {!compact && <span className="mt-1 line-clamp-2 block text-xs" style={{ color: "#647084", lineHeight: 1.55 }}>{preset.desc}</span>}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function MessageToolButton({
+  title,
+  onClick,
+  children,
+  active,
+}: {
+  title: string;
+  onClick: () => void;
+  children: ReactNode;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]"
+      style={{ color: active ? "var(--success)" : "var(--fg-tertiary)", background: active ? "var(--success-subtle)" : "transparent" }}
+    >
+      {children}
+    </button>
+  );
 }
 
 function buildHistory(messages: ChatMessage[], maxChars = 4000): Array<{ role: string; content: string }> {
@@ -255,6 +369,7 @@ export function AIAssistantView() {
   const [streamBuffer, setStreamBuffer] = useState("");
   const [showFiles, setShowFiles] = useState(false);
   const [fileSearch, setFileSearch] = useState("");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -279,6 +394,7 @@ export function AIAssistantView() {
   useEffect(() => { saveMessages(messages); }, [messages]);
 
   useEffect(() => {
+    if (messages.length === 0 && !streamBuffer) return;
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
     }
@@ -391,7 +507,7 @@ export function AIAssistantView() {
       }
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `❌ ${(err as Error).message}`, timestamp: Date.now() }]);
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `请求失败：${(err as Error).message}`, timestamp: Date.now() }]);
     } finally {
       isStreamingRef.current = false;
       setIsStreaming(false);
@@ -445,120 +561,275 @@ export function AIAssistantView() {
   };
 
   const hasMessages = messages.length > 0;
+  const assistantCount = useMemo(() => messages.filter((message) => message.role === "assistant").length, [messages]);
+  const savedDocIds = useMemo(() => new Set(files.map((file) => file.messageId)), [files]);
+  const tokenEstimate = useMemo(() => estimateTokens(messages, streamBuffer), [messages, streamBuffer]);
+  const latestUserMessage = useMemo(() => [...messages].reverse().find((message) => message.role === "user"), [messages]);
+  const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === "assistant"), [messages]);
+
+  const applyPreset = (prompt: string) => {
+    setInput(prompt);
+    window.requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.style.height = "auto";
+      el.style.height = Math.min(el.scrollHeight, 160) + "px";
+    });
+  };
+
+  const copyMessage = async (message: ChatMessage) => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopiedId(message.id);
+      window.setTimeout(() => setCopiedId(null), 1400);
+    } catch {
+      setCopiedId(null);
+    }
+  };
+
+  const reuseMessage = (message: ChatMessage) => {
+    applyPreset(message.role === "user"
+      ? message.content
+      : `请基于这段回复继续展开，给出更具体的下一步：\n\n${message.content.slice(0, 1200)}`);
+  };
+
+  const previewDocument = (message: ChatMessage) => {
+    setPreviewDoc({
+      title: extractDocTitle(message.content, "AI 生成文档"),
+      content: message.content,
+      messageId: message.id,
+    });
+  };
+
+  const saveDocumentFromMessage = (message: ChatMessage) => {
+    if (savedDocIds.has(message.id)) {
+      setShowFiles(true);
+      return;
+    }
+    const title = extractDocTitle(message.content, latestUserMessage?.content ?? "AI 生成文档");
+    const topic = detectTopic(message.content, latestUserMessage?.content ?? title);
+    const existingCount = files.filter((file) => file.topic === topic).length;
+    addFile({
+      title: generateFileName(title, existingCount),
+      content: message.content,
+      topic,
+      messageId: message.id,
+      starred: false,
+    });
+    setShowFiles(true);
+  };
+
+  const clearConversation = () => {
+    if (messages.length === 0 || !window.confirm("清空当前 AI 助手会话记录？")) return;
+    setMessages([]);
+    setInput("");
+    setStreamBuffer("");
+    setPreviewDoc(null);
+  };
 
   return (
     <div className="flex h-full relative" style={{ background: "var(--page-bg)" }}>
       {/* Main Chat Area */}
       <div className="flex flex-col flex-1 min-w-0" style={{ display: isFullscreen ? "none" : undefined }}>
         {/* Header */}
-        <div className="shrink-0 flex items-center justify-between px-4 py-2.5" style={{ borderBottom: "1px solid var(--border)", background: "var(--surface-white)" }}>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: "var(--accent-gradient)" }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M12 2a4 4 0 014 4v1h2a2 2 0 012 2v9a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2h2V6a4 4 0 014-4z" /><path d="M9 12h6M9 16h6" /></svg>
-            </div>
-            <div>
-              <h1 style={{ fontSize: "14px", fontWeight: 600, color: "var(--fg-primary)" }}>AI 智能助手</h1>
-              <div className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--success)" }} />
-                <span style={{ fontSize: "11px", color: "var(--fg-tertiary)" }}>在线</span>
+        <div className="shrink-0 px-4 py-3" style={{ borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,0.94)" }}>
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-white" style={{ background: "var(--accent-gradient)", boxShadow: "var(--accent-glow)" }}>
+                <Icon path="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4zM9 12h6M9 16h6" size={17} />
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)" }}>AI 智能助手</h1>
+                <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 rounded-full" style={{ background: isStreaming ? "var(--accent)" : "var(--success)" }} />
+                  <span className="truncate text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
+                    {isStreaming ? "正在生成回复" : latestAssistantMessage ? `上次回复 ${formatMessageTime(latestAssistantMessage.timestamp)}` : "就绪"}
+                  </span>
+                </div>
               </div>
             </div>
+
+            <div className="flex min-w-0 items-center gap-2">
+              <AssistantMetric label="回复" value={assistantCount} />
+              <AssistantMetric label="文档" value={files.length} />
+              <AssistantMetric label="上下文" value={`${tokenEstimate.toLocaleString()} tokens`} />
+              {messages.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearConversation}
+                  className="hidden h-8 shrink-0 items-center gap-1 rounded-lg px-2.5 text-xs font-semibold transition-colors hover:bg-[var(--danger-subtle)] md:inline-flex"
+                  style={{ color: "var(--danger)", border: "1px solid rgba(220, 53, 69, 0.16)" }}
+                >
+                  <Icon path="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v5M14 11v5" size={13} />
+                  清空
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowFiles(!showFiles)}
+                className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-colors"
+                style={{ background: showFiles ? "var(--accent-subtle)" : "var(--surface-tinted)", color: showFiles ? "var(--accent)" : "var(--fg-secondary)", border: "1px solid var(--border)" }}
+              >
+                <Icon path="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+                文件
+                {files.length > 0 && (
+                  <span className="grid h-4 min-w-4 place-items-center rounded-full px-1 text-[10px]" style={{ background: "var(--accent)", color: "#fff" }}>
+                    {files.length}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
-          <button onClick={() => setShowFiles(!showFiles)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-colors"
-            style={{ background: showFiles ? "var(--accent-subtle)" : "transparent", color: showFiles ? "var(--accent)" : "var(--fg-tertiary)" }}
-            onMouseEnter={(e) => { if (!showFiles) e.currentTarget.style.background = "var(--bg-hover)"; }}
-            onMouseLeave={(e) => { if (!showFiles) e.currentTarget.style.background = "transparent"; }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>
-            <span style={{ fontSize: "13px", fontWeight: 500 }}>文件</span>
-            {files.length > 0 && (
-              <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs" style={{ background: "var(--accent)", color: "#fff", fontSize: "10px", fontWeight: 600 }}>
-                {files.length}
-              </span>
-            )}
-          </button>
+
+          {hasMessages && (
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-0.5 custom-scrollbar">
+              {ASSISTANT_PRESETS.map((preset) => (
+                <div key={preset.title} className="w-[210px] shrink-0">
+                  <PresetButton preset={preset} onClick={() => applyPreset(preset.prompt)} compact />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Messages */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar">
           {!hasMessages ? (
-            <div className="flex flex-col items-center justify-center h-full px-6">
-              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}
-                className="flex flex-col items-center text-center" style={{ maxWidth: 480 }}>
-                <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-5" style={{ background: "var(--accent-gradient)" }}>
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="1.5"><path d="M12 2a4 4 0 014 4v1h2a2 2 0 012 2v9a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2h2V6a4 4 0 014-4z" /><path d="M9 12h6M9 16h6" /></svg>
-                </div>
-                <h2 style={{ fontSize: "20px", fontWeight: 700, color: "var(--fg-primary)", marginBottom: 8 }}>你好，有什么可以帮你？</h2>
-                <p style={{ fontSize: "14px", color: "var(--fg-tertiary)", lineHeight: 1.6, marginBottom: 32 }}>
-                  我可以帮你写代码、分析问题、撰写文档、回答技术问题
-                </p>
-                <div className="w-full grid gap-2" style={{ gridTemplateColumns: "repeat(2, 1fr)" }}>
-                  {[
-                    { icon: "💡", label: "帮我调研最新的 AI Agent 框架" },
-                    { icon: "💻", label: "用 TypeScript 写一个 HTTP 服务器" },
-                    { icon: "", label: "分析 React 和 Vue 的优缺点" },
-                    { icon: "", label: "帮我写一份项目技术方案" },
-                  ].map((item, i) => (
-                    <motion.button key={item.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.05 }}
-                      onClick={() => { setInput(item.label); inputRef.current?.focus(); }}
-                      className="text-left rounded-xl px-4 py-3 transition-all"
-                      style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--accent-border)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; }}
-                    >
-                      <span className="text-base">{item.icon}</span>
-                      <p style={{ fontSize: "13px", color: "var(--fg-secondary)", marginTop: 6, lineHeight: 1.5 }}>{item.label}</p>
-                    </motion.button>
-                  ))}
-                </div>
+            <div className="flex min-h-full items-center justify-center px-5 py-8">
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.35 }}
+                className="grid w-full max-w-5xl gap-4 lg:grid-cols-[1.15fr_0.85fr]"
+              >
+                <section className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.98)", border: "1px solid rgba(210, 218, 234, 0.95)", boxShadow: "0 16px 46px rgba(39, 49, 84, 0.08)" }}>
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold" style={{ color: "var(--accent)" }}>工作助理</p>
+                      <h2 className="mt-1 text-xl font-bold" style={{ color: "#202124" }}>从一个清晰任务开始</h2>
+                      <p className="mt-2 max-w-xl text-sm" style={{ color: "#5f6878", lineHeight: 1.7 }}>
+                        适合临时问答、文档草稿、代码计划和产品体验审查。文档型回复会自动保存到右侧文件面板。
+                      </p>
+                    </div>
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+                      <Icon path="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4zM9 12h6M9 16h6" size={18} />
+                    </span>
+                  </div>
+
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {ASSISTANT_PRESETS.map((preset, index) => (
+                      <motion.div key={preset.title} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 * index }}>
+                        <PresetButton preset={preset} onClick={() => applyPreset(preset.prompt)} />
+                      </motion.div>
+                    ))}
+                  </div>
+                </section>
+
+                <aside className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.78)", border: "1px solid rgba(210, 218, 234, 0.88)" }}>
+                  <div className="mb-4 flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>助手能力</p>
+                      <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)" }}>围绕当前项目工作流设计</p>
+                    </div>
+                    <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--success)", background: "var(--success-subtle)" }}>
+                      在线
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {WORKFLOW_HINTS.map((hint, index) => (
+                      <div key={hint} className="flex items-start gap-2 rounded-lg px-3 py-2" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md text-[10px] font-bold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
+                          {index + 1}
+                        </span>
+                        <p className="text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>{hint}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 rounded-lg px-3 py-2" style={{ background: "rgba(23, 78, 166, 0.055)", border: "1px solid rgba(23, 78, 166, 0.14)" }}>
+                    <p className="text-[10px] font-semibold" style={{ color: "var(--accent)" }}>建议输入方式</p>
+                    <p className="mt-1 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.65 }}>
+                      直接说目标、交付物和限制条件。例如：帮我把某个功能拆成可执行计划，并指出需要验证的页面状态。
+                    </p>
+                  </div>
+                </aside>
               </motion.div>
             </div>
           ) : (
             <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
               <AnimatePresence>
-                {messages.map((msg) => (
-                  <motion.div key={msg.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}
-                    className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
-                  >
-                    {msg.role === "assistant" && (
-                      <div className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center mt-0.5" style={{ background: "var(--accent-gradient)" }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M12 2a4 4 0 014 4v1h2a2 2 0 012 2v9a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2h2V6a4 4 0 014-4z" /></svg>
-                      </div>
-                    )}
-                    <div className={`min-w-0 ${msg.role === "user" ? "max-w-[75%]" : "max-w-[85%]"}`}>
+                {messages.map((msg) => {
+                  const messageIsDocument = msg.role === "assistant" && isDocument(msg.content);
+                  const savedDocument = savedDocIds.has(msg.id);
+                  return (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25 }}
+                      className={`group flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+                    >
                       {msg.role === "assistant" && (
-                        <div className="mb-1.5" style={{ fontSize: "12px", color: "var(--fg-tertiary)" }}>AI 智能助手</div>
+                        <div className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-white" style={{ background: "var(--accent-gradient)" }}>
+                          <Icon path="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4z" size={14} />
+                        </div>
                       )}
-                      <div className={`rounded-xl px-4 py-3 ${msg.role === "user" ? "text-right" : ""}`}
-                        style={{
-                          background: msg.role === "user" ? "var(--accent)" : "var(--surface-white)",
-                          color: msg.role === "user" ? "#fff" : "var(--fg-primary)",
-                          border: msg.role === "user" ? "none" : "1px solid var(--border)",
-                        }}>
-                        {msg.role === "user" ? (
-                          <p style={{ fontSize: "14px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{msg.content}</p>
-                        ) : isDocRequestRef.current && isDocument(msg.content) ? (
-                          <DocumentCardTrigger
-                            title={extractDocTitle(msg.content, "AI 生成文档")}
-                            onClick={() => setPreviewDoc({
-                              title: extractDocTitle(msg.content, "AI 生成文档"),
-                              content: msg.content,
-                              messageId: msg.id,
-                            })}
-                          />
-                        ) : (
-                          <div className="coze-prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
-                        )}
+                      <div className={`min-w-0 ${msg.role === "user" ? "max-w-[75%]" : "max-w-[85%]"}`}>
+                        <div className={`mb-1.5 flex items-center gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                          <span className="text-[11px] font-semibold" style={{ color: msg.role === "user" ? "var(--accent)" : "var(--fg-tertiary)" }}>
+                            {msg.role === "user" ? "我" : "AI 智能助手"}
+                          </span>
+                          {messageIsDocument && (
+                            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
+                              文档
+                            </span>
+                          )}
+                          <span style={{ fontSize: "11px", color: "var(--fg-disabled)" }}>{formatMessageTime(msg.timestamp)}</span>
+                        </div>
+                        <div
+                          className={`rounded-xl px-4 py-3 ${msg.role === "user" ? "text-right" : ""}`}
+                          style={{
+                            background: msg.role === "user" ? "#eef5ff" : "var(--surface-white)",
+                            color: msg.role === "user" ? "#173a7a" : "var(--fg-primary)",
+                            border: `1px solid ${msg.role === "user" ? "rgba(68, 86, 223, 0.10)" : "var(--border)"}`,
+                          }}
+                        >
+                          {msg.role === "user" ? (
+                            <p style={{ fontSize: "14px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{msg.content}</p>
+                          ) : messageIsDocument ? (
+                            <DocumentCardTrigger title={extractDocTitle(msg.content, "AI 生成文档")} onClick={() => previewDocument(msg)} />
+                          ) : (
+                            <div className="coze-prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
+                          )}
+                        </div>
+                        <div className={`mt-1 flex h-0 items-center gap-1 overflow-hidden opacity-0 transition-[height,opacity] group-hover:h-8 group-hover:opacity-100 group-focus-within:h-8 group-focus-within:opacity-100 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                          <MessageToolButton title={copiedId === msg.id ? "已复制" : "复制"} onClick={() => copyMessage(msg)} active={copiedId === msg.id}>
+                            <Icon path="M8 8h11v11H8zM5 15H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1" size={12} />
+                            {copiedId === msg.id ? "已复制" : "复制"}
+                          </MessageToolButton>
+                          <MessageToolButton title={msg.role === "user" ? "重新使用这条输入" : "基于这条回复继续"} onClick={() => reuseMessage(msg)}>
+                            <Icon path="M3 12a9 9 0 1 0 3-6.7M3 4v6h6" size={12} />
+                            {msg.role === "user" ? "复用" : "继续"}
+                          </MessageToolButton>
+                          {messageIsDocument && (
+                            <>
+                              <MessageToolButton title="预览文档" onClick={() => previewDocument(msg)}>
+                                <Icon path="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" size={12} />
+                                预览
+                              </MessageToolButton>
+                              <MessageToolButton title={savedDocument ? "已保存到文件面板" : "保存到文件面板"} onClick={() => saveDocumentFromMessage(msg)} active={savedDocument}>
+                                <Icon path="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8" size={12} />
+                                {savedDocument ? "已保存" : "保存"}
+                              </MessageToolButton>
+                            </>
+                          )}
+                        </div>
                       </div>
-                      <div className={`flex items-center gap-2 mt-1 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                        <span style={{ fontSize: "11px", color: "var(--fg-disabled)" }}>
-                          {new Date(msg.timestamp).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
 
               {isStreaming && (
@@ -587,34 +858,79 @@ export function AIAssistantView() {
         </div>
 
         {/* Input */}
-        <div className="shrink-0 px-4 pb-4 pt-2">
-          <div className="max-w-3xl mx-auto">
-            <div className="rounded-xl px-3 py-2 transition-all" style={{ background: "var(--surface-white)", border: "1px solid var(--border-strong)" }}
-              onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent-border)"; e.currentTarget.style.boxShadow = "0 0 0 2px var(--accent-subtle)"; }}
-              onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.boxShadow = "none"; }}
-            >
-              <textarea ref={inputRef} value={input} onChange={handleInputChange} onKeyDown={handleKeyDown}
-                placeholder="输入消息..."
-                rows={1}
-                className="w-full bg-transparent outline-none resize-none"
-                style={{ fontSize: "14px", color: "var(--fg-primary)", minHeight: 24, maxHeight: 160, lineHeight: 1.6 }} />
-              <div className="flex items-center justify-between mt-1">
-                <div className="flex items-center gap-1">
-                  <button className="p-1 rounded hover:bg-opacity-10 hover:bg-white transition-colors" style={{ color: "var(--fg-tertiary)" }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v8M8 12h8" /></svg>
+        <div className="shrink-0 px-4 pb-4 pt-2" style={{ background: "linear-gradient(to top, var(--surface-white), rgba(255,255,255,0.82))" }}>
+          <div className="mx-auto max-w-3xl">
+            {hasMessages && !isStreaming && (
+              <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-0.5 custom-scrollbar">
+                {ASSISTANT_PRESETS.slice(0, 3).map((preset) => (
+                  <button
+                    key={preset.title}
+                    type="button"
+                    onClick={() => applyPreset(preset.prompt)}
+                    className="h-7 shrink-0 rounded-full px-2.5 text-[11px] font-semibold transition-colors hover:bg-[var(--accent-subtle)]"
+                    style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+                  >
+                    {preset.title}
                   </button>
+                ))}
+              </div>
+            )}
+            <div
+              className="rounded-xl px-3 py-2 transition-all"
+              style={{ background: "var(--surface-white)", border: "1px solid var(--border-strong)", boxShadow: "var(--shadow-xs)" }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent-border)"; e.currentTarget.style.boxShadow = "0 0 0 2px var(--accent-subtle)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.boxShadow = "var(--shadow-xs)"; }}
+            >
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder={latestUserMessage ? "继续追问、要求改写，或让助手生成文档..." : "描述目标、交付物和限制条件..."}
+                rows={1}
+                className="w-full resize-none bg-transparent outline-none"
+                style={{ fontSize: "14px", color: "var(--fg-primary)", minHeight: 28, maxHeight: 160, lineHeight: 1.6 }}
+              />
+              <div className="mt-1 flex items-center justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setShowFiles(true)}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
+                    style={{ color: "var(--fg-tertiary)", border: "1px solid var(--border)" }}
+                    title="打开文件面板"
+                  >
+                    <Icon path="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" size={14} />
+                  </button>
+                  <span className="hidden truncate text-[10px] sm:inline" style={{ color: "var(--fg-tertiary)" }}>
+                    最近上下文 {messages.length} 条 · {tokenEstimate.toLocaleString()} tokens
+                  </span>
                 </div>
                 {isStreaming ? (
-                  <button onClick={handleStop} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm" style={{ background: "var(--danger-subtle)", color: "var(--danger)" }}>
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2" /></svg>
+                  <button
+                    type="button"
+                    onClick={handleStop}
+                    className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold"
+                    style={{ background: "var(--danger-subtle)", color: "var(--danger)", border: "1px solid rgba(220, 53, 69, 0.16)" }}
+                  >
+                    <Icon path="M6 6h12v12H6z" size={12} />
                     停止
                   </button>
                 ) : (
-                  <button onClick={handleSend} disabled={!input.trim()}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-sm transition-all"
-                    style={{ background: input.trim() ? "var(--accent-gradient)" : "var(--surface-low)", color: input.trim() ? "#fff" : "var(--fg-disabled)" }}>
+                  <button
+                    type="button"
+                    onClick={handleSend}
+                    disabled={!input.trim()}
+                    className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all active:scale-95"
+                    style={{
+                      background: input.trim() ? "var(--accent)" : "var(--surface-low)",
+                      color: input.trim() ? "#fff" : "var(--fg-disabled)",
+                      border: `1px solid ${input.trim() ? "var(--accent)" : "var(--border)"}`,
+                      boxShadow: input.trim() ? "var(--accent-glow)" : "none",
+                    }}
+                  >
                     发送
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" /></svg>
+                    <Icon path="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z" size={12} />
                   </button>
                 )}
               </div>
