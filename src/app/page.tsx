@@ -37,6 +37,140 @@ function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => v
   );
 }
 
+const CHAT_STARTERS = [
+  "帮我拆解一个多 Agent 项目计划",
+  "生成一个网页产物并打开预览",
+  "检查代码冲突并输出 Diff",
+  "把当前产物部署到预览环境",
+];
+
+function ChatEmptyState({
+  onCreate,
+  onPrompt,
+  onOpenAcceptance,
+}: {
+  onCreate: () => void;
+  onPrompt: (text: string) => void;
+  onOpenAcceptance: () => void;
+}) {
+  return (
+    <div
+      className="flex min-h-0 flex-1 items-center justify-center px-6 py-8"
+      style={{
+        background:
+          "linear-gradient(180deg, var(--surface-white) 0%, #fbfcff 62%, #f5f8fd 100%)",
+      }}
+    >
+      <div className="w-full max-w-[720px]">
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold" style={{ color: "var(--fg-tertiary)" }}>AgentHub 会话工作台</p>
+            <h2 className="mt-2 text-[24px] font-[760] leading-tight" style={{ color: "var(--fg-primary)", fontFamily: "var(--font-heading)" }}>
+              从一个目标开始，让主 Agent 帮你调度团队。
+            </h2>
+          </div>
+          <div
+            className="hidden h-12 w-12 shrink-0 place-items-center rounded-xl sm:grid"
+            style={{ background: "var(--accent-subtle)", color: "var(--accent)", border: "1px solid var(--accent-border)" }}
+          >
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M21 15a2 2 0 01-2 2H8l-5 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
+              <path d="M8 9h8" />
+              <path d="M8 13h5" />
+            </svg>
+          </div>
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+          <div
+            className="rounded-2xl p-4 shadow-sm"
+            style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>快速启动</p>
+                <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)" }}>
+                  直接选择一个场景，系统会创建会话并把任务交给 PMO。
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={onCreate}
+                className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                style={{ background: "var(--accent)", boxShadow: "0 8px 18px rgba(68,86,223,0.18)" }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+                  <path d="M12 5v14M5 12h14" />
+                </svg>
+                新建会话
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              {CHAT_STARTERS.map((starter) => (
+                <button
+                  key={starter}
+                  type="button"
+                  onClick={() => onPrompt(starter)}
+                  className="min-h-10 rounded-xl px-3 py-2 text-left text-xs font-semibold transition-colors hover:bg-[var(--surface-low)]"
+                  style={{ color: "var(--fg-secondary)", background: "var(--surface-tinted)", border: "1px solid var(--border)" }}
+                >
+                  {starter}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div
+            className="rounded-2xl p-4"
+            style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}
+          >
+            <p className="text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>会话链路</p>
+            <div className="mt-3 space-y-3">
+              {["理解需求", "拆解任务", "并行调度", "产物交付"].map((step, index) => (
+                <div key={step} className="flex items-center gap-2">
+                  <span
+                    className="grid h-6 w-6 shrink-0 place-items-center rounded-lg text-[10px] font-bold"
+                    style={{
+                      background: index === 0 ? "var(--accent)" : "var(--surface-white)",
+                      color: index === 0 ? "#fff" : "var(--fg-tertiary)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    {index + 1}
+                  </span>
+                  <span className="text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>{step}</span>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={onOpenAcceptance}
+              className="mt-4 h-8 w-full rounded-lg text-xs font-semibold transition-colors hover:bg-[var(--surface-white)]"
+              style={{ color: "var(--accent)", border: "1px solid var(--accent-border)" }}
+            >
+              查看验收导览
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {[
+            ["PMO", "主 Agent 调度"],
+            ["Codex", "代码生成"],
+            ["Open Code", "部署接入"],
+          ].map(([name, desc]) => (
+            <div key={name} className="rounded-xl px-3 py-2" style={{ background: "rgba(255,255,255,0.72)", border: "1px solid var(--border)" }}>
+              <p className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{name}</p>
+              <p className="mt-0.5 text-[11px]" style={{ color: "var(--fg-tertiary)" }}>{desc}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function Page() {
   const router = useRouter();
   const { isAuthenticated, isLoading: authLoading, hydrate: hydrateAuth } = useAuthStore();
@@ -397,24 +531,11 @@ export default function Page() {
                     isMobile={isMobile}
                   />
                 ) : (
-                  <div className="flex-1 flex items-center justify-center" style={{ background: "var(--surface-white)" }}>
-                    <div className="flex flex-col items-center text-center">
-                      <div className="w-20 h-20 rounded-2xl mb-5 flex items-center justify-center"
-                        style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
-                        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                          <path d="M8 9h8" />
-                          <path d="M8 13h5" />
-                        </svg>
-                      </div>
-                      <h2 style={{ fontSize: "var(--text-lg)", fontWeight: 700, fontFamily: "var(--font-heading)", color: "var(--fg-primary)", marginBottom: 8 }}>
-                        开启今天的第一次会话吧
-                      </h2>
-                      <p style={{ fontSize: "var(--text-sm)", color: "var(--fg-tertiary)", lineHeight: 1.6, maxWidth: 320 }}>
-                        从左侧选择一个会话，或创建一个新会话开始协作
-                      </p>
-                    </div>
-                  </div>
+                  <ChatEmptyState
+                    onCreate={() => setShowCreateModal(true)}
+                    onPrompt={handleSend}
+                    onOpenAcceptance={() => setActiveNav("acceptance")}
+                  />
                 )}
               </div>
             </div>

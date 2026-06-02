@@ -24,6 +24,8 @@ interface Props {
 
 type ModeFilter = "single" | "group" | null;
 
+const EMPTY_STARTERS = ["多 Agent 任务", "网页产物", "代码 Diff"];
+
 function formatTime(ts: number | null | undefined): string {
   if (!ts) return "";
   const diff = Date.now() - ts;
@@ -462,26 +464,52 @@ export function ConversationListView({
         ))}
 
         {!hasResults && (
-          <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <div className="mb-4 grid h-12 w-12 place-items-center rounded-lg" style={{ background: "var(--surface-white)", color: "var(--fg-tertiary)", border: "1px solid var(--border)" }}>
-              <Icon type={search ? "search" : "group"} size={22} />
-            </div>
-            <h3 className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>
-              {search ? "没有匹配的会话" : "暂无会话"}
-            </h3>
-            <p className="mt-1 max-w-[220px] text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.6 }}>
-              {search ? "换个关键词试试，例如 Codex、部署、Diff。" : "创建一个会话，或从首页启动课题验收演示。"}
-            </p>
-            {!search && (
-              <button
-                type="button"
-                onClick={onCreate}
-                className="mt-4 h-8 rounded-lg px-3 text-xs font-semibold text-white"
-                style={{ background: "var(--accent)" }}
+          <div className="px-3 py-8">
+            <div
+              className="rounded-2xl p-4 text-center shadow-sm"
+              style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}
+            >
+              <div
+                className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-xl"
+                style={{
+                  background: search ? "var(--surface-low)" : "var(--accent-subtle)",
+                  color: search ? "var(--fg-tertiary)" : "var(--accent)",
+                  border: `1px solid ${search ? "var(--border)" : "var(--accent-border)"}`,
+                }}
               >
-                新建会话
-              </button>
-            )}
+                <Icon type={search ? "search" : "group"} size={21} />
+              </div>
+              <h3 className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>
+                {search ? "没有匹配的会话" : "还没有会话"}
+              </h3>
+              <p className="mx-auto mt-1 max-w-[220px] text-xs leading-5" style={{ color: "var(--fg-tertiary)" }}>
+                {search ? "换个关键词试试，例如 Codex、部署、Diff。" : "先创建一个会话，主 Agent 会帮你拆解任务并协调子 Agent。"}
+              </p>
+
+              {!search && (
+                <>
+                  <div className="mt-4 grid grid-cols-3 gap-1.5">
+                    {EMPTY_STARTERS.map((starter) => (
+                      <span
+                        key={starter}
+                        className="rounded-lg px-2 py-1.5 text-[10px] font-semibold"
+                        style={{ background: "var(--surface-tinted)", color: "var(--fg-secondary)", border: "1px solid var(--border)" }}
+                      >
+                        {starter}
+                      </span>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={onCreate}
+                    className="mt-4 h-9 rounded-lg px-4 text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                    style={{ background: "var(--accent)", boxShadow: "0 8px 18px rgba(68,86,223,0.18)" }}
+                  >
+                    新建会话
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>
