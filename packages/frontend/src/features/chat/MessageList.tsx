@@ -7,20 +7,28 @@ import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
 import { ArtifactCard, type ArtifactCardType } from "./ArtifactCard";
 
-const AGENT_META: Record<string, { label: string; badge: string; color: string; mascot?: BrandMascotVariant }> = {
-  planner: { label: "PMO 主 Agent", badge: "PMO", color: "#174ea6", mascot: "happy" },
-  pmo: { label: "PMO 主 Agent", badge: "PMO", color: "#174ea6", mascot: "happy" },
-  researcher: { label: "Researcher", badge: "R", color: "#0e7490" },
-  coder: { label: "Codex", badge: "CX", color: "#0f766e" },
-  codex: { label: "Codex", badge: "CX", color: "#0f766e" },
-  worker: { label: "Worker Agent", badge: "W", color: "#5f6368" },
-  "claude-code": { label: "Claude Code", badge: "CL", color: "#9a6700" },
-  "open-code": { label: "Open Code", badge: "OC", color: "#7c3aed" },
-  critic: { label: "Critic", badge: "CR", color: "#a50e0e" },
-  refiner: { label: "UX Reviewer", badge: "UX", color: "#a50e0e" },
-  "ux-reviewer": { label: "自建 UX Reviewer", badge: "UX", color: "#a50e0e" },
-  assistant: { label: "Assistant", badge: "AI", color: "#5f6368" },
-  system: { label: "系统", badge: "SYS", color: "#5f6368" },
+interface SenderMeta {
+  label: string;
+  badge: string;
+  color: string;
+  role?: string;
+  mascot?: BrandMascotVariant;
+}
+
+const AGENT_META: Record<string, SenderMeta> = {
+  planner: { label: "PMO 主 Agent", badge: "PMO", role: "协调器", color: "var(--accent)" },
+  pmo: { label: "PMO 主 Agent", badge: "PMO", role: "协调器", color: "var(--accent)" },
+  researcher: { label: "Researcher", badge: "R", role: "资料检索", color: "#0e7490" },
+  coder: { label: "Codex", badge: "CX", role: "代码生成", color: "#0f766e" },
+  codex: { label: "Codex", badge: "CX", role: "代码生成", color: "#0f766e" },
+  worker: { label: "Worker Agent", badge: "W", role: "执行", color: "#5f6368" },
+  "claude-code": { label: "Claude Code", badge: "CL", role: "冲突处理", color: "#9a6700" },
+  "open-code": { label: "Open Code", badge: "OC", role: "部署", color: "#7c3aed" },
+  critic: { label: "Critic", badge: "CR", role: "审查", color: "#a50e0e" },
+  refiner: { label: "UX Reviewer", badge: "UX", role: "体验审查", color: "#a50e0e" },
+  "ux-reviewer": { label: "自建 UX Reviewer", badge: "UX", role: "自建 Agent", color: "#a50e0e" },
+  assistant: { label: "Assistant", badge: "AI", role: "助手", color: "#5f6368" },
+  system: { label: "系统", badge: "SYS", role: "通知", color: "#5f6368" },
 };
 
 const ARTIFACT_TYPES = new Set<ArtifactCardType>(["code", "html", "json", "markdown", "document", "slides", "preview_url", "deploy_url", "diff"]);
@@ -40,14 +48,15 @@ function formatDate(ts: number): string {
   return `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
 }
 
-function getSenderMeta(message: Message) {
+function getSenderMeta(message: Message): SenderMeta {
   if (message.type === "user_message" || message.sender === "user") {
-    return { label: "我", badge: "我", color: "#174ea6" };
+    return { label: "我", badge: "我", role: "用户", color: "var(--accent)" };
   }
   const key = message.senderId || message.sender || "assistant";
   return AGENT_META[key] ?? AGENT_META[message.sender] ?? {
     label: message.sender || "Agent",
     badge: (message.sender || "A").slice(0, 2).toUpperCase(),
+    role: "Agent",
     color: "#5f6368",
   };
 }
@@ -65,7 +74,7 @@ function renderInline(text: string): ReactNode[] {
   return parts.map((part, index) => {
     if (part.startsWith("`") && part.endsWith("`")) {
       return (
-        <code key={index} style={{ background: "var(--surface-low)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-mono)", fontSize: "0.92em", color: "#174ea6" }}>
+        <code key={index} style={{ background: "var(--surface-low)", border: "1px solid var(--border)", borderRadius: 4, padding: "1px 5px", fontFamily: "var(--font-mono)", fontSize: "0.92em", color: "var(--accent)" }}>
           {part.slice(1, -1)}
         </code>
       );
@@ -93,7 +102,7 @@ function TextContent({ text }: { text: string }) {
         }
         if (trimmed.startsWith("> ")) {
           return (
-            <blockquote key={index} className="rounded-md px-3 py-2 text-xs" style={{ borderLeft: "3px solid #174ea6", background: "rgba(23, 78, 166, 0.06)", color: "var(--fg-secondary)" }}>
+            <blockquote key={index} className="rounded-md px-3 py-2 text-xs" style={{ borderLeft: "3px solid var(--accent)", background: "var(--accent-subtle)", color: "var(--fg-secondary)" }}>
               {renderInline(trimmed.slice(2))}
             </blockquote>
           );
@@ -147,6 +156,40 @@ function getArtifactType(payload: Record<string, unknown> | undefined): Artifact
     slide: "slides",
   } as Record<string, ArtifactCardType>)[raw] ?? raw;
   return ARTIFACT_TYPES.has(normalized as ArtifactCardType) ? normalized as ArtifactCardType : null;
+}
+
+function ActionButton({
+  title,
+  onClick,
+  disabled,
+  tone = "neutral",
+  children,
+}: {
+  title: string;
+  onClick: () => void;
+  disabled?: boolean;
+  tone?: "neutral" | "accent" | "success" | "danger";
+  children: ReactNode;
+}) {
+  const color =
+    tone === "accent" ? "var(--accent)" :
+    tone === "success" ? "var(--success)" :
+    tone === "danger" ? "var(--danger)" :
+    "var(--fg-tertiary)";
+
+  return (
+    <button
+      type="button"
+      title={title}
+      aria-label={title}
+      onClick={onClick}
+      disabled={disabled}
+      className="grid h-7 min-w-7 place-items-center rounded-md px-1.5 text-[10px] font-bold transition-colors hover:bg-[var(--surface-low)] disabled:opacity-40"
+      style={{ color, cursor: disabled ? "not-allowed" : "pointer" }}
+    >
+      {children}
+    </button>
+  );
 }
 
 function MessageActions({
@@ -221,35 +264,51 @@ function MessageActions({
   };
 
   return (
-    <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-      <button type="button" onClick={copy} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: copied ? "var(--success)" : "var(--fg-tertiary)" }}>
-        {copied ? "已复制" : "复制"}
-      </button>
-      <button type="button" onClick={addToContext} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: referenced ? "var(--success)" : "var(--fg-tertiary)" }}>
-        {referenced ? "已加入" : "加入上下文"}
-      </button>
-      <button type="button" onClick={() => handoffToAgent("pmo", "PMO", "planner")} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }}>
-        交 PMO
-      </button>
-      <button type="button" onClick={() => handoffToAgent("codex", "Codex", "coder")} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }}>
-        交 Codex
-      </button>
-      <button type="button" onClick={() => handoffToAgent("ux-reviewer", "UX Reviewer", "refiner")} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }}>
-        交 UX
-      </button>
+    <div
+      className={`mt-0 flex h-0 w-fit items-center overflow-hidden rounded-lg border px-1 py-0 opacity-0 transition-[height,margin,opacity,padding] group-hover:mt-1 group-hover:h-8 group-hover:py-0.5 group-hover:opacity-100 group-focus-within:mt-1 group-focus-within:h-8 group-focus-within:py-0.5 group-focus-within:opacity-100 ${isUser ? "ml-auto" : ""}`}
+      style={{ background: "rgba(255,255,255,0.92)", borderColor: "var(--border)", boxShadow: "var(--shadow-xs)" }}
+    >
+      <ActionButton title={copied ? "已复制" : "复制"} onClick={copy} tone={copied ? "success" : "neutral"}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M8 8h11v11H8z" />
+          <path d="M5 15H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1" />
+        </svg>
+      </ActionButton>
+      <ActionButton title={referenced ? "已加入上下文" : "加入上下文"} onClick={addToContext} tone={referenced ? "success" : "neutral"}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M4 4h16v5H4z" />
+          <path d="M4 15h7v5H4z" />
+          <path d="M15 15h5v5h-5z" />
+        </svg>
+      </ActionButton>
+      <ActionButton title="交给 PMO" onClick={() => handoffToAgent("pmo", "PMO", "planner")} tone="accent">PMO</ActionButton>
+      <ActionButton title="交给 Codex" onClick={() => handoffToAgent("codex", "Codex", "coder")} tone="accent">CX</ActionButton>
+      <ActionButton title="交给 UX Reviewer" onClick={() => handoffToAgent("ux-reviewer", "UX Reviewer", "refiner")} tone="accent">UX</ActionButton>
       {isStreaming && onStop && (
-        <button type="button" onClick={onStop} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "#174ea6" }}>
-          暂停
-        </button>
+        <ActionButton title="暂停生成" onClick={onStop} tone="accent">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M10 4H6v16h4z" />
+            <path d="M18 4h-4v16h4z" />
+          </svg>
+        </ActionButton>
       )}
       {isUser && onUndo && (
-        <button type="button" onClick={() => onUndo(message.id)} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }}>
-          撤回
-        </button>
+        <ActionButton title="撤回" onClick={() => onUndo(message.id)}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M9 14 4 9l5-5" />
+            <path d="M4 9h10a6 6 0 0 1 0 12h-1" />
+          </svg>
+        </ActionButton>
       )}
-      <button type="button" onClick={() => deleteMessage(message.conversationId, message.id)} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--danger)" }}>
-        删除
-      </button>
+      <ActionButton title="删除" onClick={() => deleteMessage(message.conversationId, message.id)} tone="danger">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <path d="M3 6h18" />
+          <path d="M8 6V4h8v2" />
+          <path d="M19 6l-1 14H6L5 6" />
+          <path d="M10 11v5" />
+          <path d="M14 11v5" />
+        </svg>
+      </ActionButton>
     </div>
   );
 }
@@ -295,7 +354,7 @@ const MessageBubble = memo(function MessageBubble({
   if (isSystem) {
     return (
       <div className="px-4 py-2">
-        <div className="mx-auto w-fit max-w-[82%] rounded-md px-3 py-1.5 text-center text-xs" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+        <div className="mx-auto w-fit max-w-[82%] rounded-lg px-3 py-1.5 text-center text-xs" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
           {message.content}
         </div>
       </div>
@@ -318,7 +377,7 @@ const MessageBubble = memo(function MessageBubble({
             senderMeta.mascot ? (
               <BrandMascot variant={senderMeta.mascot} size={34} className="mt-0.5" />
             ) : (
-              <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: senderMeta.color }}>
+              <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[10px] font-bold text-white" style={{ background: senderMeta.color }}>
                 {senderMeta.badge}
               </div>
             )
@@ -330,17 +389,22 @@ const MessageBubble = memo(function MessageBubble({
         <div className="min-w-0" style={{ maxWidth: isUser ? "72%" : "86%" }}>
           {showAvatar && (
             <div className={`mb-1 flex items-center gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
-              <span className="text-xs font-bold" style={{ color: isUser ? "#174ea6" : "var(--fg-secondary)" }}>
+              <span className="text-xs font-bold" style={{ color: isUser ? "var(--accent)" : "var(--fg-secondary)" }}>
                 {senderMeta.label}
               </span>
+              {senderMeta.role && (
+                <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
+                  {senderMeta.role}
+                </span>
+              )}
               <span className="text-[10px]" style={{ color: "var(--fg-disabled)" }}>{formatTime(message.timestamp)}</span>
             </div>
           )}
 
           <div
-            className="overflow-hidden rounded-md"
+            className="overflow-hidden rounded-lg"
             style={{
-              background: isUser ? "#edf4ff" : "var(--surface-low)",
+              background: isUser ? "#eef5ff" : "rgba(255, 255, 255, 0.82)",
               color: isUser ? "#173a7a" : "var(--fg-primary)",
               border: `1px solid ${isUser ? "rgba(68, 86, 223, 0.10)" : "rgba(62, 79, 118, 0.08)"}`,
               boxShadow: "none",
@@ -391,7 +455,7 @@ const MessageBubble = memo(function MessageBubble({
             {!artifactType && !htmlLike && !["diff_card", "deploy_card", "preview_card"].includes(message.type) && (
               <div className="px-4 py-3">
                 {hasThinking && (
-                  <div className="mb-2 w-fit rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: isUser ? "rgba(255,255,255,0.16)" : "var(--surface-low)" }}>
+                  <div className="mb-2 w-fit rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: isUser ? "rgba(255,255,255,0.56)" : "var(--surface-low)" }}>
                     已省略思考过程
                   </div>
                 )}
@@ -415,7 +479,7 @@ const MessageBubble = memo(function MessageBubble({
 
         {isUser && (
           showAvatar ? (
-            <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: "var(--accent)" }}>
+            <div className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[10px] font-bold text-white" style={{ background: "var(--accent)" }}>
               我
             </div>
           ) : (
@@ -442,11 +506,11 @@ function StreamDisplay({ isStreaming, streamBuffer }: { isStreaming: boolean; st
   return (
     <div className="px-4 py-2">
       <div className="flex gap-3">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: "var(--accent)" }}>
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[10px] font-bold text-white" style={{ background: "var(--accent)" }}>
           AI
         </div>
         <div className="min-w-0 flex-1" style={{ maxWidth: "86%" }}>
-          <div className="rounded-md px-4 py-3" style={{ background: "var(--surface-low)", border: "1px solid var(--accent-border)", boxShadow: "none" }}>
+          <div className="rounded-lg px-4 py-3" style={{ background: "rgba(255, 255, 255, 0.82)", border: "1px solid var(--accent-border)", boxShadow: "none" }}>
             {streamBuffer ? (
               <pre className="m-0 whitespace-pre-wrap" style={{ color: "var(--fg-secondary)", fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", lineHeight: 1.65 }}>
                 {streamBuffer}
@@ -474,10 +538,10 @@ function AgentTypingIndicator() {
   return (
     <div className="px-4 py-2">
       <div className="flex items-center gap-3">
-        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: "#5f6368" }}>
+        <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[10px] font-bold text-white" style={{ background: "#5f6368" }}>
           AG
         </div>
-        <div className="rounded-md px-3 py-2 text-xs" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+        <div className="rounded-lg px-3 py-2 text-xs" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
           {typing.map((id) => AGENT_META[id]?.label ?? id).join("、")} 正在输入
         </div>
       </div>
@@ -529,11 +593,11 @@ export const MessageList = memo(function MessageList({
       {taskSummary && !isStreaming && (
         <div className="px-4 py-3">
           <div className="flex gap-3">
-            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white" style={{ background: "var(--success)" }}>
+            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[10px] font-bold text-white" style={{ background: "var(--success)" }}>
               OK
             </div>
             <div className="min-w-0 flex-1" style={{ maxWidth: "86%" }}>
-              <div className="rounded-md px-4 py-3" style={{ background: "var(--success-subtle)", border: "1px solid rgba(24, 128, 56, 0.18)" }}>
+              <div className="rounded-lg px-4 py-3" style={{ background: "var(--success-subtle)", border: "1px solid rgba(24, 128, 56, 0.18)" }}>
                 <div className="mb-1 text-xs font-bold" style={{ color: "var(--success)" }}>任务完成</div>
                 <div className="whitespace-pre-wrap text-sm" style={{ color: "var(--fg-primary)", lineHeight: 1.65 }}>
                   {taskSummary}
