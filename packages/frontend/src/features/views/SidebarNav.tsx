@@ -1,10 +1,10 @@
 "use client";
 
+import Image from "next/image";
 import { useT } from "@/hooks/useT";
 import { useNavigationStore, type NavKey } from "@/stores/navigation-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { useAuthStore } from "@/stores/auth-store";
-import Image from "next/image";
 
 const NAV_ITEMS: { key: NavKey; icon: string; section: string }[] = [
   { key: "dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", section: "main" },
@@ -31,6 +31,22 @@ const SECTIONS = [
   { key: "system", label: "系统" },
 ];
 
+function NavIcon({ path, active }: { path: string; active: boolean }) {
+  return (
+    <span
+      className="grid h-6 w-6 shrink-0 place-items-center rounded-md transition-colors"
+      style={{
+        background: active ? "var(--accent-subtle)" : "transparent",
+        color: active ? "var(--accent)" : "var(--fg-tertiary)",
+      }}
+    >
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d={path} />
+      </svg>
+    </span>
+  );
+}
+
 function NavItemButton({ item, activeNav, setActiveNav, t }: {
   item: { key: NavKey; icon: string };
   activeNav: NavKey;
@@ -38,23 +54,25 @@ function NavItemButton({ item, activeNav, setActiveNav, t }: {
   t: (key: string) => string;
 }) {
   const isActive = activeNav === item.key;
+
   return (
     <button
       key={item.key}
       data-nav-key={item.key}
       onClick={() => setActiveNav(item.key)}
-      className={`w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg transition-all ${isActive ? "bg-[var(--accent-subtle)]" : "bg-transparent hover:bg-[var(--surface-low)]"}`}
+      className="group relative flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors"
       style={{
-        color: isActive ? "var(--accent)" : "var(--fg-secondary)",
-        fontSize: "var(--text-sm)", fontWeight: isActive ? 600 : 400,
+        background: isActive ? "var(--surface-white)" : "transparent",
         border: `1px solid ${isActive ? "var(--accent-border)" : "transparent"}`,
+        boxShadow: isActive ? "0 5px 14px rgba(42, 53, 91, 0.06)" : "none",
+        color: isActive ? "var(--fg-primary)" : "var(--fg-secondary)",
+        fontSize: "var(--text-sm)",
+        fontWeight: isActive ? 650 : 500,
       }}
     >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-        style={{ opacity: isActive ? 1 : 0.55, flexShrink: 0 }}>
-        <path d={item.icon} />
-      </svg>
-      <span className="flex-1 text-left truncate">{t(`nav.${item.key}`)}</span>
+      {isActive && <span className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-r-full" style={{ background: "var(--accent)" }} />}
+      <NavIcon path={item.icon} active={isActive} />
+      <span className="min-w-0 flex-1 truncate">{t(`nav.${item.key}`)}</span>
     </button>
   );
 }
@@ -65,18 +83,24 @@ function CollapsedIconItem({ item, activeNav, setActiveNav, t }: {
   setActiveNav: (key: NavKey) => void;
   t: (key: string) => string;
 }) {
+  const isActive = activeNav === item.key;
+
   return (
     <button
       key={item.key}
       data-nav-key={item.key}
       onClick={() => setActiveNav(item.key)}
-      className={`w-8 h-8 rounded-lg flex items-center justify-center relative shrink-0 transition-all ${activeNav === item.key ? "bg-[var(--accent-subtle)]" : "bg-transparent hover:bg-[var(--surface-low)]"}`}
+      className="relative grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors"
       style={{
-        color: activeNav === item.key ? "var(--accent)" : "var(--fg-tertiary)",
+        background: isActive ? "var(--surface-white)" : "transparent",
+        color: isActive ? "var(--accent)" : "var(--fg-tertiary)",
+        border: `1px solid ${isActive ? "var(--accent-border)" : "transparent"}`,
+        boxShadow: isActive ? "var(--shadow-xs)" : "none",
       }}
       title={t(`nav.${item.key}`)}
     >
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      {isActive && <span className="absolute -left-1 h-4 w-0.5 rounded-r-full" style={{ background: "var(--accent)" }} />}
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d={item.icon} />
       </svg>
     </button>
@@ -85,39 +109,48 @@ function CollapsedIconItem({ item, activeNav, setActiveNav, t }: {
 
 function CollapsedNav() {
   const { activeNav, setActiveNav, toggleSidebar } = useNavigationStore();
+  const user = useAuthStore((state) => state.user);
   const t = useT();
   const openCommandPalette = () => window.dispatchEvent(new CustomEvent("command-palette:open"));
+  const initial = (user?.name ?? "U").charAt(0).toUpperCase();
+
   return (
-    <div className="flex flex-col items-center py-3 gap-0.5" style={{ width: 48 }}>
+    <div className="flex h-full w-12 flex-col items-center gap-1 py-3">
       <button
         onClick={toggleSidebar}
-        className="w-8 h-8 rounded-lg flex items-center justify-center mb-2 font-bold text-white shrink-0 overflow-hidden"
-        style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}
+        className="mb-2 grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg"
+        style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}
         title="展开导航"
       >
-        <Image src="/brand/logo-mark.png" alt="AgentHub" width={28} height={28} style={{ width: 28, height: 28, objectFit: "contain" }} />
+        <Image src="/brand/logo-mark.png" alt="AgentHub" width={26} height={26} style={{ width: 26, height: 26, objectFit: "contain" }} />
       </button>
       <button
         type="button"
         onClick={openCommandPalette}
-        className="mb-2 grid h-8 w-8 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
-        style={{ color: "var(--fg-tertiary)" }}
+        className="mb-2 grid h-8 w-8 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-white)]"
+        style={{ color: "var(--fg-tertiary)", border: "1px solid var(--border)" }}
         title="快速跳转"
       >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
           <path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
         </svg>
       </button>
-      {NAV_ITEMS.map((item) => (
-        <CollapsedIconItem key={item.key} item={item} activeNav={activeNav} setActiveNav={setActiveNav} t={t} />
-      ))}
-      <div className="mt-auto w-7 h-7 rounded-full flex items-center justify-center font-semibold text-white shrink-0"
-        style={{ background: "var(--accent-gradient)", fontSize: 9 }}>N</div>
+      <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto custom-scrollbar">
+        {NAV_ITEMS.map((item) => (
+          <CollapsedIconItem key={item.key} item={item} activeNav={activeNav} setActiveNav={setActiveNav} t={t} />
+        ))}
+      </div>
+      <div
+        className="mt-2 grid h-8 w-8 shrink-0 place-items-center rounded-full text-[10px] font-bold text-white"
+        style={{ background: "var(--accent-gradient)", boxShadow: "0 6px 14px rgba(68,86,223,0.18)" }}
+        title={user?.name ?? "用户"}
+      >
+        {initial}
+      </div>
     </div>
   );
 }
 
-/* ───────────────────────── 展开模式 ───────────────────────── */
 type SidebarVariant = "dashboard" | "chat" | "default";
 
 interface ExpandedNavProps {
@@ -133,106 +166,119 @@ function ExpandedNav({
   const t = useT();
   const { toggleSidebar } = useNavigationStore();
   const { locale, toggleLocale } = useSettingsStore();
+  const user = useAuthStore((state) => state.user);
+  const logout = useAuthStore((state) => state.logout);
   const openCommandPalette = () => window.dispatchEvent(new CustomEvent("command-palette:open"));
+  const initial = (user?.name ?? "U").charAt(0).toUpperCase();
 
   return (
-    <div className="flex flex-col h-full" style={{ width: "100%" }}>
-      {/* Logo */}
-      <div className="px-4 pt-4 pb-1" style={{ borderBottom: "1px solid var(--divider)" }}>
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0 overflow-hidden" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-            <Image src="/brand/logo-mark.png" alt="AgentHub" width={28} height={28} style={{ width: 28, height: 28, objectFit: "contain" }} />
+    <div className="flex h-full flex-col" style={{ width: "100%" }}>
+      <div className="px-3 pb-3 pt-3" style={{ borderBottom: "1px solid var(--divider)" }}>
+        <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-2" style={{ background: "rgba(255,255,255,0.72)", border: "1px solid var(--border)" }}>
+          <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
+            <Image src="/brand/logo-mark.png" alt="AgentHub" width={30} height={30} style={{ width: 30, height: 30, objectFit: "contain" }} />
           </div>
-          <h1 className="flex-1" style={{ fontSize: 15, fontWeight: 700, fontFamily: "var(--font-heading)", lineHeight: 1.2, letterSpacing: 0, color: "var(--fg-primary)" }}>
-            AgentHub
-          </h1>
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-sm font-bold leading-tight" style={{ fontFamily: "var(--font-heading)", color: "var(--fg-primary)" }}>
+              AgentHub
+            </h1>
+            <p className="mt-0.5 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+              AI Agents · Together
+            </p>
+          </div>
           <button
             onClick={toggleSidebar}
-            className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 transition-colors hover:bg-[var(--surface-low)]"
+            className="grid h-7 w-7 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
             style={{ color: "var(--fg-tertiary)" }}
             title="收起导航"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
               <path d="M11 19l-7-7 7-7" />
             </svg>
           </button>
         </div>
-      </div>
 
-      <div className="px-3 py-2" style={{ borderBottom: "1px solid var(--divider)" }}>
         <button
           type="button"
           onClick={openCommandPalette}
-          className="flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-left text-xs font-semibold transition-colors hover:bg-[var(--surface-low)]"
-          style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+          className="mt-3 flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold transition-colors hover:bg-[var(--surface-white)]"
+          style={{ color: "var(--fg-secondary)", background: "rgba(255,255,255,0.5)", border: "1px solid var(--border)" }}
         >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
           </svg>
           <span className="min-w-0 flex-1 truncate">快速跳转</span>
         </button>
+
+        {variant === "chat" && (
+          <button
+            onClick={onCreateConversation}
+            className="mt-2 flex h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90 active:scale-[0.99]"
+            style={{ background: "var(--accent)", boxShadow: "0 8px 18px rgba(68,86,223,0.18)" }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
+              <path d="M12 5v14 M5 12h14" />
+            </svg>
+            新建会话
+          </button>
+        )}
       </div>
 
-      {/* 新建会话 — 仅 chat 模式显示 */}
-      {variant === "chat" && (
-      <div className="px-3 pt-3 pb-2">
-        <button
-          onClick={onCreateConversation}
-          className="w-full rounded-lg font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98] hover:opacity-90"
-          style={{ background: "var(--accent)", color: "#fff", height: 38, fontSize: "var(--text-sm)", boxShadow: "var(--accent-glow)" }}
-        >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-            <path d="M12 5v14 M5 12h14" />
-          </svg>
-          新建会话
-        </button>
-      </div>
-      )}
-
-      {/* 导航分组 */}
-      <div className="flex-1 overflow-y-auto px-2 custom-scrollbar">
+      <div className="min-h-0 flex-1 overflow-y-auto px-2.5 py-2 custom-scrollbar">
         {SECTIONS.map((section) => {
           const sectionItems = NAV_ITEMS.filter((item) => item.section === section.key);
           if (sectionItems.length === 0) return null;
+
           return (
-            <div key={section.key} style={{ marginBottom: 2 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, color: "var(--fg-tertiary)", padding: "8px 10px 4px", letterSpacing: 0, textTransform: "uppercase" }}>
+            <div key={section.key} className="mb-2">
+              <p className="px-2 pb-1.5 pt-2 text-[10px] font-bold" style={{ color: "var(--fg-tertiary)" }}>
                 {section.label}
               </p>
-              {sectionItems.map((item) => (
-                <NavItemButton key={item.key} item={item} activeNav={activeNav} setActiveNav={setActiveNav} t={t} />
-              ))}
+              <div className="space-y-1">
+                {sectionItems.map((item) => (
+                  <NavItemButton key={item.key} item={item} activeNav={activeNav} setActiveNav={setActiveNav} t={t} />
+                ))}
+              </div>
             </div>
           );
         })}
-
       </div>
 
-      {/* 用户区域 */}
-      <div className="px-3 py-2.5" style={{ borderTop: "1px solid var(--border)" }}>
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-full flex items-center justify-center font-semibold text-white shrink-0"
-            style={{ background: "var(--accent-gradient)", fontSize: 9 }}>
-            {(useAuthStore.getState().user?.name ?? "U").charAt(0).toUpperCase()}
-          </div>
-          <div className="flex-1 min-w-0 leading-tight">
-            <p style={{ fontSize: "var(--text-xs)", fontWeight: 500, color: "var(--fg-primary)" }}>{useAuthStore.getState().user?.name ?? "用户"}</p>
-            <div className="flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--success)" }} />
-              <span style={{ fontSize: 9, color: "var(--fg-tertiary)" }}>在线</span>
+      <div className="px-3 py-3" style={{ borderTop: "1px solid var(--divider)" }}>
+        <div className="rounded-xl p-2.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
+          <div className="flex items-center gap-2.5">
+            <div
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[11px] font-bold text-white"
+              style={{ background: "var(--accent-gradient)" }}
+            >
+              {initial}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{user?.name ?? "用户"}</p>
+              <div className="mt-1 flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--success)" }} />
+                <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>在线</span>
+              </div>
             </div>
           </div>
-          <button onClick={toggleLocale} className="rounded-md px-1.5 py-0.5 font-medium transition-all shrink-0"
-            style={{ border: "1px solid var(--border)", color: "var(--fg-secondary)", fontSize: 9 }}>
-            {locale === "zh" ? "EN" : "中"}
-          </button>
-          <button onClick={() => useAuthStore.getState().logout()} className="rounded-md px-1.5 py-0.5 font-medium transition-all shrink-0"
-            style={{ border: "1px solid var(--border)", color: "var(--fg-secondary)", fontSize: 9 }}>
-            退出
-          </button>
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <button
+              onClick={toggleLocale}
+              className="h-7 rounded-lg text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]"
+              style={{ border: "1px solid var(--border)", color: "var(--fg-secondary)" }}
+            >
+              {locale === "zh" ? "EN" : "中文"}
+            </button>
+            <button
+              onClick={logout}
+              className="h-7 rounded-lg text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]"
+              style={{ border: "1px solid var(--border)", color: "var(--fg-secondary)" }}
+            >
+              退出
+            </button>
+          </div>
         </div>
       </div>
-
     </div>
   );
 }
@@ -251,11 +297,11 @@ export function SidebarNav({
 
   return (
     <aside
-      className="flex flex-col h-full shrink-0 overflow-hidden"
+      className="flex h-full shrink-0 flex-col overflow-hidden"
       style={{
-        background: "#fbfcff",
+        background: "linear-gradient(180deg, #fbfcff 0%, #f5f8fd 100%)",
         borderRight: "1px solid var(--divider)",
-        width: sidebarCollapsed ? 48 : 232,
+        width: "100%",
         transition: "width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
       }}
     >
