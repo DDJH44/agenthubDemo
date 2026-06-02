@@ -42,6 +42,51 @@ interface ChatMessage {
   timestamp: number;
 }
 
+interface AssistantAttachment {
+  id: string;
+  name: string;
+  kind: "file" | "image";
+  mime: string;
+  size: number;
+  textPreview?: string;
+  dataUrl?: string;
+}
+
+interface SpeechRecognitionAlternativeLike {
+  transcript: string;
+}
+
+interface SpeechRecognitionResultLike {
+  isFinal: boolean;
+  0: SpeechRecognitionAlternativeLike;
+}
+
+interface SpeechRecognitionEventLike extends Event {
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+
+interface SpeechRecognitionErrorEventLike extends Event {
+  error?: string;
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type SpeechRecognitionWindow = Window & typeof globalThis & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
 const ASSISTANT_PRESETS = [
   {
     title: "拆解多 Agent 任务",
@@ -82,6 +127,73 @@ function formatMessageTime(ts: number): string {
 function estimateTokens(messages: ChatMessage[], streamBuffer: string): number {
   const chars = messages.reduce((sum, message) => sum + message.content.length, 0) + streamBuffer.length;
   return Math.ceil(chars / 1.5);
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function isTextLikeFile(file: File): boolean {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  return Boolean(
+    file.type.startsWith("text/") ||
+    ["md", "txt", "json", "csv", "ts", "tsx", "js", "jsx", "html", "css", "xml", "yaml", "yml", "log"].includes(ext ?? "")
+  );
+}
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  if (typeof window === "undefined") return null;
+  const speechWindow = window as SpeechRecognitionWindow;
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error ?? new Error("File read failed"));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function createAssistantAttachment(file: File, kind: AssistantAttachment["kind"]): Promise<AssistantAttachment> {
+  const base = {
+    id: crypto.randomUUID(),
+    name: file.name,
+    kind,
+    mime: file.type || "unknown",
+    size: file.size,
+  };
+
+  if (kind === "image") {
+    return {
+      ...base,
+      dataUrl: await fileToDataUrl(file),
+    };
+  }
+
+  if (isTextLikeFile(file)) {
+    const text = await file.text();
+    return {
+      ...base,
+      textPreview: text.slice(0, 6000),
+    };
+  }
+
+  return base;
+}
+
+function buildAttachmentContext(attachments: AssistantAttachment[]): string {
+  if (attachments.length === 0) return "";
+  const parts = attachments.map((attachment, index) => {
+    const header = `${index + 1}. ${attachment.kind === "image" ? "照片" : "文件"}：${attachment.name}（${attachment.mime}，${formatBytes(attachment.size)}）`;
+    if (attachment.textPreview) return `${header}\n内容片段：\n${attachment.textPreview}`;
+    if (attachment.kind === "image") return `${header}\n说明：已上传图片附件，当前请求携带图片元信息，请结合用户描述继续处理。`;
+    return `${header}\n说明：该文件不是可直接读取的文本格式，当前请求携带文件元信息。`;
+  });
+  return `附件上下文：\n${parts.join("\n\n")}`;
 }
 
 function Icon({ path, size = 14 }: { path: string; size?: number }) {
@@ -370,8 +482,14 @@ export function AIAssistantView() {
   const [showFiles, setShowFiles] = useState(false);
   const [fileSearch, setFileSearch] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<AssistantAttachment[]>([]);
+  const [inputNotice, setInputNotice] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
   const inputRefState = useRef(input);
@@ -420,25 +538,34 @@ export function AIAssistantView() {
     return () => window.removeEventListener("keydown", handler);
   }, [previewDoc, isFullscreen]);
 
+  useEffect(() => {
+    return () => recognitionRef.current?.abort();
+  }, []);
+
   const handleSend = async () => {
     if (sendingRef.current) return;
     const trimmed = inputRefState.current.trim();
-    if (!trimmed || isStreamingRef.current) return;
+    const currentAttachments = attachments;
+    if ((!trimmed && currentAttachments.length === 0) || isStreamingRef.current) return;
+    const attachmentContext = buildAttachmentContext(currentAttachments);
+    const outgoingText = [trimmed || "请处理这些附件。", attachmentContext].filter(Boolean).join("\n\n");
 
     sendingRef.current = true;
     isStreamingRef.current = true;
     setIsStreaming(true);
     setInput("");
+    setAttachments([]);
+    setInputNotice(null);
     setStreamBuffer("");
-    lastUserQueryRef.current = trimmed;
-    isDocRequestRef.current = isDocumentRequest(trimmed);
+    lastUserQueryRef.current = outgoingText;
+    isDocRequestRef.current = isDocumentRequest(outgoingText);
 
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
       inputRef.current.disabled = true;
     }
 
-    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", content: trimmed, timestamp: Date.now() };
+    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", content: outgoingText, timestamp: Date.now() };
     const prevMessages = messagesRef.current;
     setMessages((prev) => [...prev, userMsg]);
 
@@ -450,7 +577,7 @@ export function AIAssistantView() {
       const res = await fetch(`${API_BASE}/api/assistant`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ text: trimmed, history: buildHistory(prevMessages) }),
+        body: JSON.stringify({ text: outgoingText, history: buildHistory(prevMessages) }),
         signal: controller.signal,
       });
 
@@ -550,6 +677,75 @@ export function AIAssistantView() {
     el.style.height = Math.min(el.scrollHeight, 160) + "px";
   };
 
+  const handleUpload = async (fileList: FileList | null, kind: AssistantAttachment["kind"]) => {
+    const selectedFiles = Array.from(fileList ?? []);
+    if (selectedFiles.length === 0) return;
+    setInputNotice(null);
+    try {
+      const nextAttachments = await Promise.all(selectedFiles.slice(0, 6).map((file) => createAssistantAttachment(file, kind)));
+      setAttachments((current) => [...current, ...nextAttachments].slice(-8));
+      inputRef.current?.focus();
+    } catch (error) {
+      setInputNotice(error instanceof Error ? error.message : "附件读取失败");
+    } finally {
+      if (kind === "image" && imageInputRef.current) imageInputRef.current.value = "";
+      if (kind === "file" && fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const removeAttachment = (id: string) => {
+    setAttachments((current) => current.filter((attachment) => attachment.id !== id));
+  };
+
+  const toggleVoiceInput = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      return;
+    }
+
+    const Recognition = getSpeechRecognitionConstructor();
+    if (!Recognition) {
+      setInputNotice("当前浏览器不支持语音识别。");
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognitionRef.current = recognition;
+    recognition.lang = "zh-CN";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0]?.transcript ?? "")
+        .join("")
+        .trim();
+      if (!transcript) return;
+      setInput((current) => `${current}${current.trim() ? " " : ""}${transcript}`);
+      window.requestAnimationFrame(() => {
+        const el = inputRef.current;
+        if (!el) return;
+        el.focus();
+        el.style.height = "auto";
+        el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+      });
+    };
+    recognition.onerror = (event) => {
+      setInputNotice(event.error ? `语音识别失败：${event.error}` : "语音识别失败");
+      setIsListening(false);
+    };
+    recognition.onend = () => setIsListening(false);
+
+    try {
+      recognition.start();
+      setInputNotice(null);
+      setIsListening(true);
+    } catch (error) {
+      setInputNotice(error instanceof Error ? error.message : "语音识别启动失败");
+      setIsListening(false);
+    }
+  };
+
   const handleFileClick = (id: string) => {
     const file = files.find((f) => f.id === id);
     if (!file) return;
@@ -566,6 +762,7 @@ export function AIAssistantView() {
   const tokenEstimate = useMemo(() => estimateTokens(messages, streamBuffer), [messages, streamBuffer]);
   const latestUserMessage = useMemo(() => [...messages].reverse().find((message) => message.role === "user"), [messages]);
   const latestAssistantMessage = useMemo(() => [...messages].reverse().find((message) => message.role === "assistant"), [messages]);
+  const canSend = input.trim().length > 0 || attachments.length > 0;
 
   const applyPreset = (prompt: string) => {
     setInput(prompt);
@@ -624,6 +821,8 @@ export function AIAssistantView() {
     if (messages.length === 0 || !window.confirm("清空当前 AI 助手会话记录？")) return;
     setMessages([]);
     setInput("");
+    setAttachments([]);
+    setInputNotice(null);
     setStreamBuffer("");
     setPreviewDoc(null);
   };
@@ -881,6 +1080,22 @@ export function AIAssistantView() {
               onFocus={(e) => { e.currentTarget.style.borderColor = "var(--accent-border)"; e.currentTarget.style.boxShadow = "0 0 0 2px var(--accent-subtle)"; }}
               onBlur={(e) => { e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.boxShadow = "var(--shadow-xs)"; }}
             >
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                accept=".txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.log,.pdf,.doc,.docx,.ppt,.pptx"
+                onChange={(event) => void handleUpload(event.target.files, "file")}
+              />
+              <input
+                ref={imageInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                accept="image/*"
+                onChange={(event) => void handleUpload(event.target.files, "image")}
+              />
               <textarea
                 ref={inputRef}
                 value={input}
@@ -891,19 +1106,76 @@ export function AIAssistantView() {
                 className="w-full resize-none bg-transparent outline-none"
                 style={{ fontSize: "14px", color: "var(--fg-primary)", minHeight: 28, maxHeight: 160, lineHeight: 1.6 }}
               />
+              {(attachments.length > 0 || inputNotice) && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {attachments.map((attachment) => (
+                    <div
+                      key={attachment.id}
+                      className="flex max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-semibold"
+                      style={{ color: "var(--fg-secondary)", background: "var(--surface-tinted)", border: "1px solid var(--border)" }}
+                    >
+                      {attachment.dataUrl ? (
+                        <span
+                          aria-hidden="true"
+                          className="h-5 w-5 shrink-0 rounded bg-cover bg-center"
+                          style={{ backgroundImage: `url(${attachment.dataUrl})` }}
+                        />
+                      ) : (
+                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
+                          <Icon path="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6" size={11} />
+                        </span>
+                      )}
+                      <span className="truncate">{attachment.name}</span>
+                      <span className="shrink-0" style={{ color: "var(--fg-disabled)" }}>{formatBytes(attachment.size)}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(attachment.id)}
+                        className="grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-[var(--surface-low)]"
+                        style={{ color: "var(--fg-tertiary)" }}
+                        title="移除附件"
+                      >
+                        <Icon path="M18 6 6 18M6 6l12 12" size={10} />
+                      </button>
+                    </div>
+                  ))}
+                  {inputNotice && (
+                    <span className="rounded-lg px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--warning)", background: "var(--warning-subtle)" }}>
+                      {inputNotice}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="mt-1 flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setShowFiles(true)}
+                    onClick={toggleVoiceInput}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
+                    style={{ color: isListening ? "var(--accent)" : "var(--fg-tertiary)", background: isListening ? "var(--accent-subtle)" : "transparent", border: "1px solid var(--border)" }}
+                    title={isListening ? "停止语音识别" : "语音识别"}
+                  >
+                    <Icon path="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3zM19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8" size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
                     className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
                     style={{ color: "var(--fg-tertiary)", border: "1px solid var(--border)" }}
-                    title="打开文件面板"
+                    title="上传文件"
                   >
-                    <Icon path="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" size={14} />
+                    <Icon path="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" size={14} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => imageInputRef.current?.click()}
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
+                    style={{ color: "var(--fg-tertiary)", border: "1px solid var(--border)" }}
+                    title="上传照片"
+                  >
+                    <Icon path="M4 5h16v14H4zM8 13l2.5-3 3 4 2-2.5L20 16M8 8h.01" size={14} />
                   </button>
                   <span className="hidden truncate text-[10px] sm:inline" style={{ color: "var(--fg-tertiary)" }}>
-                    最近上下文 {messages.length} 条 · {tokenEstimate.toLocaleString()} tokens
+                    最近上下文 {messages.length} 条 · 附件 {attachments.length}
                   </span>
                 </div>
                 {isStreaming ? (
@@ -920,13 +1192,13 @@ export function AIAssistantView() {
                   <button
                     type="button"
                     onClick={handleSend}
-                    disabled={!input.trim()}
+                    disabled={!canSend}
                     className="flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition-all active:scale-95"
                     style={{
-                      background: input.trim() ? "var(--accent)" : "var(--surface-low)",
-                      color: input.trim() ? "#fff" : "var(--fg-disabled)",
-                      border: `1px solid ${input.trim() ? "var(--accent)" : "var(--border)"}`,
-                      boxShadow: input.trim() ? "var(--accent-glow)" : "none",
+                      background: canSend ? "var(--accent)" : "var(--surface-low)",
+                      color: canSend ? "#fff" : "var(--fg-disabled)",
+                      border: `1px solid ${canSend ? "var(--accent)" : "var(--border)"}`,
+                      boxShadow: canSend ? "var(--accent-glow)" : "none",
                     }}
                   >
                     发送
