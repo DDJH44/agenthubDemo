@@ -11,7 +11,34 @@ export interface AgentDirectoryEntry {
   color: string;
   capabilities: string[];
   isCustom?: boolean;
+  connection: AgentConnection;
 }
+
+export type AgentConnectionState = "local" | "live" | "demo" | "fallback" | "unconfigured";
+
+export interface AgentConnection {
+  state: AgentConnectionState;
+  label: string;
+  adapter: string;
+  boundary: string;
+  lastChecked: string;
+}
+
+export const CONNECTION_STATE_META: Record<AgentConnectionState, { label: string; shortLabel: string; color: string; bg: string; border: string }> = {
+  local: { label: "内置可用", shortLabel: "内置", color: "#174ea6", bg: "rgba(23, 78, 166, 0.07)", border: "rgba(23, 78, 166, 0.16)" },
+  live: { label: "真实适配器", shortLabel: "真实", color: "var(--success)", bg: "var(--success-subtle)", border: "var(--success-border)" },
+  demo: { label: "演示数据", shortLabel: "演示", color: "#7c3aed", bg: "rgba(124, 58, 237, 0.08)", border: "rgba(124, 58, 237, 0.18)" },
+  fallback: { label: "降级接管", shortLabel: "降级", color: "#9a6700", bg: "rgba(154, 103, 0, 0.10)", border: "rgba(154, 103, 0, 0.18)" },
+  unconfigured: { label: "待配置", shortLabel: "待配", color: "var(--fg-tertiary)", bg: "var(--surface-low)", border: "var(--border)" },
+};
+
+const CUSTOM_CONNECTION: AgentConnection = {
+  state: "local",
+  label: "用户自建",
+  adapter: "user-agent-store",
+  boundary: "本地保存用户配置，进入会话后按同一 Agent 联系人模型展示。",
+  lastChecked: "随用户配置更新",
+};
 
 export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
   {
@@ -23,6 +50,13 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
     badge: "PMO",
     color: "#174ea6",
     capabilities: ["任务拆解", "并行调度", "失败降级"],
+    connection: {
+      state: "local",
+      label: "内置编排器",
+      adapter: "orchestrator",
+      boundary: "PMO 调度逻辑由 AgentHub 内置流程和演示数据驱动，不依赖外部模型即可证明拆解、派发、降级链路。",
+      lastChecked: "随应用启动",
+    },
   },
   {
     id: "codex",
@@ -33,6 +67,13 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
     badge: "CX",
     color: "#0f766e",
     capabilities: ["代码生成", "代码编辑", "Diff"],
+    connection: {
+      state: "live",
+      label: "Codex 适配器",
+      adapter: "packages/adapter/src/codex",
+      boundary: "具备真实适配器入口；实际可用性取决于本地环境变量和模型服务配置。",
+      lastChecked: "运行时校验",
+    },
   },
   {
     id: "claude-code",
@@ -43,6 +84,13 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
     badge: "CL",
     color: "#9a6700",
     capabilities: ["冲突合并", "降级接管", "代码审查"],
+    connection: {
+      state: "fallback",
+      label: "降级通道",
+      adapter: "packages/adapter/src/claude-code",
+      boundary: "用于展示失败降级、冲突复核和接管策略；外部接口不可用时保留演示降级事件。",
+      lastChecked: "任务派发时",
+    },
   },
   {
     id: "open-code",
@@ -53,6 +101,13 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
     badge: "OC",
     color: "#7c3aed",
     capabilities: ["构建部署", "发布回调", "日志诊断"],
+    connection: {
+      state: "demo",
+      label: "部署演示",
+      adapter: "frontend demo adapter",
+      boundary: "当前以部署状态卡片和演示链接证明产品闭环，真实 Open Code 执行器后续按 adapter 接口补齐。",
+      lastChecked: "演示数据注入",
+    },
   },
   {
     id: "ux-reviewer",
@@ -64,6 +119,13 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
     color: "#a50e0e",
     capabilities: ["体验审查", "验收路径", "文案建议"],
     isCustom: true,
+    connection: {
+      state: "demo",
+      label: "自建示例",
+      adapter: "user-agent-store",
+      boundary: "作为用户自建 Agent 示例参与群聊，证明头像、名称、能力标签和上下文派发能力。",
+      lastChecked: "演示数据注入",
+    },
   },
   {
     id: "researcher",
@@ -74,6 +136,13 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
     badge: "R",
     color: "#0e7490",
     capabilities: ["需求摘录", "文档引用", "上下文整理"],
+    connection: {
+      state: "local",
+      label: "上下文工具",
+      adapter: "context panel",
+      boundary: "主要使用本地文档段落、消息引用和产物元数据整理上下文。",
+      lastChecked: "随会话更新",
+    },
   },
 ];
 
@@ -96,6 +165,7 @@ function fallbackAgent(name: string): AgentDirectoryEntry {
     color: FALLBACK_COLORS[Math.abs(name.charCodeAt(0) || 0) % FALLBACK_COLORS.length],
     capabilities: ["自定义能力"],
     isCustom: true,
+    connection: CUSTOM_CONNECTION,
   };
 }
 
@@ -115,6 +185,41 @@ function userAgentToDirectoryEntry(agent: UserAgent): AgentDirectoryEntry {
     color: agent.avatarBg,
     capabilities,
     isCustom: true,
+    connection: {
+      ...CUSTOM_CONNECTION,
+      adapter: agent.model,
+      boundary: `用户自建 Agent，模型配置为 ${agent.model}，工具权限由创建表单控制。`,
+      lastChecked: "用户配置",
+    },
+  };
+}
+
+export function getAgentConnection(agent: AgentDirectoryEntry): AgentConnection {
+  return agent.connection ?? CUSTOM_CONNECTION;
+}
+
+export function getConnectionStateMeta(state: AgentConnectionState) {
+  return CONNECTION_STATE_META[state];
+}
+
+export function summarizeAgentConnections(agents: AgentDirectoryEntry[]) {
+  const counts = agents.reduce<Record<AgentConnectionState, number>>((acc, agent) => {
+    const state = getAgentConnection(agent).state;
+    acc[state] += 1;
+    return acc;
+  }, { local: 0, live: 0, demo: 0, fallback: 0, unconfigured: 0 });
+
+  const state: AgentConnectionState =
+    counts.fallback > 0 ? "fallback" :
+    counts.demo > 0 ? "demo" :
+    counts.unconfigured > 0 ? "unconfigured" :
+    counts.live > 0 ? "live" :
+    "local";
+
+  return {
+    state,
+    counts,
+    meta: getConnectionStateMeta(state),
   };
 }
 

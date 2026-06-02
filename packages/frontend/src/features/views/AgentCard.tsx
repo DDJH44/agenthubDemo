@@ -1,6 +1,7 @@
 "use client";
 
 import type { UserAgent } from "@agenthub/shared";
+import { getConnectionStateMeta } from "@/features/chat/agent-directory";
 
 const ROLE_LABELS: Record<string, string> = {
   planner: "规划",
@@ -38,6 +39,8 @@ function formatTime(ts: number) {
 }
 
 export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
+  const connectionMeta = getConnectionStateMeta("local");
+
   return (
     <article className="rounded-lg p-4 transition-colors hover:bg-[var(--surface-low)]" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
       <div className="flex items-start gap-3">
@@ -50,9 +53,14 @@ export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
               <h3 className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{agent.name}</h3>
               <p className="mt-0.5 text-xs" style={{ color: "var(--fg-tertiary)" }}>{ROLE_LABELS[agent.role] ?? agent.role} · {agent.model}</p>
             </div>
-            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
-              自建
-            </span>
+            <div className="flex shrink-0 gap-1">
+              <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+                自建
+              </span>
+              <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: connectionMeta.color, background: connectionMeta.bg, border: `1px solid ${connectionMeta.border}` }}>
+                {connectionMeta.shortLabel}
+              </span>
+            </div>
           </div>
           <p className="mt-2 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>
             {agent.systemPrompt || "暂无系统提示词"}

@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import { useChatStore } from "@/stores/chat-store";
 import { AGENT_COLORS } from "@agenthub/shared";
+import { getAgentMeta, getConnectionStateMeta } from "@/features/chat/agent-directory";
 
 const AGENT_ROLES: Record<string, string> = {
   planner: "项目管理", researcher: "调研分析", worker: "任务执行",
@@ -15,15 +16,22 @@ export function AgentStatusPanel() {
 
   const agents = useMemo(() => {
     if (sessionAgentStatuses.length > 0) {
-      return sessionAgentStatuses.map((s) => ({
-        name: s.agentName || s.agentRole,
-        role: AGENT_ROLES[s.agentRole] || s.agentRole,
-        color: AGENT_COLORS[s.agentRole] || "#6b7280",
-        status: s.status === "running" ? "运行中" : s.status === "done" ? "已完成" : "空闲",
-        statusDot: s.status === "running" ? "var(--success)" : "var(--fg-disabled)",
-        progress: s.status === "running" ? 60 : s.status === "done" ? 100 : undefined,
-        initial: (s.agentRole || s.agentName || "?")[0].toUpperCase(),
-      }));
+      return sessionAgentStatuses.map((s) => {
+        const meta = getAgentMeta(s.agentId || s.agentName || s.agentRole);
+        const connectionMeta = getConnectionStateMeta(meta.connection.state);
+        return {
+          name: s.agentName || s.agentRole,
+          role: AGENT_ROLES[s.agentRole] || s.agentRole,
+          color: meta.color || AGENT_COLORS[s.agentRole] || "#6b7280",
+          status: s.status === "running" ? "运行中" : s.status === "done" ? "已完成" : "空闲",
+          statusDot: s.status === "running" ? "var(--success)" : "var(--fg-disabled)",
+          progress: s.status === "running" ? 60 : s.status === "done" ? 100 : undefined,
+          initial: meta.badge || (s.agentRole || s.agentName || "?")[0].toUpperCase(),
+          connectionLabel: connectionMeta.shortLabel,
+          connectionColor: connectionMeta.color,
+          connectionBg: connectionMeta.bg,
+        };
+      });
     }
 
     const activeConvs = conversations.filter((c) => c.status === "active");
@@ -34,15 +42,22 @@ export function AgentStatusPanel() {
       }
     }
 
-    return Array.from(uniqueParticipants).slice(0, 5).map((p) => ({
-      name: p,
-      role: AGENT_ROLES[p] || p,
-      color: AGENT_COLORS[p] || "#6b7280",
-      status: "空闲",
-      statusDot: "var(--fg-disabled)",
-      progress: undefined,
-      initial: p[0]?.toUpperCase() || "?",
-    }));
+    return Array.from(uniqueParticipants).slice(0, 5).map((p) => {
+      const meta = getAgentMeta(p);
+      const connectionMeta = getConnectionStateMeta(meta.connection.state);
+      return {
+        name: p,
+        role: meta.role || AGENT_ROLES[p] || p,
+        color: meta.color || AGENT_COLORS[p] || "#6b7280",
+        status: "空闲",
+        statusDot: "var(--fg-disabled)",
+        progress: undefined,
+        initial: meta.badge || p[0]?.toUpperCase() || "?",
+        connectionLabel: connectionMeta.shortLabel,
+        connectionColor: connectionMeta.color,
+        connectionBg: connectionMeta.bg,
+      };
+    });
   }, [sessionAgentStatuses, conversations]);
 
   return (
@@ -102,6 +117,9 @@ export function AgentStatusPanel() {
                   {agent.status}
                 </span>
               </div>
+              <span className="mt-1 inline-flex rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: agent.connectionColor, background: agent.connectionBg }}>
+                {agent.connectionLabel}
+              </span>
               {agent.progress !== undefined && (
                 <p className="text-[10px] mt-0.5" style={{ color: "var(--fg-tertiary)" }}>
                   {agent.progress}%

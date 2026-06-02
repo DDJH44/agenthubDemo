@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { startAcceptanceDemo } from "@/features/demo/acceptance-demo";
+import { AGENT_DIRECTORY, getAgentConnection, getConnectionStateMeta } from "@/features/chat/agent-directory";
 import { useNavigationStore } from "@/stores/navigation-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
 
@@ -121,6 +122,27 @@ function StatusBadge({ status }: { status: AgentStatus }) {
   );
 }
 
+function getPlatformConnection(agentId: string) {
+  const entry = AGENT_DIRECTORY.find((agent) => agent.id === agentId);
+  return entry ? getAgentConnection(entry) : null;
+}
+
+function ConnectionBadge({ agentId }: { agentId: string }) {
+  const connection = getPlatformConnection(agentId);
+  if (!connection) return null;
+  const meta = getConnectionStateMeta(connection.state);
+  return (
+    <span
+      className="inline-flex items-center gap-1 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold"
+      style={{ color: meta.color, background: meta.bg, border: `1px solid ${meta.border}` }}
+      title={connection.boundary}
+    >
+      <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.color }} />
+      {meta.shortLabel}
+    </span>
+  );
+}
+
 function PlatformAgentCard({
   agent,
   selected,
@@ -149,7 +171,10 @@ function PlatformAgentCard({
               <p className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{agent.name}</p>
               <p className="mt-0.5 text-xs" style={{ color: "var(--fg-tertiary)" }}>{agent.provider} · {agent.role}</p>
             </div>
-            <StatusBadge status={agent.status} />
+            <div className="flex shrink-0 gap-1">
+              <ConnectionBadge agentId={agent.id} />
+              <StatusBadge status={agent.status} />
+            </div>
           </div>
           <p className="mt-2 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>{agent.desc}</p>
         </div>
@@ -182,18 +207,27 @@ export function AgentsView() {
   const [testResult, setTestResult] = useState("");
 
   const selected = PLATFORM_AGENTS.find((agent) => agent.id === selectedId) ?? PLATFORM_AGENTS[0];
+  const selectedConnection = getPlatformConnection(selected.id);
+  const selectedConnectionMeta = selectedConnection ? getConnectionStateMeta(selectedConnection.state) : null;
   const stats = useMemo(() => {
+    const connectionCounts = PLATFORM_AGENTS.reduce((acc, agent) => {
+      const state = getPlatformConnection(agent.id)?.state;
+      if (state === "live" || state === "local") acc.ready += 1;
+      if (state === "demo" || state === "fallback") acc.demo += 1;
+      return acc;
+    }, { ready: 0, demo: 0 });
     return [
       { label: "平台 Agent", value: PLATFORM_AGENTS.length },
       { label: "主流平台", value: 3 },
       { label: "自建 Agent", value: userAgents.length },
-      { label: "在线", value: PLATFORM_AGENTS.filter((agent) => agent.status !== "idle").length },
+      { label: "真实/内置", value: connectionCounts.ready },
     ];
   }, [userAgents.length]);
 
   const runMockTest = () => {
     if (!testInput.trim()) return;
-    setTestResult(`${selected.name} 已接收测试任务：${testInput.trim().slice(0, 80)}。实际运行时会通过 ${selected.adapter} 适配器发送。`);
+    const connection = selectedConnection ?? getPlatformConnection(selected.id);
+    setTestResult(`${selected.name} 已接收测试任务：${testInput.trim().slice(0, 80)}。当前边界：${connection?.boundary ?? "按平台适配器发送"} 适配器：${connection?.adapter ?? selected.adapter}。`);
   };
 
   return (
@@ -283,13 +317,24 @@ export function AgentsView() {
             <h2 className="truncate text-base font-bold" style={{ color: "var(--fg-primary)" }}>{selected.name}</h2>
             <p className="text-xs" style={{ color: "var(--fg-tertiary)" }}>{selected.provider} · {selected.role}</p>
           </div>
-          <div className="ml-auto"><StatusBadge status={selected.status} /></div>
+          <div className="ml-auto flex gap-1"><ConnectionBadge agentId={selected.id} /><StatusBadge status={selected.status} /></div>
         </div>
 
         <div className="space-y-5">
           <DetailField label="职责">{selected.desc}</DetailField>
+          {selectedConnection && selectedConnectionMeta && (
+            <DetailField label="连接状态">
+              <div className="rounded-md p-3" style={{ color: selectedConnectionMeta.color, background: selectedConnectionMeta.bg, border: `1px solid ${selectedConnectionMeta.border}` }}>
+                <div className="mb-1 flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold">{selectedConnectionMeta.label}</span>
+                  <span className="text-[10px]">{selectedConnection.lastChecked}</span>
+                </div>
+                <p className="text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.6 }}>{selectedConnection.boundary}</p>
+              </div>
+            </DetailField>
+          )}
           <DetailField label="适配器">
-            <code className="rounded px-1.5 py-0.5 text-xs" style={{ background: "var(--surface-low)", color: "#174ea6" }}>{selected.adapter}</code>
+            <code className="rounded px-1.5 py-0.5 text-xs" style={{ background: "var(--surface-low)", color: "#174ea6" }}>{selectedConnection?.adapter ?? selected.adapter}</code>
           </DetailField>
           <DetailField label="能力标签">
             <div className="flex flex-wrap gap-1.5">

@@ -5,7 +5,7 @@ import type { Conversation, UserAgent } from "@agenthub/shared";
 import { BrandMascot } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
-import { getConversationAgents, getConversationCapabilityTags } from "./agent-directory";
+import { getConversationAgents, getConversationCapabilityTags, summarizeAgentConnections } from "./agent-directory";
 
 interface Props {
   conversations: Conversation[];
@@ -65,22 +65,26 @@ function Icon({ type, size = 14 }: { type: Parameters<typeof iconPath>[0]; size?
 
 function getTags(conv: Conversation, isGroup: boolean, userAgents: UserAgent[]): string[] {
   const agents = getConversationAgents(conv, userAgents);
+  const connection = summarizeAgentConnections(agents);
+  const connectionTag = connection.meta.shortLabel;
   if (isGroup) {
     return [
       "群聊",
       `${agents.length} Agent`,
       agents.some((agent) => agent.id === "pmo") ? "主 Agent" : "",
       agents.some((agent) => agent.isCustom) ? "自建" : "",
-    ].filter(Boolean).slice(0, 3);
+      connectionTag,
+    ].filter(Boolean).slice(0, 4);
   }
 
   const primary = agents[0];
-  if (primary) return [primary.provider, primary.capabilities[0]].filter(Boolean).slice(0, 2);
+  if (primary) return [primary.provider, primary.capabilities[0], connectionTag].filter(Boolean).slice(0, 3);
   return getConversationCapabilityTags(conv, 2, userAgents);
 }
 
 function AgentAvatarStack({ conv, isGroup, userAgents }: { conv: Conversation; isGroup: boolean; userAgents: UserAgent[] }) {
   const agents = getConversationAgents(conv, userAgents);
+  const connection = summarizeAgentConnections(agents);
 
   if (isGroup) {
     const primary = agents.find((agent) => agent.id === "pmo") ?? agents[0];
@@ -94,6 +98,7 @@ function AgentAvatarStack({ conv, isGroup, userAgents }: { conv: Conversation; i
           <div className="absolute -bottom-1 -right-1 grid h-4 min-w-4 place-items-center rounded-sm px-1 text-[9px] font-bold" style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid rgba(23, 78, 166, 0.18)" }}>
             {agents.length}
           </div>
+          <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full" style={{ background: connection.meta.color, border: "2px solid var(--surface-white)" }} />
         </div>
       );
     }
@@ -108,6 +113,7 @@ function AgentAvatarStack({ conv, isGroup, userAgents }: { conv: Conversation; i
         <div className="absolute -bottom-1 -right-1 grid h-4 min-w-4 place-items-center rounded-sm px-1 text-[9px] font-bold" style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid rgba(23, 78, 166, 0.18)" }}>
           {agents.length}
         </div>
+        <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full" style={{ background: connection.meta.color, border: "2px solid var(--surface-white)" }} />
       </div>
     );
   }
@@ -120,7 +126,7 @@ function AgentAvatarStack({ conv, isGroup, userAgents }: { conv: Conversation; i
         title={`${agent.name} - ${agent.capabilities.join(" / ")}`}
       >
         <BrandMascot variant="thinking" size={40} />
-        <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: "var(--success)", border: "2px solid var(--surface-white)" }} />
+        <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: connection.meta.color, border: "2px solid var(--surface-white)" }} />
       </div>
     );
   }
@@ -132,7 +138,7 @@ function AgentAvatarStack({ conv, isGroup, userAgents }: { conv: Conversation; i
       title={`${agent.name} · ${agent.capabilities.join(" / ")}`}
     >
       {agent.badge.slice(0, 3)}
-      <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: "var(--success)", border: "2px solid var(--surface-white)" }} />
+      <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: connection.meta.color, border: "2px solid var(--surface-white)" }} />
     </div>
   );
 }
@@ -154,6 +160,7 @@ const ConversationItem = memo(function ConversationItem({
 }) {
   const tags = getTags(conv, isGroup, userAgents);
   const agents = getConversationAgents(conv, userAgents);
+  const connection = summarizeAgentConnections(agents);
   const agentLine = isGroup
     ? agents.map((agent) => agent.name).slice(0, 4).join("、")
     : `${agents[0]?.name ?? conv.title}${agents[0] ? ` · ${agents[0].role}` : ""}`;
@@ -192,7 +199,15 @@ const ConversationItem = memo(function ConversationItem({
             </p>
             <div className="mt-1 flex max-w-full flex-nowrap gap-1 overflow-hidden">
               {tags.map((tag) => (
-                <span key={tag} className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px]" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)" }}>
+                <span
+                  key={tag}
+                  className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px]"
+                  style={{
+                    color: tag === connection.meta.shortLabel ? connection.meta.color : "var(--fg-secondary)",
+                    background: tag === connection.meta.shortLabel ? connection.meta.bg : "var(--surface-low)",
+                    border: tag === connection.meta.shortLabel ? `1px solid ${connection.meta.border}` : "1px solid transparent",
+                  }}
+                >
                   {tag}
                 </span>
               ))}
