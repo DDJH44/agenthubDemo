@@ -221,7 +221,7 @@ function MessageToolButton({
       title={title}
       aria-label={title}
       onClick={onClick}
-      className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]"
+      className="inline-grid h-6 w-6 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--surface-low)]"
       style={{ color: active ? "var(--success)" : "var(--fg-tertiary)", background: active ? "var(--success-subtle)" : "transparent" }}
     >
       {children}
@@ -1023,6 +1023,24 @@ export function AIAssistantView() {
                             </span>
                           )}
                           <span style={{ fontSize: "11px", color: "var(--fg-disabled)" }}>{formatMessageTime(msg.timestamp)}</span>
+                          <span className="flex items-center gap-0.5">
+                            <MessageToolButton title={copiedId === msg.id ? "已复制" : "复制"} onClick={() => copyMessage(msg)} active={copiedId === msg.id}>
+                              <Icon path="M8 8h11v11H8zM5 15H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1" size={12} />
+                            </MessageToolButton>
+                            <MessageToolButton title={msg.role === "user" ? "重新使用这条输入" : "基于这条回复继续"} onClick={() => reuseMessage(msg)}>
+                              <Icon path="M3 12a9 9 0 1 0 3-6.7M3 4v6h6" size={12} />
+                            </MessageToolButton>
+                            {messageIsDocument && (
+                              <>
+                                <MessageToolButton title="预览文档" onClick={() => previewDocument(msg, documentFileTitle)}>
+                                  <Icon path="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" size={12} />
+                                </MessageToolButton>
+                                <MessageToolButton title={savedDocument ? "已保存到文件面板" : "保存到文件面板"} onClick={() => saveDocumentFromMessage(msg)} active={savedDocument}>
+                                  <Icon path="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8" size={12} />
+                                </MessageToolButton>
+                              </>
+                            )}
+                          </span>
                         </div>
                         <div
                           className={`rounded-xl px-4 py-3 ${msg.role === "user" ? "text-right" : ""}`}
@@ -1043,28 +1061,6 @@ export function AIAssistantView() {
                             />
                           ) : (
                             <div className="coze-prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }} />
-                          )}
-                        </div>
-                        <div className={`mt-1 flex h-0 items-center gap-1 overflow-hidden opacity-0 transition-[height,opacity] group-hover:h-8 group-hover:opacity-100 group-focus-within:h-8 group-focus-within:opacity-100 ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                          <MessageToolButton title={copiedId === msg.id ? "已复制" : "复制"} onClick={() => copyMessage(msg)} active={copiedId === msg.id}>
-                            <Icon path="M8 8h11v11H8zM5 15H4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v1" size={12} />
-                            {copiedId === msg.id ? "已复制" : "复制"}
-                          </MessageToolButton>
-                          <MessageToolButton title={msg.role === "user" ? "重新使用这条输入" : "基于这条回复继续"} onClick={() => reuseMessage(msg)}>
-                            <Icon path="M3 12a9 9 0 1 0 3-6.7M3 4v6h6" size={12} />
-                            {msg.role === "user" ? "复用" : "继续"}
-                          </MessageToolButton>
-                          {messageIsDocument && (
-                            <>
-                              <MessageToolButton title="预览文档" onClick={() => previewDocument(msg, documentFileTitle)}>
-                                <Icon path="M1 12s4-7 11-7 11 7 11 7-4 7-11 7S1 12 1 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" size={12} />
-                                预览
-                              </MessageToolButton>
-                              <MessageToolButton title={savedDocument ? "已保存到文件面板" : "保存到文件面板"} onClick={() => saveDocumentFromMessage(msg)} active={savedDocument}>
-                                <Icon path="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8" size={12} />
-                                {savedDocument ? "已保存" : "保存"}
-                              </MessageToolButton>
-                            </>
                           )}
                         </div>
                       </div>
