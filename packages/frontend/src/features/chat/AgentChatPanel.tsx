@@ -264,8 +264,18 @@ export function AgentChatPanel({
 
       {showPreviewPanel && (
         <>
-          <div onClick={() => setShowPreviewPanel(false)} className="fixed inset-0 z-30" style={{ background: "rgba(0,0,0,.12)" }} />
-          <div className="fixed right-0 top-0 z-40 h-full animate-slide-in-right" style={{ width: "min(760px, 48vw)", minWidth: 420 }}>
+          <div onClick={() => setShowPreviewPanel(false)} className="fixed inset-0 z-30" style={{ background: "rgba(20, 24, 38, 0.14)", backdropFilter: "blur(1px)" }} />
+          <div
+            className="fixed z-40 animate-slide-in-right overflow-hidden rounded-2xl"
+            style={{
+              right: 16,
+              top: 16,
+              bottom: 16,
+              width: "min(760px, calc(100vw - 32px), 48vw)",
+              minWidth: "min(420px, calc(100vw - 32px))",
+              boxShadow: "0 24px 70px rgba(39, 49, 84, 0.22), 0 0 0 1px rgba(224, 229, 242, 0.95)",
+            }}
+          >
             <RightPanel />
           </div>
         </>

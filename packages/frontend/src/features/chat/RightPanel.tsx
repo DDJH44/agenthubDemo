@@ -24,6 +24,20 @@ const TABS: Array<{ key: PanelTab; label: string; icon: string }> = [
   { key: "context", label: "上下文", icon: "M4 4h16v5H4zM4 15h7v5H4zM15 15h5v5h-5z" },
 ];
 
+const DEPLOY_STATE_META = {
+  idle: { label: "待部署", color: "var(--fg-tertiary)", bg: "var(--surface-low)", border: "var(--border)" },
+  deploying: { label: "部署中", color: "var(--accent)", bg: "var(--accent-subtle)", border: "var(--accent-border)" },
+  success: { label: "已部署", color: "var(--success)", bg: "var(--success-subtle)", border: "var(--success-border)" },
+  failed: { label: "需处理", color: "var(--danger)", bg: "var(--danger-subtle)", border: "var(--danger-border)" },
+} as const;
+
+function getDeployPanelState(status: string | null) {
+  if (status === "success" || status === "done" || status === "completed") return "success";
+  if (status === "deploying" || status === "building" || status === "running") return "deploying";
+  if (status === "failed" || status === "error") return "failed";
+  return "idle";
+}
+
 const LANG_MAP: Record<string, string> = {
   html: "html",
   css: "css",
@@ -1283,7 +1297,7 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
 
 export function RightPanel() {
   const [activeTab, setActiveTab] = useState<PanelTab>("tasks");
-  const { messages, activeConversationId, resources } = useChatStore();
+  const { messages, activeConversationId, resources, isStreaming } = useChatStore();
   const workspace = useWorkspaceStore();
   const convMessages = activeConversationId ? (messages[activeConversationId] ?? []) : [];
   const latestArtifact = workspace.artifacts.reduce<Artifact | null>((latest, artifact) => {
@@ -1291,7 +1305,15 @@ export function RightPanel() {
     return latest;
   }, null);
   const versionCount = workspace.artifacts.reduce((total, artifact) => total + Math.max(1, artifact.version ?? 1), 0);
-  const deployState = workspace.deployStatus === "success" ? "已部署" : workspace.deployStatus === "deploying" ? "部署中" : "待部署";
+  const deployState = getDeployPanelState(workspace.deployStatus);
+  const deployMeta = DEPLOY_STATE_META[deployState];
+  const latestLabel = latestArtifact?.filename || latestArtifact?.type || "等待 Agent 生成产物";
+  const activeTabMeta = TABS.find((tab) => tab.key === activeTab) ?? TABS[0];
+  const summaryItems = [
+    { label: "产物", value: workspace.artifacts.length, icon: "M4 5h16v14H4zM8 9h8M8 13h5" },
+    { label: "版本", value: versionCount, icon: "M3 12a9 9 0 109-9M3 3v6h6M12 7v5l3 3" },
+    { label: "上下文", value: resources.length, icon: "M4 4h16v5H4zM4 15h7v5H4zM15 15h5v5h-5z" },
+  ];
 
   useEffect(() => {
     const handleTabChange = (event: Event) => {
@@ -1303,32 +1325,61 @@ export function RightPanel() {
   }, []);
 
   return (
-    <aside className="flex h-full flex-col" style={{ background: "#f7f9fe", borderLeft: "1px solid var(--divider)" }}>
-      <div className="shrink-0 px-3 py-3" style={{ background: "var(--surface-white)", borderBottom: "1px solid var(--divider)" }}>
-        <div className="mb-3 flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>产物工作台</h2>
-            <p className="max-w-[220px] truncate text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
-              {latestArtifact?.filename || latestArtifact?.type || "等待 Agent 生成产物"}
-            </p>
+    <aside
+      className="flex h-full flex-col overflow-hidden"
+      style={{
+        background: "rgba(247, 249, 254, 0.96)",
+        border: "1px solid rgba(224, 229, 242, 0.95)",
+      }}
+    >
+      <div className="shrink-0 px-3 pb-3 pt-3" style={{ background: "rgba(255, 255, 255, 0.92)", borderBottom: "1px solid var(--divider)" }}>
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
+              style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}
+            >
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 5h16v14H4z" />
+                <path d="M8 9h8" />
+                <path d="M8 13h5" />
+              </svg>
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>产物工作台</h2>
+              <p className="max-w-[260px] truncate text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
+                {latestLabel}
+              </p>
+            </div>
           </div>
-          <span className="shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
-            {deployState}
+          <span
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2 py-1 text-[10px] font-semibold"
+            style={{ color: deployMeta.color, background: deployMeta.bg, border: `1px solid ${deployMeta.border}` }}
+          >
+            <span className="h-1.5 w-1.5 rounded-full" style={{ background: deployMeta.color }} />
+            {deployMeta.label}
           </span>
         </div>
-        <div className="mb-3 grid grid-cols-3 gap-1.5">
-          {[
-            { label: "产物", value: workspace.artifacts.length },
-            { label: "版本", value: versionCount },
-            { label: "上下文", value: resources.length },
-          ].map((item) => (
-            <div key={item.label} className="rounded-lg px-2 py-2" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
-              <p className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{item.label}</p>
-              <p className="mt-0.5 text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{item.value}</p>
+
+        <div className="mb-3 grid grid-cols-3 overflow-hidden rounded-xl" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
+          {summaryItems.map((item, index) => (
+            <div
+              key={item.label}
+              className="min-w-0 px-2.5 py-2"
+              style={{ borderLeft: index === 0 ? "none" : "1px solid var(--divider)" }}
+            >
+              <div className="mb-1 flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--fg-tertiary)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d={item.icon} />
+                </svg>
+                <p className="truncate text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{item.label}</p>
+              </div>
+              <p className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{item.value}</p>
             </div>
           ))}
         </div>
-        <div className="flex gap-1 overflow-x-auto rounded-xl p-1" style={{ background: "var(--surface-low)" }}>
+
+        <div className="flex gap-1 overflow-x-auto rounded-xl p-1 custom-scrollbar" style={{ background: "var(--surface-low)" }}>
           {TABS.map((tab) => {
             const active = activeTab === tab.key;
             return (
@@ -1336,9 +1387,9 @@ export function RightPanel() {
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className="flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2 text-xs font-semibold transition-colors"
+                className="flex h-7 shrink-0 items-center gap-1.5 rounded-lg px-2 text-[11px] font-semibold transition-colors"
                 style={{
-                  color: active ? "var(--accent)" : "var(--fg-secondary)",
+                  color: active ? "var(--accent)" : "var(--fg-tertiary)",
                   background: active ? "var(--surface-white)" : "transparent",
                   border: `1px solid ${active ? "var(--accent-border)" : "transparent"}`,
                   boxShadow: active ? "var(--shadow-xs)" : "none",
@@ -1355,6 +1406,17 @@ export function RightPanel() {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-3 custom-scrollbar">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
+            <span className="truncate text-xs font-bold" style={{ color: "var(--fg-primary)" }}>
+              {activeTabMeta.label}
+            </span>
+          </div>
+          <span className="shrink-0 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+            {latestArtifact ? `更新于 ${formatTime(latestArtifact.createdAt)}` : "等待输入"}
+          </span>
+        </div>
         {activeTab === "tasks" && <TaskPanel messages={convMessages} />}
         {activeTab === "code" && <CodePanel artifacts={workspace.artifacts} messages={convMessages} />}
         {activeTab === "preview" && <PreviewPanel artifacts={workspace.artifacts} />}
@@ -1365,13 +1427,45 @@ export function RightPanel() {
         {activeTab === "context" && <ContextPanel artifacts={workspace.artifacts} messages={convMessages} resources={resources} />}
       </div>
 
-      <div className="grid shrink-0 grid-cols-2 gap-2 px-3 py-2.5" style={{ borderTop: "1px solid var(--border)" }}>
-        <button type="button" onClick={() => useChatStore.getState().setStreaming(false)} className="h-8 rounded-lg text-xs font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-          暂停生成
-        </button>
-        <button type="button" onClick={() => useChatStore.getState().clearSession()} className="h-8 rounded-lg text-xs font-semibold" style={{ color: "var(--danger)", background: "var(--danger-subtle)", border: "1px solid rgba(220, 53, 69, 0.16)" }}>
-          清空会话状态
-        </button>
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2.5" style={{ background: "rgba(255, 255, 255, 0.88)", borderTop: "1px solid var(--border)" }}>
+        <div className="min-w-0">
+          <p className="truncate text-[10px] font-semibold" style={{ color: isStreaming ? "var(--accent)" : "var(--fg-tertiary)" }}>
+            {isStreaming ? "Agent 正在生成" : "工作台已同步"}
+          </p>
+          <p className="truncate text-[10px]" style={{ color: "var(--fg-disabled)" }}>
+            {activeConversationId ? activeConversationId.slice(0, 10) : "未选择会话"}
+          </p>
+        </div>
+        <div className="flex shrink-0 gap-1.5">
+          <button
+            type="button"
+            onClick={() => useChatStore.getState().setStreaming(false)}
+            disabled={!isStreaming}
+            className="grid h-8 w-8 place-items-center rounded-lg transition-colors"
+            style={{ color: isStreaming ? "var(--accent)" : "var(--fg-disabled)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+            title="暂停生成"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M10 4H6v16h4z" />
+              <path d="M18 4h-4v16h4z" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => useChatStore.getState().clearSession()}
+            className="grid h-8 w-8 place-items-center rounded-lg transition-colors"
+            style={{ color: "var(--danger)", background: "var(--danger-subtle)", border: "1px solid rgba(220, 53, 69, 0.16)" }}
+            title="清空会话状态"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M3 6h18" />
+              <path d="M8 6V4h8v2" />
+              <path d="M19 6l-1 14H6L5 6" />
+              <path d="M10 11v5" />
+              <path d="M14 11v5" />
+            </svg>
+          </button>
+        </div>
       </div>
     </aside>
   );
