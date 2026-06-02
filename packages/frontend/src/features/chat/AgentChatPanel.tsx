@@ -5,6 +5,7 @@ import type { Message } from "@agenthub/shared";
 import { AnalyzeAndAssignFlow } from "./AnalyzeAndAssignFlow";
 import { AgentStepList } from "./AgentStepList";
 import { ConversationNavBar } from "./ConversationNavBar";
+import { ContextBasket } from "./ContextBasket";
 import { MentionSuggestions } from "./MentionSuggestions";
 import { MessageList } from "./MessageList";
 import { QuickReplyBar } from "./QuickReplyBar";
@@ -154,6 +155,11 @@ export function AgentChatPanel({
     useChatStore.getState().addMessage(convId, finalMsg);
   }, [convId, setStreaming]);
 
+  const handleOpenContextPanel = useCallback(() => {
+    setShowPreviewPanel(true);
+    window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab: "context" } }));
+  }, []);
+
   const hasContent = messages.length > 0 || steps.length > 0 || streamBuffer || taskSummary;
 
   return (
@@ -238,6 +244,7 @@ export function AgentChatPanel({
             </div>
 
             <div className="shrink-0" style={{ borderTop: "1px solid var(--divider)" }}>
+              <ContextBasket conversationId={convId} onOpenContextPanel={handleOpenContextPanel} />
               <QuickReplyBar
                 value={text}
                 onChange={setText}
