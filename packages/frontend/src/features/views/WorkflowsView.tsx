@@ -19,6 +19,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import type { Artifact, Message } from "@agenthub/shared";
 import { useChatStore } from "@/stores/chat-store";
 import { useNavigationStore } from "@/stores/navigation-store";
 
@@ -60,6 +61,17 @@ interface WorkflowOutput {
   errors?: string[];
 }
 
+type WorkflowArtifactKind = "document" | "html" | "slides";
+
+interface WorkflowArtifactDraft {
+  type: Extract<Artifact["type"], "document" | "html" | "slides">;
+  filename: string;
+  language: string;
+  content: string;
+  label: string;
+  panelTab: "preview" | "slides";
+}
+
 interface WorkflowRunHistoryItem {
   id: string;
   task: string;
@@ -73,6 +85,8 @@ interface WorkflowRunHistoryItem {
 
 const WORKFLOW_HISTORY_KEY = "agenthub-workflow-run-history";
 const MAX_WORKFLOW_HISTORY = 12;
+const CHAT_MESSAGES_KEY = "agenthub-chat-messages";
+const CHAT_CONVERSATIONS_KEY = "agenthub-conversations";
 
 const API_BASE = typeof window !== "undefined"
   ? `${window.location.protocol}//${window.location.hostname}:3002`
@@ -341,18 +355,307 @@ function saveWorkflowHistory(items: WorkflowRunHistoryItem[]) {
   window.localStorage.setItem(WORKFLOW_HISTORY_KEY, JSON.stringify(items.slice(0, MAX_WORKFLOW_HISTORY)));
 }
 
+function persistWorkflowArtifactFallback(conversationId: string, message: Message) {
+  if (typeof window === "undefined") return;
+  try {
+    const storedMessages = JSON.parse(window.localStorage.getItem(CHAT_MESSAGES_KEY) || "{}") as Record<string, Message[]>;
+    const existingMessages = storedMessages[conversationId] ?? [];
+    storedMessages[conversationId] = existingMessages.some((item) => item.id === message.id)
+      ? existingMessages
+      : [...existingMessages, message].slice(-200);
+    window.localStorage.setItem(CHAT_MESSAGES_KEY, JSON.stringify(storedMessages));
+  } catch {
+    // The in-memory event path still carries the artifact card.
+  }
+
+  try {
+    const conversations = JSON.parse(window.localStorage.getItem(CHAT_CONVERSATIONS_KEY) || "[]") as Array<Record<string, unknown>>;
+    const nextConversations = conversations.map((conversation) => (
+      conversation.id === conversationId
+        ? {
+            ...conversation,
+            lastMessage: message.content.slice(0, 80),
+            lastMessageAt: message.timestamp,
+            updatedAt: message.timestamp,
+          }
+        : conversation
+    ));
+    window.localStorage.setItem(CHAT_CONVERSATIONS_KEY, JSON.stringify(nextConversations));
+  } catch {
+    // Ignore storage failures; the page-level store handler also attempts this.
+  }
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function artifactBaseName(output: WorkflowOutput) {
+  const base = output.title
+    .replace(/[^\u4e00-\u9fa5a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 28);
+  return base || "workflow-output";
+}
+
+function buildWorkflowHtmlArtifact(output: WorkflowOutput) {
+  const steps = output.steps.length > 0
+    ? output.steps.map((step, index) => `
+      <article class="step">
+        <div class="step-index">${index + 1}</div>
+        <div>
+          <h2>${escapeHtml(step.task)}</h2>
+          ${step.toolUsed ? `<p class="tool">工具：${escapeHtml(step.toolUsed)}</p>` : ""}
+          <p>${escapeHtml(step.result)}</p>
+        </div>
+      </article>
+    `).join("")
+    : `<p class="empty">本次工作流没有返回步骤明细。</p>`;
+  const errors = output.errors?.length
+    ? `<section class="notice"><strong>异常信息</strong><p>${escapeHtml(output.errors.join("；"))}</p></section>`
+    : "";
+
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escapeHtml(output.title)} · AgentHub Workflow</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --accent: #4f46e5;
+      --ink: #172033;
+      --muted: #667085;
+      --line: #dde4f2;
+      --surface: #ffffff;
+      --soft: #f5f7fc;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: Inter, "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
+      background: linear-gradient(180deg, #f4f6ff 0%, #ffffff 58%, #f7f9fe 100%);
+      color: var(--ink);
+    }
+    main {
+      width: min(980px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 48px 0;
+    }
+    .hero {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.86);
+      border-radius: 18px;
+      padding: 32px;
+      box-shadow: 0 22px 60px rgba(69, 82, 126, 0.14);
+    }
+    .kicker {
+      margin: 0 0 12px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(30px, 4vw, 52px);
+      line-height: 1.08;
+    }
+    .summary {
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.8;
+      white-space: pre-wrap;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      background: var(--soft);
+      border-radius: 999px;
+      padding: 8px 12px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .section-title {
+      margin: 32px 0 12px;
+      font-size: 18px;
+    }
+    .steps {
+      display: grid;
+      gap: 12px;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 14px;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 14px;
+      padding: 18px;
+    }
+    .step-index {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border-radius: 10px;
+      color: #fff;
+      background: var(--accent);
+      font-weight: 800;
+    }
+    .step h2 {
+      margin: 0;
+      font-size: 15px;
+    }
+    .step p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      line-height: 1.7;
+      white-space: pre-wrap;
+    }
+    .tool {
+      color: var(--accent) !important;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .notice {
+      margin-top: 18px;
+      border: 1px solid #fecaca;
+      background: #fff5f5;
+      border-radius: 14px;
+      padding: 16px;
+      color: #b42318;
+    }
+    .empty {
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px dashed var(--line);
+      border-radius: 14px;
+      padding: 18px;
+    }
+    footer {
+      margin-top: 28px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <p class="kicker">AgentHub Workflow Output</p>
+      <h1>${escapeHtml(output.title)}</h1>
+      <p class="summary">${escapeHtml(output.summary)}</p>
+      <div class="meta">
+        <span class="pill">状态：${output.status === "done" ? "已完成" : output.status === "failed" ? "失败" : output.status}</span>
+        <span class="pill">步骤：${output.steps.length}</span>
+        <span class="pill">生成时间：${escapeHtml(new Date().toLocaleString("zh-CN"))}</span>
+      </div>
+      ${errors}
+    </section>
+
+    <h2 class="section-title">步骤产出</h2>
+    <section class="steps">${steps}</section>
+    <footer>Generated by AgentHub Workflow Studio</footer>
+  </main>
+</body>
+</html>`;
+}
+
+function buildWorkflowSlidesArtifact(output: WorkflowOutput) {
+  const stepSlides = output.steps.slice(0, 5).map((step, index) => [
+    `## ${index + 1}. ${step.task}`,
+    step.toolUsed ? `- 使用工具：${step.toolUsed}` : "",
+    `- ${step.result.replace(/\n+/g, "\n- ").slice(0, 680)}`,
+  ].filter(Boolean).join("\n")).join("\n\n---\n\n");
+
+  return [
+    `# ${output.title}`,
+    "AgentHub Workflow Studio",
+    "",
+    "---",
+    "",
+    "## 执行摘要",
+    output.summary,
+    "",
+    "---",
+    "",
+    "## 关键步骤",
+    output.steps.length > 0 ? output.steps.slice(0, 6).map((step) => `- ${step.task}`).join("\n") : "- 暂无步骤明细",
+    "",
+    stepSlides ? ["---", "", stepSlides].join("\n") : "",
+    output.errors?.length ? ["---", "", "## 异常与风险", output.errors.map((error) => `- ${error}`).join("\n")].join("\n") : "",
+    "",
+    "---",
+    "",
+    "## 下一步",
+    "- 在会话中引用关键段落继续追问",
+    "- 对网页或代码产物进行预览、编辑和部署",
+    "- 将最终结果纳入版本历史与答辩演示",
+  ].filter(Boolean).join("\n");
+}
+
+function createWorkflowArtifactDraft(kind: WorkflowArtifactKind, output: WorkflowOutput): WorkflowArtifactDraft {
+  const baseName = artifactBaseName(output);
+  if (kind === "html") {
+    return {
+      type: "html",
+      filename: `${baseName}.html`,
+      language: "html",
+      label: "网页产物",
+      panelTab: "preview",
+      content: buildWorkflowHtmlArtifact(output),
+    };
+  }
+  if (kind === "slides") {
+    return {
+      type: "slides",
+      filename: `${baseName}.pptx`,
+      language: "md",
+      label: "PPTX 产物",
+      panelTab: "slides",
+      content: buildWorkflowSlidesArtifact(output),
+    };
+  }
+  return {
+    type: "document",
+    filename: `${baseName}.md`,
+    language: "md",
+    label: "文档产物",
+    panelTab: "preview",
+    content: serializeWorkflowOutput(output),
+  };
+}
+
 function OutputPanel({
   output,
   actionStatus,
   onCopy,
   onSendToChat,
   onAskFollowUp,
+  onCreateArtifact,
 }: {
   output: WorkflowOutput | null;
   actionStatus: string;
   onCopy: () => void;
   onSendToChat: () => void;
   onAskFollowUp: () => void;
+  onCreateArtifact: (kind: WorkflowArtifactKind) => void;
 }) {
   if (!output) {
     return (
@@ -439,6 +742,31 @@ function OutputPanel({
         >
           继续追问
         </button>
+      </div>
+
+      <div className="mt-2 rounded-md p-2" style={{ background: "var(--page-bg)", border: "1px solid var(--border)" }}>
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <span className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>转为会话产物</span>
+          <span className="text-[10px]" style={{ color: "var(--fg-disabled)" }}>Artifact</span>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5">
+          {([
+            ["document", "文档"],
+            ["html", "网页"],
+            ["slides", "PPTX"],
+          ] as const).map(([kind, label]) => (
+            <button
+              key={kind}
+              type="button"
+              onClick={() => onCreateArtifact(kind)}
+              disabled={output.status === "running"}
+              className="h-7 rounded-md text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+              style={{ border: "1px solid var(--border)", color: "var(--fg-secondary)", background: "var(--surface-white)" }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {actionStatus && (
@@ -584,6 +912,14 @@ export function WorkflowsView() {
     }
     setOutputActionStatus("运行历史已清空。");
   }, []);
+
+  const navigateToChat = useCallback(() => {
+    setActiveNav("chat");
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("agenthub-active-nav", "chat");
+      window.dispatchEvent(new CustomEvent("agenthub:navigate", { detail: { key: "chat" } }));
+    }
+  }, [setActiveNav]);
 
   const onConnect = useCallback((conn: Connection) => {
     const sourceNode = nodes.find((node) => node.id === conn.source);
@@ -809,9 +1145,76 @@ export function WorkflowsView() {
       chatStore.setPendingMessage(text);
     }
     window.dispatchEvent(new CustomEvent("dashboard:send", { detail: { text } }));
-    setActiveNav("chat");
+    navigateToChat();
     setOutputActionStatus(intent === "follow-up" ? "已发送到会话继续追问。" : "已发送到会话。");
   };
+
+  const createWorkflowArtifact = useCallback((kind: WorkflowArtifactKind) => {
+    if (!workflowOutput || workflowOutput.status === "running") return;
+    const chatStore = useChatStore.getState();
+    const conversationId = chatStore.activeConversationId;
+    if (!conversationId) {
+      navigateToChat();
+      setOutputActionStatus("请先选择或创建一个会话，再把工作流输出转为产物卡片。");
+      return;
+    }
+
+    const draft = createWorkflowArtifactDraft(kind, workflowOutput);
+    const now = Date.now();
+    const artifactId = `workflow-${kind}-${now}`;
+    const artifact: Artifact = {
+      id: artifactId,
+      jobId: `workflow-${selectedTemplate?.id ?? "custom"}-${now}`,
+      type: draft.type,
+      content: draft.content,
+      filename: draft.filename,
+      metadata: {
+        source: "workflow-studio",
+        templateId: selectedTemplate?.id,
+        templateTitle: selectedTemplate?.title,
+        outputStatus: workflowOutput.status,
+        changeSummary: `由工作流输出生成${draft.label}`,
+      },
+      version: 1,
+      createdAt: now,
+      createdBy: "Workflow Studio",
+    };
+
+    const message: Message = {
+      id: crypto.randomUUID(),
+      conversationId,
+      type: "agent_message",
+      sender: kind === "html" ? "coder" : "planner",
+      senderId: kind === "html" ? "codex" : "pmo",
+      content: draft.content,
+      mentions: [],
+      payload: {
+        artifactType: draft.type,
+        artifactId,
+        filename: draft.filename,
+        language: draft.language,
+        source: "workflow-studio",
+        workflowTemplateId: selectedTemplate?.id,
+      },
+      timestamp: now,
+    };
+    navigateToChat();
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("workflow:artifact:create", {
+        detail: {
+          conversationId,
+          artifact,
+          message,
+          panelTab: draft.panelTab,
+        },
+      }));
+    }, 0);
+    window.setTimeout(() => {
+      navigateToChat();
+      persistWorkflowArtifactFallback(conversationId, message);
+    }, 120);
+    setOutputActionStatus(`${draft.label}已生成到当前会话。`);
+  }, [navigateToChat, selectedTemplate, workflowOutput]);
 
   const selectedData = selectedNode?.data;
 
@@ -993,6 +1396,7 @@ export function WorkflowsView() {
                 onCopy={copyWorkflowOutput}
                 onSendToChat={() => sendWorkflowOutputToChat("handoff")}
                 onAskFollowUp={() => sendWorkflowOutputToChat("follow-up")}
+                onCreateArtifact={createWorkflowArtifact}
               />
             </section>
 

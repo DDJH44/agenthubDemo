@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Conversation, Message } from "@agenthub/shared";
+import type { Artifact, Conversation, Message } from "@agenthub/shared";
 import { useWebSocket } from "../../packages/frontend/src/hooks/useWebSocket";
 import { useChatStore } from "../../packages/frontend/src/stores/chat-store";
 import { useSettingsStore } from "../../packages/frontend/src/stores/settings-store";
 import { useWorkspaceStore } from "../../packages/frontend/src/stores/workspace-store";
-import { useNavigationStore } from "../../packages/frontend/src/stores/navigation-store";
+import { useNavigationStore, type NavKey } from "../../packages/frontend/src/stores/navigation-store";
 import { useUserAgentStore } from "../../packages/frontend/src/stores/user-agent-store";
 import { useAuthStore } from "../../packages/frontend/src/stores/auth-store";
 import { AgentChatPanel } from "../../packages/frontend/src/features/chat/AgentChatPanel";
@@ -328,6 +328,90 @@ export default function Page() {
     window.addEventListener("dashboard:send", handler);
     return () => window.removeEventListener("dashboard:send", handler);
   }, [ws]);
+
+  // 监听子视图导航事件 → 由主页面统一切换可见视图
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const target = (event as CustomEvent<{ key?: NavKey }>).detail?.key;
+      if (!target) return;
+      setActiveNav(target);
+      if (target === "chat") setShowCreateModal(false);
+      if (isMobile) {
+        setShowMobileSidebar(false);
+        if (target !== "chat") setShowMobileConvList(false);
+      }
+    };
+    window.addEventListener("agenthub:navigate", handler);
+    return () => window.removeEventListener("agenthub:navigate", handler);
+  }, [isMobile, setActiveNav]);
+
+  // 监听工作流产物事件 → 统一写入当前会话与 workspace 产物仓库
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        conversationId?: string;
+        artifact?: Artifact;
+        message?: Message;
+        panelTab?: "preview" | "slides";
+      }>).detail;
+      if (!detail?.conversationId || !detail.artifact || !detail.message) return;
+
+      setActiveNav("chat");
+      setShowCreateModal(false);
+      if (isMobile) {
+        setShowMobileSidebar(false);
+        setShowMobileConvList(false);
+      }
+
+      try {
+        const workspace = useWorkspaceStore.getState();
+        if (workspace.activeConvId !== detail.conversationId) {
+          workspace.switchConversation(detail.conversationId);
+        }
+        useWorkspaceStore.getState().addArtifact(detail.artifact);
+      } catch {
+        // Keep the artifact card message path alive even if workspace persistence fails.
+      }
+
+      const chatStore = useChatStore.getState();
+      try {
+        chatStore.addMessage(detail.conversationId, detail.message);
+      } catch {
+        // Fall through to the direct state confirmation below.
+      }
+      const latestMessages = useChatStore.getState().messages[detail.conversationId] ?? [];
+      if (!latestMessages.some((message) => message.id === detail.message?.id)) {
+        useChatStore.setState((state) => {
+          const existing = state.messages[detail.conversationId!] ?? [];
+          const updated = existing.some((message) => message.id === detail.message!.id)
+            ? existing
+            : [...existing, detail.message!].slice(-500);
+          const conversations = state.conversations.map((conversation) =>
+            conversation.id === detail.conversationId
+              ? {
+                  ...conversation,
+                  lastMessage: detail.message!.content.slice(0, 80),
+                  lastMessageAt: detail.message!.timestamp,
+                  updatedAt: detail.message!.timestamp,
+                }
+              : conversation
+          );
+          return {
+            messages: { ...state.messages, [detail.conversationId!]: updated },
+            conversations,
+          };
+        });
+      }
+      window.setTimeout(() => useChatStore.getState().persistCurrentState(), 0);
+      window.setTimeout(() => {
+        const tab = detail.panelTab ?? "preview";
+        window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+        window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+      }, 0);
+    };
+    window.addEventListener("workflow:artifact:create", handler);
+    return () => window.removeEventListener("workflow:artifact:create", handler);
+  }, [isMobile, setActiveNav]);
 
   const handlePin = useCallback((id: string) => {
     pinConversation(id);
