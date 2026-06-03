@@ -3,6 +3,7 @@ import { join, basename } from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import { logger } from "../utils/logger";
+import { writeTemporarySshKey } from "./ssh-key-file";
 
 const execAsync = promisify(exec);
 
@@ -23,9 +24,13 @@ export interface DeployConfig {
   sshPort?: number;
   sshUser?: string;
   sshKey?: string;
+  sshKeyContent?: string;
   deployPath?: string;
   selfHostedPublicUrl?: string;
   selfHostedPostDeployCommand?: string;
+  selfHostedScope?: "platform-default" | "user-target";
+  deploymentUserId?: string;
+  deploymentTargetId?: string;
 }
 
 export interface DeployProgressCallback {
@@ -456,12 +461,23 @@ class SelfHostedProvider implements IDeployProvider {
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 22;
   }
 
-  private interpolate(value: string, deployId: string): string {
-    return value.replace(/\{deployId\}/g, deployId);
+  private interpolate(value: string, deployId: string, userId: string): string {
+    return value.replace(/\{deployId\}/g, deployId).replace(/\{userId\}/g, userId);
   }
 
   private safeDeployId(deployId: string): string {
     return deployId.replace(/[^a-zA-Z0-9_.-]/g, "-");
+  }
+
+  private safeUserId(userId?: string): string {
+    return (userId || "anonymous").replace(/[^a-zA-Z0-9_.-]/g, "-");
+  }
+
+  private scopedValue(value: string, deployId: string, userId: string, scope: DeployConfig["selfHostedScope"]) {
+    const interpolated = this.interpolate(value, deployId, userId);
+    if (scope !== "platform-default") return interpolated;
+    if (value.includes("{deployId}") || value.includes("{userId}")) return interpolated;
+    return `${interpolated.replace(/[\\/]+$/, "")}/${userId}/${deployId}`;
   }
 
   private shellOption(flag: string, value?: string): string {
@@ -477,13 +493,19 @@ class SelfHostedProvider implements IDeployProvider {
     }
 
     const safeDeployId = this.safeDeployId(deployId);
-    const deployPath = this.interpolate(
-      config.deployPath || process.env.SELF_HOSTED_DEPLOY_PATH || "/var/www/app",
-      safeDeployId
+    const safeUserId = this.safeUserId(config.deploymentUserId);
+    const scope = config.selfHostedScope || (config.deploymentTargetId ? "user-target" : "platform-default");
+    const deployPath = this.scopedValue(
+      config.deployPath || process.env.SELF_HOSTED_DEPLOY_PATH || "/var/www/agenthub-sites",
+      safeDeployId,
+      safeUserId,
+      scope
     );
-    const publicUrl = this.interpolate(
+    const publicUrl = this.scopedValue(
       config.selfHostedPublicUrl || process.env.SELF_HOSTED_PUBLIC_URL || `http://${sshHost}`,
-      safeDeployId
+      safeDeployId,
+      safeUserId,
+      scope
     );
 
     return {
@@ -491,6 +513,7 @@ class SelfHostedProvider implements IDeployProvider {
       user: sshUser,
       port: this.parsePort(config.sshPort),
       sshKey: config.sshKey || process.env.SELF_HOSTED_SSH_KEY,
+      sshKeyContent: config.sshKeyContent,
       deployPath,
       publicUrl,
       postDeployCommand: config.selfHostedPostDeployCommand || process.env.SELF_HOSTED_POST_DEPLOY_COMMAND,
@@ -544,7 +567,10 @@ class SelfHostedProvider implements IDeployProvider {
       logs.push("同步文件到服务器...");
 
       const tarball = join(process.cwd(), "deploy-output", `${this.safeDeployId(deployId)}.tar.gz`);
-      const sshKeyOption = this.shellOption("-i", target.sshKey);
+      const tempKey = target.sshKeyContent
+        ? writeTemporarySshKey(join(process.cwd(), "deploy-output", ".ssh"), this.safeDeployId(deployId), target.sshKeyContent)
+        : null;
+      const sshKeyOption = this.shellOption("-i", tempKey?.path || target.sshKey);
       const tarCmd = `tar -czf "${tarball}" -C "${deployDir}" .`;
       const scpCmd = `scp -o StrictHostKeyChecking=no -P ${target.port} ${sshKeyOption} "${tarball}" "${target.user}@${target.host}:${target.remoteTmpFile}"`;
 
@@ -570,6 +596,8 @@ class SelfHostedProvider implements IDeployProvider {
         const msg = execErr instanceof Error ? execErr.message : String(execErr);
         logs.push(`SSH 命令警告: ${msg}`);
         throw new Error(`SSH 连接失败: ${msg}`);
+      } finally {
+        tempKey?.cleanup();
       }
 
       const url = target.publicUrl;

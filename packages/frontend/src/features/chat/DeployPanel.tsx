@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
+import { api } from "@/lib/api-client";
 import { getGlobalSend } from "@/lib/ws-client";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
@@ -16,6 +17,26 @@ interface PlatformOption {
   hint: string;
   tags: string[];
   icon: string;
+}
+
+interface DeploymentTarget {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  username: string;
+  deployPath: string;
+  publicUrl: string;
+  authType: string;
+  publicKey: string;
+  status: string;
+  configured?: boolean;
+  lastError?: string | null;
+}
+
+interface DeploymentTargetsResponse {
+  defaultTarget: DeploymentTarget;
+  targets: DeploymentTarget[];
 }
 
 const PLATFORMS: PlatformOption[] = [
@@ -137,6 +158,21 @@ export function DeployPanel() {
   const [miaodaToken, setMiaodaToken] = useState("");
   const [miaodaAppUrl, setMiaodaAppUrl] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [deploymentTargets, setDeploymentTargets] = useState<DeploymentTarget[]>([]);
+  const [defaultDeploymentTarget, setDefaultDeploymentTarget] = useState<DeploymentTarget | null>(null);
+  const [selectedDeploymentTargetId, setSelectedDeploymentTargetId] = useState("platform-default");
+  const [targetFormOpen, setTargetFormOpen] = useState(false);
+  const [targetSaving, setTargetSaving] = useState(false);
+  const [targetTesting, setTargetTesting] = useState(false);
+  const [targetPublicKey, setTargetPublicKey] = useState("");
+  const [targetForm, setTargetForm] = useState({
+    name: "",
+    host: "",
+    port: "22",
+    username: "deploy",
+    deployPath: "/var/www/agenthub-sites/{deployId}",
+    publicUrl: "",
+  });
 
   const activeConversationId = useChatStore((state) => state.activeConversationId);
   const connected = useChatStore((state) => state.connected);
@@ -161,13 +197,99 @@ export function DeployPanel() {
   const safeProgress = Math.max(0, Math.min(progress, 100));
   const activePlatform = PLATFORMS.find((platform) => platform.key === (deployProvider || selectedPlatform)) ?? PLATFORMS[0];
   const selectedPlatformOption = PLATFORMS.find((platform) => platform.key === selectedPlatform) ?? PLATFORMS[0];
-  const canDeploy = Boolean(activeConversationId && deployableArtifact && deployFiles.length > 0);
+  const baseCanDeploy = Boolean(activeConversationId && deployableArtifact && deployFiles.length > 0);
   const isDeploying = normalizedStatus === "deploying";
   const deployFilePreview = deployFiles.slice(0, 4);
+  const selectedDeploymentTarget = deploymentTargets.find((target) => target.id === selectedDeploymentTargetId) ?? null;
+  const selfHostedDefaultUnavailable =
+    selectedPlatform === "self-hosted" &&
+    selectedDeploymentTargetId === "platform-default" &&
+    defaultDeploymentTarget?.configured === false;
+  const canDeploy = baseCanDeploy && !selfHostedDefaultUnavailable;
+  const selectedTargetPublicKey = targetPublicKey || selectedDeploymentTarget?.publicKey || "";
+
+  useEffect(() => {
+    if (selectedPlatform !== "self-hosted") return;
+    let cancelled = false;
+    api.get<DeploymentTargetsResponse>("/api/deployment-targets")
+      .then((data) => {
+        if (cancelled) return;
+        setDefaultDeploymentTarget(data.defaultTarget);
+        setDeploymentTargets(data.targets);
+      })
+      .catch((error) => {
+        if (!cancelled) setStatusMessage(error instanceof Error ? error.message : "部署目标加载失败");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPlatform]);
+
+  const createDeploymentTarget = async () => {
+    if (!targetForm.host.trim() || !targetForm.username.trim() || !targetForm.publicUrl.trim()) {
+      setStatusMessage("请填写服务器地址、用户名和访问域名。");
+      return;
+    }
+
+    setTargetSaving(true);
+    setStatusMessage(null);
+    try {
+      const result = await api.post<{ target: DeploymentTarget }>("/api/deployment-targets", {
+        name: targetForm.name.trim() || "自有服务器",
+        host: targetForm.host.trim(),
+        port: Number(targetForm.port) || 22,
+        username: targetForm.username.trim(),
+        deployPath: targetForm.deployPath.trim() || "/var/www/agenthub-sites/{deployId}",
+        publicUrl: targetForm.publicUrl.trim(),
+      });
+      setDeploymentTargets((items) => [result.target, ...items.filter((item) => item.id !== result.target.id)]);
+      setSelectedDeploymentTargetId(result.target.id);
+      setTargetPublicKey(result.target.publicKey);
+      setTargetFormOpen(false);
+      setStatusMessage("服务器目标已创建，请把公钥加入服务器 authorized_keys 后再测试或部署。");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "服务器目标创建失败");
+    } finally {
+      setTargetSaving(false);
+    }
+  };
+
+  const copyTargetPublicKey = async () => {
+    if (!selectedTargetPublicKey) return;
+    try {
+      await navigator.clipboard.writeText(selectedTargetPublicKey);
+      setStatusMessage("公钥已复制，可以粘贴到服务器 authorized_keys。");
+    } catch {
+      setStatusMessage("浏览器暂不允许自动复制，请手动选中公钥复制。");
+    }
+  };
+
+  const testDeploymentTarget = async () => {
+    if (!selectedDeploymentTarget) return;
+    setTargetTesting(true);
+    setStatusMessage("正在测试服务器 SSH 授权...");
+    try {
+      const result = await api.post<{ ok: boolean; status: string; error?: string }>(`/api/deployment-targets/${selectedDeploymentTarget.id}/test`, {});
+      setDeploymentTargets((targets) => targets.map((target) => (
+        target.id === selectedDeploymentTarget.id
+          ? { ...target, status: result.status, lastError: result.error ?? null }
+          : target
+      )));
+      setStatusMessage(result.ok ? "服务器连接测试通过，可以一键部署。" : `服务器连接测试失败：${result.error || "未知错误"}`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "服务器连接测试失败");
+    } finally {
+      setTargetTesting(false);
+    }
+  };
 
   const submitDeploy = () => {
     if (!activeConversationId) {
       setStatusMessage("请先选择一个会话。");
+      return;
+    }
+    if (selfHostedDefaultUnavailable) {
+      setStatusMessage("默认服务器尚未由管理员配置。请选择已添加的自有服务器，或让管理员配置平台默认目标。");
       return;
     }
     if (!connected) {
@@ -197,6 +319,12 @@ export function DeployPanel() {
         miaodaWebhookUrl: miaodaWebhookUrl.trim() || undefined,
         miaodaToken: miaodaToken.trim() || undefined,
         miaodaAppUrl: miaodaAppUrl.trim() || undefined,
+      });
+    }
+
+    if (selectedPlatform === "self-hosted" && selectedDeploymentTargetId !== "platform-default") {
+      Object.assign(config, {
+        deploymentTargetId: selectedDeploymentTargetId,
       });
     }
 
@@ -386,26 +514,126 @@ export function DeployPanel() {
         <section className="rounded-xl p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
-              <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>自有服务器配置</p>
-              <p className="mt-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>SSH 信息由后端环境变量托管</p>
+              <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>服务器目标</p>
+              <p className="mt-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>默认目标免配置，自有服务器使用公钥授权</p>
             </div>
-            <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--success)", background: "var(--success-subtle)", border: "1px solid var(--success-border)" }}>
-              Server side
-            </span>
+            <button
+              type="button"
+              onClick={() => setTargetFormOpen((value) => !value)}
+              className="rounded-lg px-2 py-1 text-[10px] font-semibold"
+              style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}
+            >
+              添加服务器
+            </button>
           </div>
-          <div className="grid grid-cols-2 gap-2">
-            {[
-              { label: "主机", value: "SELF_HOSTED_SSH_HOST" },
-              { label: "用户", value: "SELF_HOSTED_SSH_USER" },
-              { label: "目录", value: "SELF_HOSTED_DEPLOY_PATH" },
-              { label: "访问", value: "SELF_HOSTED_PUBLIC_URL" },
-            ].map((item) => (
-              <div key={item.value} className="min-w-0 rounded-lg px-2.5 py-2" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
-                <p className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{item.label}</p>
-                <p className="mt-0.5 truncate text-[11px] font-bold" style={{ color: "var(--fg-primary)" }}>{item.value}</p>
+
+          <div className="space-y-2">
+            <button
+              type="button"
+              onClick={() => setSelectedDeploymentTargetId("platform-default")}
+              className="w-full rounded-lg p-2.5 text-left"
+              style={{
+                background: selectedDeploymentTargetId === "platform-default" ? "var(--accent-subtle)" : "var(--surface-low)",
+                border: `1px solid ${selectedDeploymentTargetId === "platform-default" ? "var(--accent-border)" : "var(--border)"}`,
+              }}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>AgentHub 默认服务器</p>
+                <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: defaultDeploymentTarget?.configured === false ? "var(--danger)" : "var(--success)", background: defaultDeploymentTarget?.configured === false ? "var(--danger-subtle)" : "var(--success-subtle)" }}>
+                  {defaultDeploymentTarget?.configured === false ? "未配置" : "管理员托管"}
+                </span>
               </div>
+              <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+                {defaultDeploymentTarget?.publicUrl || "管理员配置后可直接部署"}
+              </p>
+            </button>
+
+            {deploymentTargets.map((target) => (
+              <button
+                key={target.id}
+                type="button"
+                onClick={() => {
+                  setSelectedDeploymentTargetId(target.id);
+                  setTargetPublicKey("");
+                }}
+                className="w-full rounded-lg p-2.5 text-left"
+                style={{
+                  background: selectedDeploymentTargetId === target.id ? "var(--accent-subtle)" : "var(--surface-low)",
+                  border: `1px solid ${selectedDeploymentTargetId === target.id ? "var(--accent-border)" : "var(--border)"}`,
+                }}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="truncate text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{target.name}</p>
+                  <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: target.status === "ready" ? "var(--success)" : "var(--accent)", background: target.status === "ready" ? "var(--success-subtle)" : "var(--accent-subtle)" }}>
+                    {target.status === "ready" ? "已验证" : "待授权"}
+                  </span>
+                </div>
+                <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+                  {target.username}@{target.host}:{target.port} · {target.publicUrl}
+                </p>
+              </button>
             ))}
           </div>
+
+          {targetFormOpen && (
+            <div className="mt-3 grid gap-2 rounded-lg p-2.5" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+              {[
+                { key: "name", label: "名称", placeholder: "生产服务器" },
+                { key: "host", label: "服务器地址", placeholder: "your-server.example.com" },
+                { key: "username", label: "用户名", placeholder: "deploy" },
+                { key: "publicUrl", label: "访问地址", placeholder: "https://your-server.example.com/{deployId}" },
+                { key: "deployPath", label: "部署目录", placeholder: "/var/www/agenthub-sites/{deployId}" },
+                { key: "port", label: "端口", placeholder: "22" },
+              ].map((field) => (
+                <label key={field.key} className="block">
+                  <span className="mb-1 block text-[10px] font-semibold" style={{ color: "var(--fg-secondary)" }}>{field.label}</span>
+                  <input
+                    value={targetForm[field.key as keyof typeof targetForm]}
+                    onChange={(event) => setTargetForm((form) => ({ ...form, [field.key]: event.target.value }))}
+                    placeholder={field.placeholder}
+                    className="h-8 w-full rounded-lg px-2 text-xs outline-none"
+                    style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+                  />
+                </label>
+              ))}
+              <button
+                type="button"
+                onClick={createDeploymentTarget}
+                disabled={targetSaving}
+                className="h-8 rounded-lg text-xs font-bold"
+                style={{ color: "#fff", background: targetSaving ? "var(--fg-disabled)" : "var(--accent)" }}
+              >
+                {targetSaving ? "生成中..." : "生成公钥并保存"}
+              </button>
+            </div>
+          )}
+
+          {selectedTargetPublicKey && (
+            <div className="mt-3 rounded-lg p-2.5" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="text-[10px] font-bold" style={{ color: "var(--fg-primary)" }}>服务器 authorized_keys 公钥</p>
+                <div className="flex items-center gap-1">
+                  {selectedDeploymentTarget && (
+                    <button type="button" onClick={testDeploymentTarget} disabled={targetTesting} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--success)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                      {targetTesting ? "测试中" : "测试"}
+                    </button>
+                  )}
+                  <button type="button" onClick={copyTargetPublicKey} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                    复制
+                  </button>
+                </div>
+              </div>
+              <textarea
+                readOnly
+                value={selectedTargetPublicKey}
+                className="min-h-20 w-full resize-none rounded-lg p-2 font-mono text-[10px] outline-none"
+                style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+              />
+              <p className="mt-1 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+                把这段公钥加入服务器用户的 ~/.ssh/authorized_keys，私钥只保存在 AgentHub 后端。
+              </p>
+            </div>
+          )}
         </section>
       )}
 

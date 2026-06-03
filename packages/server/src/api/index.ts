@@ -14,10 +14,16 @@ import { mcpRepo } from "../db/repositories/mcp";
 import { prisma } from "../db/index";
 import { mcpManager } from "../mcp/manager";
 import { workspaceFileRepo } from "../db/repositories/workspace-file";
+import { deploymentTargetRepo, type DeploymentTargetRecord } from "../db/repositories/deployment-target";
 import { config } from "../config";
 import { logger } from "../utils/logger";
+import { exec } from "child_process";
+import { randomUUID } from "crypto";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, unlinkSync, statSync, readdirSync } from "fs";
 import path from "path";
+import { promisify } from "util";
+import { decryptSecret, encryptSecret, generateSshKeyPair } from "../deploy/credentials";
+import { writeTemporarySshKey } from "../deploy/ssh-key-file";
 
 interface RequestWithParams extends IncomingMessage {
   params?: Record<string, string>;
@@ -27,6 +33,7 @@ type RouteHandler = (req: RequestWithParams, res: ServerResponse) => Promise<voi
 
 const routes: Record<string, RouteHandler> = {};
 const paramRoutes: Array<{ method: string; pattern: RegExp; keys: string[]; handler: RouteHandler }> = [];
+const execAsync = promisify(exec);
 
 export function registerRoute(method: string, path: string, handler: RouteHandler) {
   // Check if path has params (e.g. /api/files/:id/download)
@@ -771,6 +778,174 @@ registerRoute("DELETE", "/api/files/:id", async (req, res) => {
 
   await fileRepo.delete(fileId);
 
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+});
+
+function publicDeploymentTarget(target: DeploymentTargetRecord) {
+  return {
+    id: target.id,
+    name: target.name,
+    type: target.type,
+    host: target.host,
+    port: target.port,
+    username: target.username,
+    deployPath: target.deployPath,
+    publicUrl: target.publicUrl,
+    authType: target.authType,
+    publicKey: target.publicKey,
+    postDeployCommand: target.postDeployCommand,
+    status: target.status,
+    lastTestedAt: target.lastTestedAt?.getTime() ?? null,
+    lastError: target.lastError,
+    createdAt: target.createdAt.getTime(),
+    updatedAt: target.updatedAt.getTime(),
+  };
+}
+
+function platformDeploymentTarget() {
+  const host = process.env.SELF_HOSTED_SSH_HOST;
+  const user = process.env.SELF_HOSTED_SSH_USER;
+  const basePath = process.env.SELF_HOSTED_DEPLOY_PATH || "/var/www/agenthub-sites";
+  const baseUrl = process.env.SELF_HOSTED_PUBLIC_URL || (host ? `http://${host}` : "");
+  return {
+    id: "platform-default",
+    name: "AgentHub 默认服务器",
+    type: "self-hosted",
+    host: host || "",
+    port: Number(process.env.SELF_HOSTED_SSH_PORT || 22),
+    username: user || "",
+    deployPath: basePath.includes("{userId}") || basePath.includes("{deployId}") ? basePath : `${basePath.replace(/[\\/]+$/, "")}/{userId}/{deployId}`,
+    publicUrl: baseUrl ? (baseUrl.includes("{userId}") || baseUrl.includes("{deployId}") ? baseUrl : `${baseUrl.replace(/\/+$/, "")}/{userId}/{deployId}`) : "",
+    authType: "server-env",
+    publicKey: "",
+    postDeployCommand: process.env.SELF_HOSTED_POST_DEPLOY_COMMAND || null,
+    status: host && user ? "ready" : "unconfigured",
+    configured: Boolean(host && user),
+    lastTestedAt: null,
+    lastError: host && user ? null : "管理员尚未配置 SELF_HOSTED_SSH_HOST / SELF_HOSTED_SSH_USER",
+  };
+}
+
+function stringField(value: unknown, fallback = "") {
+  return typeof value === "string" ? value.trim() : fallback;
+}
+
+function parsePort(value: unknown) {
+  const port = Number(value || 22);
+  return Number.isFinite(port) && port > 0 && port <= 65535 ? Math.round(port) : 22;
+}
+
+/* ── GET /api/deployment-targets ── */
+registerRoute("GET", "/api/deployment-targets", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const targets = await deploymentTargetRepo.listByUser(user.id);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({
+    defaultTarget: platformDeploymentTarget(),
+    targets: targets.map(publicDeploymentTarget),
+  }));
+});
+
+/* ── POST /api/deployment-targets ── */
+registerRoute("POST", "/api/deployment-targets", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const body = await readJsonBody(req) as Record<string, unknown>;
+  const name = stringField(body.name, "自有服务器");
+  const host = stringField(body.host);
+  const username = stringField(body.username);
+  const port = parsePort(body.port);
+  const deployPath = stringField(body.deployPath, "/var/www/agenthub-sites/{deployId}");
+  const publicUrl = stringField(body.publicUrl);
+  const postDeployCommand = stringField(body.postDeployCommand) || null;
+
+  if (!host || !username || !publicUrl) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "host, username and publicUrl are required" }));
+    return;
+  }
+
+  const id = randomUUID();
+  const keyPair = generateSshKeyPair(`agenthub-${user.id}-${id}`);
+  const target = await deploymentTargetRepo.create({
+    id,
+    userId: user.id,
+    name,
+    host,
+    port,
+    username,
+    deployPath,
+    publicUrl,
+    publicKey: keyPair.publicKey,
+    privateKeyEncrypted: encryptSecret(keyPair.privateKey),
+    postDeployCommand,
+  });
+
+  res.writeHead(201, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ target: publicDeploymentTarget(target) }));
+});
+
+/* ── POST /api/deployment-targets/:id/test ── */
+registerRoute("POST", "/api/deployment-targets/:id/test", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const targetId = (req as RequestWithParams).params?.id;
+  if (!targetId) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "target id required" }));
+    return;
+  }
+
+  const target = await deploymentTargetRepo.getById(targetId);
+  if (!target || target.userId !== user.id) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Deployment target not found" }));
+    return;
+  }
+
+  const tempKey = writeTemporarySshKey(path.join(process.cwd(), "deploy-output", ".ssh"), target.id, decryptSecret(target.privateKeyEncrypted));
+  try {
+    const remoteCmd = `mkdir -p "${target.deployPath}" && echo agenthub-ready`;
+    const sshCmd = `ssh -o BatchMode=yes -o StrictHostKeyChecking=no -p ${target.port} -i "${tempKey.path}" "${target.username}@${target.host}" '${remoteCmd}'`;
+    await execAsync(sshCmd, { timeout: 15000 });
+    await deploymentTargetRepo.updateStatus(target.id, "ready", null);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true, status: "ready" }));
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    await deploymentTargetRepo.updateStatus(target.id, "error", error);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: false, status: "error", error }));
+  } finally {
+    tempKey.cleanup();
+  }
+});
+
+/* ── DELETE /api/deployment-targets/:id ── */
+registerRoute("DELETE", "/api/deployment-targets/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const targetId = (req as RequestWithParams).params?.id;
+  if (!targetId) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "target id required" }));
+    return;
+  }
+
+  const target = await deploymentTargetRepo.getById(targetId);
+  if (!target || target.userId !== user.id) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Deployment target not found" }));
+    return;
+  }
+
+  await deploymentTargetRepo.delete(target.id);
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ ok: true }));
 });

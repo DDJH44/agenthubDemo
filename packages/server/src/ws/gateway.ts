@@ -16,6 +16,8 @@ import { logger } from "../utils/logger";
 import { prisma } from "../db/index";
 import { deployManager } from "../deploy/index";
 import type { DeployConfig } from "../deploy/index";
+import { deploymentTargetRepo } from "../db/repositories/deployment-target";
+import { decryptSecret } from "../deploy/credentials";
 import { validateConversationId, validateWorkspaceId, validateMessageText, validateConversationTitle, validateConversationType, validateParticipants, validateSearchQuery, validateString } from "../utils/validators";
 import { validateSession } from "../auth/session";
 import { isArtifactGenerationTask, isSimpleChat } from "../utils/task-classifier";
@@ -110,6 +112,42 @@ function safeDeployPath(path: string): string {
   const normalized = path.replace(/\\/g, "/").replace(/^\/+/, "").split("/").filter(Boolean);
   const safeParts = normalized.filter((part) => part !== "." && part !== "..");
   return safeParts.join("/") || "index.html";
+}
+
+async function resolveDeployConfig(rawConfig: Record<string, unknown>, providerId: string, projectName: string, userId: string): Promise<DeployConfig> {
+  const deployConfig = {
+    ...rawConfig,
+    projectName,
+    deploymentUserId: userId,
+  } as DeployConfig;
+
+  if (providerId !== "self-hosted") return deployConfig;
+
+  const targetId = typeof rawConfig.deploymentTargetId === "string" ? rawConfig.deploymentTargetId : "";
+  if (!targetId || targetId === "platform-default") {
+    return {
+      ...deployConfig,
+      selfHostedScope: "platform-default",
+    };
+  }
+
+  const target = await deploymentTargetRepo.getById(targetId);
+  if (!target || target.userId !== userId) {
+    throw new Error("部署目标不存在或无权访问");
+  }
+
+  return {
+    ...deployConfig,
+    deploymentTargetId: target.id,
+    selfHostedScope: "user-target",
+    sshHost: target.host,
+    sshPort: target.port,
+    sshUser: target.username,
+    sshKeyContent: decryptSecret(target.privateKeyEncrypted),
+    deployPath: target.deployPath,
+    selfHostedPublicUrl: target.publicUrl,
+    selfHostedPostDeployCommand: target.postDeployCommand || undefined,
+  };
 }
 
 export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
@@ -778,20 +816,21 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:progress", deployId, status: "deploying", progress: 0, providerId: msg.providerId, logs: ["初始化部署..."], timestamp: Date.now() });
             try {
               const artifacts: Array<{ path: string; content: string }> = [];
+              const rawConfig = (msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>;
               if (msg.config && typeof msg.config === "object") {
-                const config = msg.config as Record<string, unknown>;
-                if (Array.isArray(config.files)) {
-                  for (const f of config.files as Array<{ path?: string; content?: string }>) {
+                if (Array.isArray(rawConfig.files)) {
+                  for (const f of rawConfig.files as Array<{ path?: string; content?: string }>) {
                     if (f.path && f.content) artifacts.push({ path: safeDeployPath(f.path), content: f.content });
                   }
                 }
               }
+              const deployConfig = await resolveDeployConfig(rawConfig, msg.providerId, targetConvId, userId);
 
               if (artifacts.length === 0) {
                 const result = await deployManager.deploy(
                   msg.providerId, deployId,
                   [{ path: "index.html", content: "<!DOCTYPE html><html><body>AgentHub Deploy</body></html>" }],
-                  { ...(msg.config as Record<string, unknown> || {}), projectName: targetConvId } as DeployConfig,
+                  deployConfig,
                   (progress, log) => {
                     emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:progress", deployId, status: "deploying", progress, providerId: msg.providerId, logs: [log], timestamp: Date.now() });
                   }
@@ -804,7 +843,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               } else {
                 const result = await deployManager.deploy(
                   msg.providerId, deployId, artifacts,
-                  { ...(msg.config as Record<string, unknown> || {}), projectName: targetConvId } as DeployConfig,
+                  deployConfig,
                   (progress, log) => {
                     emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:progress", deployId, status: "deploying", progress, providerId: msg.providerId, logs: [log], timestamp: Date.now() });
                   }
