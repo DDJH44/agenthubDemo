@@ -89,7 +89,7 @@ export function AgentChatPanel({
     conversationMode,
     contextReferences,
     undoMessage,
-    setStreaming,
+    setConversationStreaming,
   } = useChatStore();
   const [text, setText] = useState("");
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
@@ -140,20 +140,8 @@ export function AgentChatPanel({
   }, [convId, undoMessage]);
 
   const handleStopStreaming = useCallback(() => {
-    setStreaming(false);
-    const state = useChatStore.getState();
-    if (!convId || !state.streamBuffer.trim()) return;
-    const finalMsg: Message = {
-      id: crypto.randomUUID(),
-      conversationId: convId,
-      type: "agent_message",
-      sender: "assistant",
-      content: state.streamBuffer,
-      mentions: [],
-      timestamp: Date.now(),
-    };
-    useChatStore.getState().addMessage(convId, finalMsg);
-  }, [convId, setStreaming]);
+    if (convId) setConversationStreaming(convId, false);
+  }, [convId, setConversationStreaming]);
 
   const handleOpenContextPanel = useCallback(() => {
     setShowPreviewPanel(true);

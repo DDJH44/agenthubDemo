@@ -63,6 +63,14 @@ function wsConvToStoreConv(c: {
   };
 }
 
+function eventConversationId(msg: WSServerMessage): string | undefined {
+  return "conversationId" in msg && typeof msg.conversationId === "string" ? msg.conversationId : undefined;
+}
+
+function isActiveConversation(conversationId: string | undefined) {
+  return Boolean(conversationId && useChatStore.getState().activeConversationId === conversationId);
+}
+
 export function useWebSocket(serverUrl?: string, enabled = true) {
   const socketRef = useRef<ReturnType<typeof createAgentSocket> | null>(null);
   const reconnectAttempts = useRef(0);
@@ -120,7 +128,9 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           break;
         }
         case "task:created": {
-          useChatStore.getState().setStreaming(true);
+          const conversationId = eventConversationId(msg);
+          if (conversationId) useChatStore.getState().setConversationStreaming(conversationId, true);
+          else useChatStore.getState().setStreaming(true);
           break;
         }
         case "agent:status": {
@@ -131,13 +141,21 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           break;
         }
         case "plan:created": {
-          useChatStore.getState().addPlan(msg.plan.map((p) => ({ id: p.id, task: p.task })));
-          useWorkspaceStore.getState().setPlan(msg.plan);
-          useTaskTreeStore.getState().buildFromPlan(msg.plan);
+          const conversationId = eventConversationId(msg);
+          const plan = msg.plan.map((p) => ({ id: p.id, task: p.task }));
+          if (conversationId) useChatStore.getState().addConversationPlan(conversationId, plan);
+          else useChatStore.getState().addPlan(plan);
+          if (!conversationId || isActiveConversation(conversationId)) {
+            useWorkspaceStore.getState().setPlan(msg.plan);
+            useTaskTreeStore.getState().buildFromPlan(msg.plan);
+          }
           break;
         }
         case "agent:stream": {
-          useChatStore.getState().appendStreamChunk(msg.chunk);
+          const conversationId = eventConversationId(msg);
+          if (conversationId) {
+            useChatStore.getState().appendStreamChunk(conversationId, msg.messageId, msg.chunk, msg.agentId);
+          }
           break;
         }
         case "agent:analysis": {
@@ -161,38 +179,58 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           break;
         }
         case "agent:step": {
-          useChatStore.getState().setStreaming(true);
-          useChatStore.getState().addAgentStep({
+          const conversationId = eventConversationId(msg);
+          const step = {
             iteration: msg.iteration,
             thought: msg.thought,
             action: msg.action,
             observation: msg.observation,
             isFinal: msg.isFinal,
             timestamp: Date.now(),
-          });
+          };
+          if (conversationId) {
+            useChatStore.getState().setConversationStreaming(conversationId, true);
+            useChatStore.getState().addConversationAgentStep(conversationId, step);
+          } else {
+            useChatStore.getState().setStreaming(true);
+            useChatStore.getState().addAgentStep(step);
+          }
           break;
         }
         case "step:started": {
-          useWorkspaceStore.getState().updateNodeStatus(msg.stepId, "running");
-          useChatStore.getState().updateStepById(msg.stepId, "running");
-          useTaskTreeStore.getState().updateStepStatus(msg.stepId, "running");
+          const conversationId = eventConversationId(msg);
+          if (conversationId) useChatStore.getState().updateConversationStepById(conversationId, msg.stepId, "running");
+          else useChatStore.getState().updateStepById(msg.stepId, "running");
+          if (!conversationId || isActiveConversation(conversationId)) {
+            useWorkspaceStore.getState().updateNodeStatus(msg.stepId, "running");
+            useTaskTreeStore.getState().updateStepStatus(msg.stepId, "running");
+          }
           break;
         }
         case "step:completed": {
-          useWorkspaceStore.getState().updateNodeStatus(msg.stepId, "done");
-          useWorkspaceStore.getState().addStepResult({ id: msg.stepId, task: msg.task || msg.stepId, result: msg.result });
-          useChatStore.getState().updateStepById(msg.stepId, "done", msg.result);
-          useTaskTreeStore.getState().updateStepStatus(msg.stepId, "done");
-          useTaskTreeStore.getState().addStepResult({ id: msg.stepId, task: msg.task || msg.stepId, result: msg.result });
+          const conversationId = eventConversationId(msg);
+          if (conversationId) useChatStore.getState().updateConversationStepById(conversationId, msg.stepId, "done", msg.result);
+          else useChatStore.getState().updateStepById(msg.stepId, "done", msg.result);
+          if (!conversationId || isActiveConversation(conversationId)) {
+            useWorkspaceStore.getState().updateNodeStatus(msg.stepId, "done");
+            useWorkspaceStore.getState().addStepResult({ id: msg.stepId, task: msg.task || msg.stepId, result: msg.result });
+            useTaskTreeStore.getState().updateStepStatus(msg.stepId, "done");
+            useTaskTreeStore.getState().addStepResult({ id: msg.stepId, task: msg.task || msg.stepId, result: msg.result });
+          }
           break;
         }
         case "job:completed": {
-          useChatStore.getState().setTaskSummary(msg.summary);
+          const conversationId = eventConversationId(msg);
+          if (conversationId) useChatStore.getState().setConversationTaskSummary(conversationId, msg.summary, msg.jobId);
+          else useChatStore.getState().setTaskSummary(msg.summary);
           break;
         }
         case "artifact:created": {
-          useWorkspaceStore.getState().addArtifact(msg.artifact);
-          useTaskTreeStore.getState().addArtifact(msg.artifact);
+          const conversationId = eventConversationId(msg);
+          if (!conversationId || isActiveConversation(conversationId)) {
+            useWorkspaceStore.getState().addArtifact(msg.artifact);
+            useTaskTreeStore.getState().addArtifact(msg.artifact);
+          }
           break;
         }
         case "deploy:status": {
@@ -200,6 +238,13 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           break;
         }
         case "message:created": {
+          const messagePayload = msg.message.payload as Record<string, unknown> | undefined;
+          const messageJobId = typeof messagePayload?.jobId === "string" ? messagePayload.jobId : undefined;
+          const completedJobs = useChatStore.getState().completedJobs[msg.message.conversationId] ?? [];
+          const hasLiveStreamForJob = messageJobId
+            ? (useChatStore.getState().messages[msg.message.conversationId] ?? []).some((message) => message.id.startsWith(messageJobId))
+            : false;
+          if (messageJobId && completedJobs.includes(messageJobId) && hasLiveStreamForJob) break;
           useChatStore.getState().addMessage(msg.message.conversationId, msg.message);
           break;
         }
@@ -316,12 +361,14 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
               m.content !== "[AGENT_START]" && m.content !== "[AGENT_END]" &&
               !(m.type === "system" && m.content?.includes("任务已提交"))
             )
-            .map((m: { id: string; conversationId?: string; type?: string; sender?: string; content?: string; mentions?: string[]; timestamp?: number }) => ({
+            .map((m: { id: string; conversationId?: string; type?: string; sender?: string; senderId?: string; content?: string; payload?: Record<string, unknown>; mentions?: string[]; timestamp?: number }) => ({
               id: m.id,
               conversationId: m.conversationId || convId,
               type: (validTypes.includes(m.type || "") ? m.type : "system") as "user_message" | "agent_message" | "system" | "plan",
               sender: m.sender || "system",
+              senderId: m.senderId,
               content: m.content || "",
+              payload: m.payload,
               mentions: m.mentions || [],
               timestamp: m.timestamp || Date.now(),
             }));
@@ -458,13 +505,15 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         case "deploy:failed": {
           const status = msg.type === "deploy:progress" ? "deploying" : msg.type === "deploy:completed" ? "success" : "failed";
           const url = "url" in msg ? msg.url : undefined;
-          const conversationId = useChatStore.getState().activeConversationId;
-          useWorkspaceStore.getState().setDeployStatus(status, url, {
-            progress: msg.type === "deploy:progress" ? msg.progress : 100,
-            providerId: msg.providerId,
-            logs: msg.type === "deploy:progress" ? msg.logs : [msg.type === "deploy:completed" ? `部署完成：${msg.url}` : msg.error],
-            error: msg.type === "deploy:failed" ? msg.error : null,
-          });
+          const conversationId = eventConversationId(msg);
+          if (!conversationId || isActiveConversation(conversationId)) {
+            useWorkspaceStore.getState().setDeployStatus(status, url, {
+              progress: msg.type === "deploy:progress" ? msg.progress : 100,
+              providerId: msg.providerId,
+              logs: msg.type === "deploy:progress" ? msg.logs : [msg.type === "deploy:completed" ? `部署完成：${msg.url}` : msg.error],
+              error: msg.type === "deploy:failed" ? msg.error : null,
+            });
+          }
 
           if (conversationId && msg.type === "deploy:completed") {
             const artifact: Artifact = {

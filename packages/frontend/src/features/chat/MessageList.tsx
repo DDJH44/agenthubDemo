@@ -123,7 +123,7 @@ function TextContent({ text }: { text: string }) {
 
 function splitCodeBlocks(content: string) {
   const parts: Array<{ type: "text" | "code"; value: string; language?: string }> = [];
-  const regex = /```(\w*)\n?([\s\S]*?)```/g;
+  const regex = /```([\w-]*)\n?([\s\S]*?)```/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -142,8 +142,59 @@ function splitCodeBlocks(content: string) {
   return parts.length > 0 ? parts : [{ type: "text" as const, value: content }];
 }
 
-function InlineCodeBlock({ code, language }: { code: string; language?: string }) {
-  return <ArtifactCard type="code" content={code} language={language} filename={language ? `snippet.${language}` : "snippet.txt"} />;
+function getCodeFilename(language?: string) {
+  const normalized = language?.toLowerCase();
+  const extensionMap: Record<string, string> = {
+    html: "html",
+    css: "css",
+    js: "js",
+    javascript: "js",
+    ts: "ts",
+    typescript: "ts",
+    tsx: "tsx",
+    jsx: "jsx",
+    json: "json",
+    py: "py",
+    python: "py",
+    md: "md",
+    markdown: "md",
+    bash: "sh",
+    shell: "sh",
+  };
+  return `snippet.${extensionMap[normalized ?? ""] ?? normalized ?? "txt"}`;
+}
+
+function InlineCodeBlock({
+  code,
+  language,
+  messageId,
+  conversationId,
+}: {
+  code: string;
+  language?: string;
+  messageId: string;
+  conversationId: string;
+}) {
+  const setCurrentPreview = useChatStore((state) => state.setCurrentPreview);
+  const normalized = language?.toLowerCase();
+  const isHtml = normalized === "html" || /<!doctype html|<html/i.test(code);
+  const filename = isHtml ? "index.html" : getCodeFilename(language);
+  return (
+    <ArtifactCard
+      type={isHtml ? "html" : "code"}
+      content={code}
+      language={isHtml ? "html" : language}
+      filename={filename}
+      artifactId={`${messageId}-${filename}`}
+      conversationId={conversationId}
+      onPreview={isHtml ? () => setCurrentPreview({
+        artifactId: `${messageId}-${filename}`,
+        type: "html",
+        content: code,
+        filename,
+      }) : undefined}
+    />
+  );
 }
 
 function getArtifactType(payload: Record<string, unknown> | undefined): ArtifactCardType | null {
@@ -429,8 +480,11 @@ const MessageBubble = memo(function MessageBubble({
       filename,
     });
   };
+  const trimmedDisplayContent = displayContent.trim();
+  const hasFencedCode = /```[\s\S]*?```/.test(displayContent);
   const htmlLike = !artifactType && !["diff_card", "deploy_card", "preview_card"].includes(message.type) &&
-    (displayContent.includes("<!DOCTYPE html>") || displayContent.includes("<html"));
+    !hasFencedCode &&
+    (/^<!doctype html/i.test(trimmedDisplayContent) || /^<html[\s>]/i.test(trimmedDisplayContent));
   const parts = useMemo(() => splitCodeBlocks(displayContent), [displayContent]);
 
   const showAvatar = !prevMessage || prevMessage.sender !== message.sender || prevMessage.senderId !== message.senderId || message.timestamp - prevMessage.timestamp > 5 * 60 * 1000;
@@ -545,7 +599,7 @@ const MessageBubble = memo(function MessageBubble({
                   </div>
                 )}
                 {parts.map((part, index) => part.type === "code" ? (
-                  <InlineCodeBlock key={index} code={part.value} language={part.language} />
+                  <InlineCodeBlock key={index} code={part.value} language={part.language} messageId={message.id} conversationId={message.conversationId} />
                 ) : (
                   <TextContent key={index} text={part.value} />
                 ))}
@@ -642,7 +696,10 @@ export const MessageList = memo(function MessageList({
   onUndo,
   onStop,
 }: MessageListProps) {
-  const { messageFilter, messageSearchQuery } = useChatStore();
+  const { messageFilter, messageSearchQuery, activeConversationId, streamingMessages } = useChatStore();
+  const activeStreamingMessages = activeConversationId ? (streamingMessages[activeConversationId] ?? {}) : {};
+  const hasInlineStreamingMessages = Object.keys(activeStreamingMessages).length > 0;
+  const hasAgentOutput = messages.some((message) => message.type === "agent_message");
 
   const filtered = useMemo(() => {
     return messages
@@ -666,16 +723,16 @@ export const MessageList = memo(function MessageList({
           key={message.id}
           message={message}
           prevMessage={index > 0 ? filtered[index - 1] : undefined}
-          isStreaming={isStreaming && index === filtered.length - 1}
+          isStreaming={Boolean(activeStreamingMessages[message.id]) || (!hasInlineStreamingMessages && isStreaming && index === filtered.length - 1)}
           onUndo={onUndo}
           onStop={onStop}
         />
       ))}
 
-      <StreamDisplay isStreaming={isStreaming} streamBuffer={streamBuffer} />
+      <StreamDisplay isStreaming={isStreaming && !hasInlineStreamingMessages} streamBuffer={hasInlineStreamingMessages ? "" : streamBuffer} />
       <AgentTypingIndicator />
 
-      {taskSummary && !isStreaming && (
+      {taskSummary && !isStreaming && !hasAgentOutput && (
         <div className="px-4 py-3">
           <div className="flex gap-3">
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[10px] font-bold text-white" style={{ background: "var(--success)" }}>

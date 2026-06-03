@@ -58,7 +58,7 @@ export type WSClientMessage =
 
 export type WSServerMessage =
   | { type: "connected"; clientId: string; userId?: string; userName?: string }
-  | { type: "task:created"; jobId: string }
+  | { type: "task:created"; jobId: string; conversationId?: string }
   | { type: "message:created"; message: Message }
   | { type: "conversation:updated"; conversation: ConversationUpdate }
   | { type: "conversation:created"; conversation: ConversationListItem; clientId?: string }
@@ -69,19 +69,19 @@ export type WSServerMessage =
   | { type: "conversation:deleted"; conversationId: string }
   | { type: "conversation:search:results"; conversations: ConversationListItem[] }
   | { type: "conversation:list:results"; conversations: ConversationListItem[] }
-  | { type: "conversation:history"; conversationId: string; messages: Array<{ id: string; conversationId: string; type: string; sender: string; senderId?: string; content: string; mentions: string[]; timestamp: number }> }
-  | { type: "agent:stream"; agentId: string; chunk: string; messageId: string }
-  | { type: "agent:step"; agentId: string; iteration: number; thought: string; action?: { tool: string; input: string }; observation?: string; isFinal: boolean }
-  | { type: "plan:created"; jobId: string; plan: PlanNode[] }
-  | { type: "step:started"; jobId: string; stepId: string; task: string; agentRole: string }
-  | { type: "step:completed"; jobId: string; stepId: string; result: string; task?: string; toolUsed?: string; duration?: number }
-  | { type: "critic:review"; jobId: string; stepId: string; valid: boolean; score: number; issues?: string; suggestion?: string }
-  | { type: "retry:requested"; jobId: string; stepId: string; suggestion: string }
-  | { type: "job:completed"; jobId: string; summary: string; stats: JobStats }
-  | { type: "job:failed"; jobId: string; error: string }
-  | { type: "artifact:created"; jobId: string; artifact: Artifact }
-  | { type: "deploy:status"; jobId: string; status: string; url?: string }
-  | { type: "agent:status"; agentId: string; status: string; lastOutput: string }
+  | { type: "conversation:history"; conversationId: string; messages: Array<{ id: string; conversationId: string; type: string; sender: string; senderId?: string; content: string; payload?: Record<string, unknown>; mentions: string[]; timestamp: number }> }
+  | { type: "agent:stream"; conversationId?: string; jobId?: string; agentId: string; chunk: string; messageId: string; sequence?: number; timestamp?: number }
+  | { type: "agent:step"; conversationId?: string; jobId?: string; agentId: string; iteration: number; thought: string; action?: { tool: string; input: string }; observation?: string; isFinal: boolean }
+  | { type: "plan:created"; conversationId?: string; jobId: string; plan: PlanNode[] }
+  | { type: "step:started"; conversationId?: string; jobId: string; stepId: string; task: string; agentRole: string }
+  | { type: "step:completed"; conversationId?: string; jobId: string; stepId: string; result: string; task?: string; toolUsed?: string; duration?: number }
+  | { type: "critic:review"; conversationId?: string; jobId: string; stepId: string; valid: boolean; score: number; issues?: string; suggestion?: string }
+  | { type: "retry:requested"; conversationId?: string; jobId: string; stepId: string; suggestion: string }
+  | { type: "job:completed"; conversationId?: string; jobId: string; summary: string; stats: JobStats }
+  | { type: "job:failed"; conversationId?: string; jobId: string; error: string }
+  | { type: "artifact:created"; conversationId?: string; jobId: string; artifact: Artifact }
+  | { type: "deploy:status"; conversationId?: string; jobId: string; status: string; url?: string }
+  | { type: "agent:status"; conversationId?: string; agentId: string; status: string; lastOutput: string }
   | { type: "error"; code: string; message: string }
   // Agent control responses
   | { type: "agent:enabled"; conversationId: string; agentName: string }
@@ -109,9 +109,9 @@ export type WSServerMessage =
   | { type: "group:deleted"; groupId: string }
   | { type: "group:list:results"; groups: ConversationGroupInfo[] }
   // Agent analysis/assignment
-  | { type: "agent:analysis"; agentId: string; agentName: string; content: string; timestamp?: number }
-  | { type: "task:assigned"; targetAgent: string; task: string; timestamp?: number }
-  | { type: "agent:analysis:done"; timestamp?: number }
+  | { type: "agent:analysis"; conversationId?: string; agentId: string; agentName: string; content: string; timestamp?: number }
+  | { type: "task:assigned"; conversationId?: string; jobId?: string; targetAgent: string; task: string; timestamp?: number }
+  | { type: "agent:analysis:done"; conversationId?: string; timestamp?: number }
   | { type: "conversation:renamed"; conversationId: string; title: string }
   // Agent coordination (Phase 1)
   | { type: "agent:message"; conversationId: string; agentId: string; agentName: string; agentRole: string; content: string; artifacts?: Artifact[]; timestamp: number }
@@ -121,9 +121,9 @@ export type WSServerMessage =
   | { type: "agent:left"; conversationId: string; agentId: string }
   | { type: "artifact:updated"; conversationId: string; artifact: Artifact }
   | { type: "artifact:version"; conversationId: string; artifactId: string; versions: Array<{ version: number; content: string; createdBy: string; createdAt: number; changeSummary?: string }> }
-  | { type: "deploy:progress"; deployId: string; status: string; progress: number; providerId: string; logs: string[] }
-  | { type: "deploy:completed"; deployId: string; url: string; providerId: string }
-  | { type: "deploy:failed"; deployId: string; error: string; providerId: string };
+  | { type: "deploy:progress"; conversationId?: string; deployId: string; status: string; progress: number; providerId: string; logs: string[] }
+  | { type: "deploy:completed"; conversationId?: string; deployId: string; url: string; providerId: string }
+  | { type: "deploy:failed"; conversationId?: string; deployId: string; error: string; providerId: string };
 
 export interface McpServerInfo {
   id: string; name: string; protocol: string; command?: string; url?: string;

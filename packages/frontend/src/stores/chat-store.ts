@@ -138,12 +138,62 @@ interface AgentStepInfo {
   timestamp: number;
 }
 
+interface ConversationTaskState {
+  planSteps: string[];
+  steps: StepProgress[];
+  streamBuffer: string;
+  isStreaming: boolean;
+  taskSummary: string;
+  agentSteps: AgentStepInfo[];
+}
+
+interface StreamingMessageState {
+  agentId: string;
+  updatedAt: number;
+}
+
+const EMPTY_TASK_STATE: ConversationTaskState = {
+  planSteps: [],
+  steps: [],
+  streamBuffer: "",
+  isStreaming: false,
+  taskSummary: "",
+  agentSteps: [],
+};
+
+function taskStateFor(
+  states: Record<string, ConversationTaskState>,
+  convId: string | null | undefined
+): ConversationTaskState {
+  if (!convId) return EMPTY_TASK_STATE;
+  return states[convId] ?? EMPTY_TASK_STATE;
+}
+
+function syncActiveTaskFields(
+  activeConversationId: string | null,
+  convId: string,
+  taskState: ConversationTaskState
+): Partial<ChatStore> {
+  if (activeConversationId !== convId) return {};
+  return {
+    planSteps: taskState.planSteps,
+    steps: taskState.steps,
+    streamBuffer: taskState.streamBuffer,
+    isStreaming: taskState.isStreaming,
+    taskSummary: taskState.taskSummary,
+    agentSteps: taskState.agentSteps,
+  };
+}
+
 interface ChatStore {
   connected: boolean; conversations: Conversation[]; activeConversationId: string | null;
   messages: Record<string, Message[]>; agentStates: Record<string, AgentState>;
   planSteps: string[]; steps: StepProgress[]; streamBuffer: string;
   isStreaming: boolean; taskSummary: string;
   agentSteps: AgentStepInfo[];
+  conversationTasks: Record<string, ConversationTaskState>;
+  streamingMessages: Record<string, Record<string, StreamingMessageState>>;
+  completedJobs: Record<string, string[]>;
   messageHistory: Array<{ id: string; messages: Message[]; timestamp: number }>;
 
   /** 智能体协同分析 */
@@ -214,14 +264,19 @@ interface ChatStore {
   mergeConversationHistory: (convId: string, messages: Message[]) => void;
   persistCurrentState: () => void;
   addPlan: (steps: Array<{ id: string; task: string }>) => void;
+  addConversationPlan: (convId: string, steps: Array<{ id: string; task: string }>) => void;
   updateStepProgress: (idx: number, status: StepProgress["status"], result?: string) => void;
   updateStepById: (stepId: string, status: StepProgress["status"], result?: string) => void;
+  updateConversationStepById: (convId: string, stepId: string, status: StepProgress["status"], result?: string) => void;
   updateAgentState: (id: string, state: Partial<AgentState>) => void;
-  appendStreamChunk: (chunk: string) => void;
+  appendStreamChunk: (convId: string, messageId: string, chunk: string, agentId?: string) => void;
   addAgentStep: (step: AgentStepInfo) => void;
+  addConversationAgentStep: (convId: string, step: AgentStepInfo) => void;
   clearAgentSteps: () => void;
   setTaskSummary: (summary: string) => void;
+  setConversationTaskSummary: (convId: string, summary: string, jobId?: string) => void;
   setStreaming: (v: boolean) => void;
+  setConversationStreaming: (convId: string, v: boolean) => void;
   setStreamBuffer: (buffer: string) => void;
   clearSession: () => void;
 
@@ -270,6 +325,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   agentStates: loadAgentStates(), planSteps: [], steps: [],
   streamBuffer: "", isStreaming: false, taskSummary: "",
   agentSteps: [],
+  conversationTasks: {},
+  streamingMessages: {},
+  completedJobs: {},
   messageHistory: [],
   analysisResults: [],
   taskAssignments: [],
@@ -333,10 +391,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (_streamRafId) { cancelAnimationFrame(_streamRafId); _streamRafId = null; }
     const currentMessages = get().messages;
     const nextMessages = currentMessages[id] ? currentMessages : { ...currentMessages, [id]: [] };
+    const nextTaskState = taskStateFor(get().conversationTasks, id);
     saveActiveConvId(id);
     set({ 
       activeConversationId: id, 
-      agentStates: {}, planSteps: [], steps: [], streamBuffer: "", isStreaming: false, taskSummary: "", agentSteps: [], resources: [], conversationDetail: null, taskFlow: [], sessionAgentStatuses: [], taskProgress: null,
+      agentStates: {},
+      planSteps: nextTaskState.planSteps,
+      steps: nextTaskState.steps,
+      streamBuffer: nextTaskState.streamBuffer,
+      isStreaming: nextTaskState.isStreaming,
+      taskSummary: nextTaskState.taskSummary,
+      agentSteps: nextTaskState.agentSteps,
+      resources: [], conversationDetail: null, taskFlow: [], sessionAgentStatuses: [], taskProgress: null,
       messages: nextMessages,
     }); 
   },
@@ -375,10 +441,32 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     saveActiveConvId(state.activeConversationId);
   },
 
-  addPlan: (plan_steps) =>
+  addPlan: (plan_steps) => {
+    const convId = get().activeConversationId;
+    if (convId) {
+      get().addConversationPlan(convId, plan_steps);
+      return;
+    }
     set({
       planSteps: plan_steps.map((p) => p.task),
       steps: plan_steps.map((p, i) => ({ id: p.id, index: i, total: plan_steps.length, step: p.task, status: "pending" as const })),
+    });
+  },
+
+  addConversationPlan: (convId, plan_steps) =>
+    set((s) => {
+      const previous = taskStateFor(s.conversationTasks, convId);
+      const nextTaskState: ConversationTaskState = {
+        ...previous,
+        isStreaming: true,
+        taskSummary: "",
+        planSteps: plan_steps.map((p) => p.task),
+        steps: plan_steps.map((p, i) => ({ id: p.id, index: i, total: plan_steps.length, step: p.task, status: "pending" as const })),
+      };
+      return {
+        conversationTasks: { ...s.conversationTasks, [convId]: nextTaskState },
+        ...syncActiveTaskFields(s.activeConversationId, convId, nextTaskState),
+      };
     }),
 
   updateStepProgress: (idx, status, result) =>
@@ -389,6 +477,19 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       steps: s.steps.map((st) => (st.id === stepId ? { ...st, status, result: result ?? st.result } : st)),
     })),
 
+  updateConversationStepById: (convId, stepId, status, result) =>
+    set((s) => {
+      const previous = taskStateFor(s.conversationTasks, convId);
+      const nextTaskState: ConversationTaskState = {
+        ...previous,
+        steps: previous.steps.map((st) => (st.id === stepId ? { ...st, status, result: result ?? st.result } : st)),
+      };
+      return {
+        conversationTasks: { ...s.conversationTasks, [convId]: nextTaskState },
+        ...syncActiveTaskFields(s.activeConversationId, convId, nextTaskState),
+      };
+    }),
+
   updateAgentState: (id, state) =>
     set((s) => {
       const next = { ...s.agentStates, [id]: { ...(s.agentStates[id] ?? { id, role: "worker" as const, status: "idle" as const, output: "", logs: [] }), ...state } };
@@ -396,41 +497,112 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return { agentStates: next };
     }),
 
-  appendStreamChunk: (chunk) => {
-    _streamAccumulator += chunk;
-    if (!_streamRafId) {
-      _streamRafId = requestAnimationFrame(() => {
-        const accumulated = _streamAccumulator;
-        _streamAccumulator = "";
-        _streamRafId = null;
-        set((s) => ({ streamBuffer: s.streamBuffer + accumulated }));
-      });
-    }
+  appendStreamChunk: (convId, messageId, chunk, agentId = "assistant") => {
+    if (!convId || !messageId || !chunk) return;
+    set((s) => {
+      const existing = s.messages[convId] ?? [];
+      const messageIndex = existing.findIndex((message) => message.id === messageId);
+      const now = Date.now();
+      let nextMessagesForConversation: Message[];
+      if (messageIndex >= 0) {
+        const current = existing[messageIndex];
+        const nextContent = current.content === chunk ? current.content : `${current.content}${chunk}`;
+        nextMessagesForConversation = existing.map((message, index) =>
+          index === messageIndex
+            ? {
+                ...message,
+                content: nextContent,
+                timestamp: now,
+                payload: { ...(message.payload ?? {}), streaming: true, streamMessageId: messageId },
+              }
+            : message
+        );
+      } else {
+        const streamMessage: Message = {
+          id: messageId,
+          conversationId: convId,
+          type: "agent_message",
+          sender: agentId,
+          senderId: agentId,
+          content: chunk,
+          mentions: [],
+          payload: { streaming: true, streamMessageId: messageId },
+          timestamp: now,
+        };
+        nextMessagesForConversation = [...existing, streamMessage].slice(-500);
+      }
+
+      const nextMessages = { ...s.messages, [convId]: nextMessagesForConversation };
+      const previousTaskState = taskStateFor(s.conversationTasks, convId);
+      const nextTaskState: ConversationTaskState = {
+        ...previousTaskState,
+        streamBuffer: `${previousTaskState.streamBuffer}${chunk}`,
+        isStreaming: true,
+      };
+      const nextStreaming = {
+        ...(s.streamingMessages[convId] ?? {}),
+        [messageId]: { agentId, updatedAt: now },
+      };
+      const conversations = s.conversations.map((conversation) =>
+        conversation.id === convId
+          ? { ...conversation, lastMessage: chunk.slice(0, 80), lastMessageAt: now, updatedAt: now }
+          : conversation
+      );
+
+      setTimeout(() => saveMessages(nextMessages), 0);
+      saveConversations(conversations);
+      return {
+        messages: nextMessages,
+        conversations,
+        streamingMessages: { ...s.streamingMessages, [convId]: nextStreaming },
+        conversationTasks: { ...s.conversationTasks, [convId]: nextTaskState },
+        ...syncActiveTaskFields(s.activeConversationId, convId, nextTaskState),
+      };
+    });
   },
 
   addAgentStep: (step) => set((s) => ({ agentSteps: [...s.agentSteps, step] })),
 
+  addConversationAgentStep: (convId, step) =>
+    set((s) => {
+      const previous = taskStateFor(s.conversationTasks, convId);
+      const nextTaskState: ConversationTaskState = {
+        ...previous,
+        isStreaming: true,
+        agentSteps: [...previous.agentSteps, step],
+      };
+      return {
+        conversationTasks: { ...s.conversationTasks, [convId]: nextTaskState },
+        ...syncActiveTaskFields(s.activeConversationId, convId, nextTaskState),
+      };
+    }),
+
   clearAgentSteps: () => set({ agentSteps: [] }),
 
   setTaskSummary: (summary) => {
+    const convId = get().activeConversationId;
+    if (convId) {
+      get().setConversationTaskSummary(convId, summary);
+      return;
+    }
     _streamAccumulator = "";
     if (_streamRafId) { cancelAnimationFrame(_streamRafId); _streamRafId = null; }
     const state = get();
-    const convId = state.activeConversationId;
-    if (convId && state.streamBuffer && state.streamBuffer.trim().length > 0) {
-      const existing = state.messages[convId] ?? [];
+    const legacyConvId = state.activeConversationId;
+    if (legacyConvId && state.streamBuffer && state.streamBuffer.trim().length > 0) {
+      const existing = state.messages[legacyConvId] ?? [];
       const alreadyHasSummary = existing.some(m => m.type === "agent_message" && m.sender === "refiner");
       if (!alreadyHasSummary) {
         const streamMsg: Message = {
           id: crypto.randomUUID(),
-          conversationId: convId,
+          conversationId: legacyConvId,
           type: "agent_message",
           sender: "assistant",
           content: state.streamBuffer,
           mentions: [],
           timestamp: Date.now(),
         };
-        const newMessages = { ...state.messages, [convId]: [...existing, streamMsg] };
+        const newMessages = { ...state.messages, [legacyConvId]: [...existing, streamMsg] };
         setTimeout(() => saveMessages(newMessages), 0);
         set({ taskSummary: summary, isStreaming: false, streamBuffer: "", messages: newMessages });
         return;
@@ -439,7 +611,56 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ taskSummary: summary, isStreaming: false, streamBuffer: "" });
   },
 
-  setStreaming: (v) => set({ isStreaming: v }),
+  setConversationTaskSummary: (convId, summary, jobId) =>
+    set((s) => {
+      const previous = taskStateFor(s.conversationTasks, convId);
+      const nextTaskState: ConversationTaskState = {
+        ...previous,
+        taskSummary: summary,
+        isStreaming: false,
+        streamBuffer: "",
+      };
+      const updatedMessages = (s.messages[convId] ?? []).map((message) => {
+        const isStreamingMessage = Boolean((s.streamingMessages[convId] ?? {})[message.id]);
+        if (!isStreamingMessage) return message;
+        return {
+          ...message,
+          payload: { ...(message.payload ?? {}), streaming: false },
+        };
+      });
+      const nextMessages = { ...s.messages, [convId]: updatedMessages };
+      const completedForConversation = s.completedJobs[convId] ?? [];
+      const nextCompletedJobs = jobId && !completedForConversation.includes(jobId)
+        ? { ...s.completedJobs, [convId]: [...completedForConversation, jobId].slice(-20) }
+        : s.completedJobs;
+      setTimeout(() => saveMessages(nextMessages), 0);
+      return {
+        messages: nextMessages,
+        conversationTasks: { ...s.conversationTasks, [convId]: nextTaskState },
+        streamingMessages: { ...s.streamingMessages, [convId]: {} },
+        completedJobs: nextCompletedJobs,
+        ...syncActiveTaskFields(s.activeConversationId, convId, nextTaskState),
+      };
+    }),
+
+  setStreaming: (v) => {
+    const convId = get().activeConversationId;
+    if (convId) {
+      get().setConversationStreaming(convId, v);
+      return;
+    }
+    set({ isStreaming: v });
+  },
+
+  setConversationStreaming: (convId, v) =>
+    set((s) => {
+      const previous = taskStateFor(s.conversationTasks, convId);
+      const nextTaskState: ConversationTaskState = { ...previous, isStreaming: v };
+      return {
+        conversationTasks: { ...s.conversationTasks, [convId]: nextTaskState },
+        ...syncActiveTaskFields(s.activeConversationId, convId, nextTaskState),
+      };
+    }),
 
   setStreamBuffer: (buffer) => {
     _streamAccumulator = "";

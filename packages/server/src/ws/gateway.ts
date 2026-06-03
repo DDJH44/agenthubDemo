@@ -45,7 +45,7 @@ function leaveRoom(conversationId: string, ws: WebSocket) {
 function broadcast(conversationId: string, data: unknown) {
   const clients = rooms.get(conversationId);
   if (!clients) return;
-  const json = JSON.stringify(data);
+  const json = JSON.stringify(scopeConversationEvent(conversationId, data));
   for (const ws of clients) {
     if (ws.readyState === WebSocket.OPEN) ws.send(json);
   }
@@ -55,8 +55,18 @@ function emitToRequesterAndRoom(conversationId: string, requester: WebSocket, da
   broadcast(conversationId, data);
   const clients = rooms.get(conversationId);
   if (!clients?.has(requester) && requester.readyState === WebSocket.OPEN) {
-    requester.send(JSON.stringify(data));
+    requester.send(JSON.stringify(scopeConversationEvent(conversationId, data)));
   }
+}
+
+function scopeConversationEvent(conversationId: string, data: unknown) {
+  if (!data || typeof data !== "object" || Array.isArray(data)) return data;
+  const event = data as Record<string, unknown>;
+  return {
+    conversationId,
+    timestamp: Date.now(),
+    ...event,
+  };
 }
 
 function toListItem(conv: {
@@ -88,6 +98,11 @@ function sendError(ws: WebSocket, code: string, message: string) {
 function getParticipants(conv: { participants: string | string[] }): string[] {
   if (Array.isArray(conv.participants)) return conv.participants;
   try { return JSON.parse(conv.participants); } catch { return []; }
+}
+
+function parseJsonField<T>(raw: unknown, fallback: T): T {
+  if (typeof raw !== "string" || raw.length === 0) return fallback;
+  try { return JSON.parse(raw) as T; } catch { return fallback; }
 }
 
 async function checkConversationAccess(ws: WebSocket, conversationId: string, userId: string): Promise<boolean> {
@@ -172,6 +187,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
     let userId = "";
     let userName = "";
     let currentRoom: string | null = null;
+    const subscribedRooms = new Set<string>();
 
     // 10 second auth timeout
     const authTimeout = setTimeout(() => {
@@ -212,15 +228,23 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const error = validateConversationId(msg.conversationId);
             if (error) { sendError(ws, "VALIDATION", error); break; }
             if (!await checkConversationAccess(ws, msg.conversationId, userId)) break;
-            if (currentRoom) leaveRoom(currentRoom, ws);
-            currentRoom = msg.conversationId;
-            if (currentRoom) joinRoom(currentRoom, ws);
-            ws.send(JSON.stringify({ type: "agent:status", agentId: "system", status: "joined", lastOutput: currentRoom }));
+            const room = msg.conversationId;
+            currentRoom = room;
+            if (!subscribedRooms.has(room)) {
+              joinRoom(room, ws);
+              subscribedRooms.add(room);
+            }
+            ws.send(JSON.stringify({ type: "agent:status", conversationId: room, agentId: "system", status: "joined", lastOutput: room }));
             break;
           }
 
           case "conversation:unsubscribe": {
-            if (currentRoom) { leaveRoom(currentRoom, ws); currentRoom = null; }
+            const targetRoom = msg.conversationId || currentRoom;
+            if (targetRoom) {
+              leaveRoom(targetRoom, ws);
+              subscribedRooms.delete(targetRoom);
+              if (currentRoom === targetRoom) currentRoom = subscribedRooms.size ? Array.from(subscribedRooms).at(-1) ?? null : null;
+            }
             break;
           }
 
@@ -332,7 +356,8 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               sender: m.sender,
               senderId: m.senderId,
               content: m.content,
-              mentions: m.mentions ? JSON.parse(m.mentions as string) : [],
+              payload: parseJsonField<Record<string, unknown> | undefined>(m.payload, undefined),
+              mentions: parseJsonField<string[]>(m.mentions, []),
               timestamp: m.timestamp.getTime(),
             })), timestamp: Date.now() }));
             break;
@@ -350,7 +375,11 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             if (!await checkConversationAccess(ws, msg.conversationId, userId)) break;
             const conv = await conversationRepo.delete(msg.conversationId);
             ws.send(JSON.stringify({ type: "conversation:deleted", conversationId: conv.id, timestamp: Date.now() }));
-            if (currentRoom === conv.id) { leaveRoom(conv.id, ws); currentRoom = null; }
+            if (subscribedRooms.has(conv.id)) {
+              leaveRoom(conv.id, ws);
+              subscribedRooms.delete(conv.id);
+            }
+            if (currentRoom === conv.id) currentRoom = subscribedRooms.size ? Array.from(subscribedRooms).at(-1) ?? null : null;
             break;
           }
 
@@ -435,7 +464,6 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                     conversationId, type: "agent_message", sender, content: reply, mentions: [],
                   });
                   broadcast(conversationId, { type: "message:created", message: { id: agentMsg.id, conversationId, type: agentMsg.type, sender: agentMsg.sender, content: agentMsg.content, mentions: [], timestamp: agentMsg.timestamp.getTime() } });
-                  ws.send(JSON.stringify({ type: "agent:stream", agentId: sender, chunk: reply, messageId: agentMsg.id }));
                 } catch (err) {
                   logger.error(`Failed to get LLM response for simple chat: ${err}`, err as Error, 'WebSocket');
                   const fallback = await messageRepo.createAndUpdateConv({
@@ -501,6 +529,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             for (const agentName of matchedAgents) {
               broadcast(conversationId, {
                 type: "task:assigned",
+                jobId,
                 targetAgent: agentName,
                 task: `执行：${(cleanText || text).slice(0, 60)}`,
                 timestamp: Date.now(),
@@ -768,7 +797,10 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             };
             await messageRepo.create(userMsg);
             broadcast(targetConvId, { type: "message:created", message: userMsg });
-            joinRoom(targetConvId, ws);
+            if (!subscribedRooms.has(targetConvId)) {
+              joinRoom(targetConvId, ws);
+              subscribedRooms.add(targetConvId);
+            }
             currentRoom = targetConvId;
             broadcast(targetConvId, { type: "agent:typing", conversationId: targetConvId, agentId: msg.agentId, agentName: msg.agentId, isTyping: true });
             try {
@@ -887,7 +919,8 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
     });
 
     ws.on("close", () => {
-      if (currentRoom) leaveRoom(currentRoom, ws);
+      for (const room of subscribedRooms) leaveRoom(room, ws);
+      subscribedRooms.clear();
       logger.info(`Client disconnected: ${userName}`, 'WebSocket');
     });
   });

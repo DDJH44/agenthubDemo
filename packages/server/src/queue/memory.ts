@@ -104,6 +104,16 @@ export class MemoryQueue implements IJobQueue {
     const steps: Array<{ id: string; task: string; result: string }> = [];
     const b = payload.broadcast;
     const timeout = payload.timeoutMs ?? DEFAULT_TIMEOUT;
+    let eventSequence = 0;
+    const emit = (data: Record<string, unknown>) => {
+      b?.({
+        conversationId: payload.conversationId,
+        jobId,
+        timestamp: Date.now(),
+        sequence: ++eventSequence,
+        ...data,
+      });
+    };
 
     const timeoutHandle = setTimeout(() => {
       controller.abort();
@@ -132,18 +142,18 @@ export class MemoryQueue implements IJobQueue {
             switch (event.type) {
         case "system": {
           const systemText = String(msg.msg || msg);
-          b?.({ type: "agent:status", agentId: "planner", status: "acting", lastOutput: systemText });
-          b?.({ type: "agent:stream", agentId: "planner", chunk: systemText, messageId: `${jobId}-system` });
+          emit({ type: "agent:status", agentId: "planner", status: "acting", lastOutput: systemText });
+          emit({ type: "agent:stream", agentId: "planner", chunk: systemText, messageId: `${jobId}-system` });
           break;
         }
 
         case "plan": {
           const plan = msg.steps ?? msg;
-          b?.({ type: "plan:created", jobId, plan });
+          emit({ type: "plan:created", plan });
           const stepsArr = plan as Array<{ id: string; task: string }>;
           if (Array.isArray(stepsArr)) {
             for (const s of stepsArr) {
-              b?.({ type: "step:started", jobId, stepId: s.id, task: s.task, agentRole: "planner" });
+              emit({ type: "step:started", stepId: s.id, task: s.task, agentRole: "planner" });
             }
           }
           break;
@@ -155,7 +165,7 @@ export class MemoryQueue implements IJobQueue {
             try {
               const json = chunk.slice("[AGENT_STEP]".length);
               const step = JSON.parse(json);
-              b?.({
+              emit({
                 type: "agent:step",
                 agentId: "worker",
                 iteration: step.iteration ?? 0,
@@ -165,33 +175,33 @@ export class MemoryQueue implements IJobQueue {
                 isFinal: step.isFinal ?? false,
               });
             } catch {
-              b?.({ type: "agent:stream", agentId: "worker", chunk, messageId: `${jobId}-stream` });
+              emit({ type: "agent:stream", agentId: "worker", chunk, messageId: `${jobId}-stream` });
             }
           } else if (chunk.startsWith("[任务接收确认]")) {
             const agentId = chunk.includes("调研") ? "researcher"
               : chunk.includes("润色") || chunk.includes("整合") ? "refiner"
               : "worker";
-            b?.({ type: "agent:stream", agentId, chunk, messageId: `${jobId}-receipt` });
+            emit({ type: "agent:stream", agentId, chunk, messageId: `${jobId}-receipt` });
           } else if (chunk.startsWith("## ") && chunk.includes("工作报告")) {
             const agentId = chunk.includes("调研") ? "researcher"
               : chunk.includes("审查") ? "critic"
               : chunk.includes("优化") || chunk.includes("润色") ? "refiner"
               : "worker";
-            b?.({ type: "agent:stream", agentId, chunk, messageId: `${jobId}-report` });
+            emit({ type: "agent:stream", agentId, chunk, messageId: `${jobId}-report` });
           } else if (chunk.startsWith("## ") && chunk.includes("评审结果")) {
-            b?.({ type: "agent:stream", agentId: "critic", chunk, messageId: `${jobId}-critic` });
+            emit({ type: "agent:stream", agentId: "critic", chunk, messageId: `${jobId}-critic` });
           } else if (chunk.startsWith("## 任务拆解") || chunk.startsWith("## 任务分配")) {
-            b?.({ type: "agent:stream", agentId: "planner", chunk, messageId: `${jobId}-plan-detail` });
+            emit({ type: "agent:stream", agentId: "planner", chunk, messageId: `${jobId}-plan-detail` });
           } else {
-            b?.({ type: "agent:stream", agentId: "worker", chunk, messageId: `${jobId}-stream` });
+            emit({ type: "agent:stream", agentId: "worker", chunk, messageId: `${jobId}-stream` });
           }
           break;
         }
 
         case "critic": {
           const criticData = msg as Record<string, unknown>;
-          b?.({
-            type: "critic:review", jobId,
+          emit({
+            type: "critic:review",
             stepId: (criticData.stepId as string) ?? "",
             valid: (criticData.valid as boolean) ?? false,
             score: (criticData.score as number) ?? 0,
@@ -202,8 +212,8 @@ export class MemoryQueue implements IJobQueue {
         }
 
         case "retry": {
-          b?.({
-            type: "retry:requested", jobId,
+          emit({
+            type: "retry:requested",
             stepId: (msg.stepId as string) ?? "",
             suggestion: (msg.suggestion as string) ?? "",
           });
@@ -212,12 +222,12 @@ export class MemoryQueue implements IJobQueue {
 
         case "research": {
           const r = String((msg as unknown) ?? msg);
-          b?.({ type: "agent:stream", agentId: "researcher", chunk: r, messageId: `${jobId}-research` });
+          emit({ type: "agent:stream", agentId: "researcher", chunk: r, messageId: `${jobId}-research` });
           break;
         }
 
         case "refine": {
-          b?.({ type: "agent:stream", agentId: "refiner", chunk: String((msg as unknown) ?? msg), messageId: `${jobId}-refine` });
+          emit({ type: "agent:stream", agentId: "refiner", chunk: String((msg as unknown) ?? msg), messageId: `${jobId}-refine` });
           break;
         }
 
@@ -226,16 +236,16 @@ export class MemoryQueue implements IJobQueue {
           const stepResults = (final.stepResults as Array<{ id: string; task: string; result: string; toolUsed?: string }>) ?? [];
 
           for (const sr of stepResults) {
-            b?.({
-              type: "step:completed", jobId,
+            emit({
+              type: "step:completed",
               stepId: sr.id, task: sr.task, result: sr.result,
               toolUsed: sr.toolUsed ?? undefined,
               duration: undefined,
             });
           }
 
-          b?.({
-            type: "job:completed", jobId,
+          emit({
+            type: "job:completed",
             summary: final.summary as string ?? "",
             stats: {},
           });
@@ -245,8 +255,8 @@ export class MemoryQueue implements IJobQueue {
               const codeArtifact = sr.toolUsed === "code" ? extractPrimaryCodeArtifact(sr.result, sr.id) : null;
               const artifactType = codeArtifact?.type ?? "markdown";
               const filename = codeArtifact?.filename ?? `research-${sr.id}.md`;
-              b?.({
-                type: "artifact:created", jobId,
+              emit({
+                type: "artifact:created",
                 artifact: {
                   id: `artifact-${jobId}-${sr.id}`,
                   jobId,
@@ -282,8 +292,8 @@ export class MemoryQueue implements IJobQueue {
                 ? "code"
                 : "markdown";
             const filename = extMap[ext] ? `index.${ext}` : `file-${codeIdx}.${ext || "txt"}`;
-            b?.({
-              type: "artifact:created", jobId,
+            emit({
+              type: "artifact:created",
               artifact: {
                 id: `artifact-${jobId}-code-${codeIdx}`,
                 jobId,
@@ -312,9 +322,9 @@ export class MemoryQueue implements IJobQueue {
                 type: "agent_message",
                 sender: "refiner",
                 content: String(final.summary).slice(0, 2000),
-                payload: final as Record<string, unknown>,
+                payload: { ...(final as Record<string, unknown>), jobId },
               });
-              b?.({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, content: summaryMsg.content, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
+              emit({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, content: summaryMsg.content, payload: { ...(final as Record<string, unknown>), jobId }, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
             }
           }
 
@@ -337,12 +347,12 @@ export class MemoryQueue implements IJobQueue {
         logger.info(`Job ${jobId} cancelled`, 'MemoryQueue');
         this.statuses.set(jobId, "failed");
         jobRepo.updateStatus(jobId, "failed", { error: "Job cancelled by user" }).catch(() => {});
-        b?.({ type: "job:failed", jobId, error: "Job cancelled" });
+        emit({ type: "job:failed", error: "Job cancelled" });
       } else {
         logger.error(`Job ${jobId} failed`, err as Error, 'Queue');
         jobRepo.updateStatus(jobId, "failed", { error: String(err) }).catch(() => {});
         this.statuses.set(jobId, "failed");
-        b?.({ type: "job:failed", jobId, error: String(err) });
+        emit({ type: "job:failed", error: String(err) });
       }
     } finally {
       clearTimeout(timeoutHandle);
