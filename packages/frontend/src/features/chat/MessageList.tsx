@@ -209,6 +209,57 @@ function getArtifactType(payload: Record<string, unknown> | undefined): Artifact
   return ARTIFACT_TYPES.has(normalized as ArtifactCardType) ? normalized as ArtifactCardType : null;
 }
 
+function TaskStatusCard({ payload }: { payload?: Record<string, unknown> }) {
+  const status = String(payload?.status || "running");
+  const title = String(payload?.title || "任务处理中");
+  const body = String(payload?.body || "");
+  const items = Array.isArray(payload?.items)
+    ? payload.items as Array<{ label?: string; status?: string }>
+    : [];
+  const color =
+    status === "done" ? "var(--success)" :
+    status === "failed" ? "var(--danger)" :
+    status === "queued" ? "var(--fg-tertiary)" :
+    "var(--accent)";
+
+  return (
+    <div className="p-3">
+      <div className="flex items-start gap-2">
+        <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{title}</span>
+            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color, background: "var(--surface-low)" }}>
+              {status === "done" ? "完成" : status === "failed" ? "失败" : status === "queued" ? "排队" : "进行中"}
+            </span>
+          </div>
+          {body && <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.55 }}>{body}</p>}
+        </div>
+      </div>
+
+      {items.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {items.slice(0, 5).map((item, index) => {
+            const itemStatus = item.status || "pending";
+            const itemColor =
+              itemStatus === "done" ? "var(--success)" :
+              itemStatus === "running" ? "var(--accent)" :
+              "var(--fg-disabled)";
+            return (
+              <div key={`${index}-${item.label}`} className="flex items-center gap-2 rounded-md px-2 py-1.5" style={{ background: "var(--surface-low)" }}>
+                <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-bold" style={{ color: itemColor, border: `1px solid ${itemColor}` }}>
+                  {itemStatus === "done" ? "✓" : itemStatus === "running" ? "…" : index + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-xs" style={{ color: "var(--fg-secondary)" }}>{item.label || "任务步骤"}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ActionButton({
   title,
   onClick,
@@ -467,6 +518,7 @@ const MessageBubble = memo(function MessageBubble({
   const senderMeta = getSenderMeta(message);
   const payload = message.payload as Record<string, unknown> | undefined;
   const artifactType = getArtifactType(payload);
+  const isTaskCard = message.type === "task_card" || payload?.kind === "task_status";
   const setCurrentPreview = useChatStore((state) => state.setCurrentPreview);
   const { hasThinking, main } = extractDisplayContent(message.content);
   const displayContent = main || message.content;
@@ -553,6 +605,10 @@ const MessageBubble = memo(function MessageBubble({
               <ArtifactCard type="diff" content={message.content} filename={String(payload?.fileName || "diff")} />
             )}
 
+            {isTaskCard && (
+              <TaskStatusCard payload={payload} />
+            )}
+
             {(message.type === "deploy_card" || message.type === "preview_card") && (
               <ArtifactCard
                 type={message.type === "deploy_card" ? "deploy_url" : "preview_url"}
@@ -591,7 +647,7 @@ const MessageBubble = memo(function MessageBubble({
               />
             )}
 
-            {!artifactType && !htmlLike && !["diff_card", "deploy_card", "preview_card"].includes(message.type) && (
+            {!isTaskCard && !artifactType && !htmlLike && !["diff_card", "deploy_card", "preview_card"].includes(message.type) && (
               <div className="px-4 py-3">
                 {hasThinking && (
                   <div className="mb-2 w-fit rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: isUser ? "rgba(255,255,255,0.56)" : "var(--surface-low)" }}>

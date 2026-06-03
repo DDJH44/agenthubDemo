@@ -31,7 +31,7 @@ function restoreClientIdMap() {
 
 restoreClientIdMap();
 import { createAgentSocket } from "@/lib/ws-client";
-import type { WSServerMessage, Conversation, WSClientMessage, Artifact } from "@agenthub/shared";
+import type { WSServerMessage, Conversation, WSClientMessage, Artifact, Message } from "@agenthub/shared";
 
 function parseParticipants(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw as string[];
@@ -69,6 +69,72 @@ function eventConversationId(msg: WSServerMessage): string | undefined {
 
 function isActiveConversation(conversationId: string | undefined) {
   return Boolean(conversationId && useChatStore.getState().activeConversationId === conversationId);
+}
+
+const AGENT_LABELS: Record<string, string> = {
+  planner: "PMO",
+  pmo: "PMO",
+  worker: "Worker Agent",
+  researcher: "Researcher",
+  critic: "Critic",
+  refiner: "UX Reviewer",
+  codex: "Codex",
+  coder: "Codex",
+  "ux-reviewer": "UX Reviewer",
+  "open-code": "Open Code",
+  "claude-code": "Claude Code",
+};
+
+function getAgentLabel(agentId?: string) {
+  return AGENT_LABELS[agentId ?? ""] ?? agentId ?? "Agent";
+}
+
+function taskMessageId(jobId: string | undefined, suffix: string) {
+  return `task-${jobId || "pending"}-${suffix}`;
+}
+
+function getConversationStepItems(conversationId: string) {
+  const taskState = useChatStore.getState().conversationTasks[conversationId];
+  return (taskState?.steps ?? []).map((step) => ({
+    label: step.step,
+    status: step.status,
+  }));
+}
+
+function upsertTaskStatusMessage(
+  conversationId: string | undefined,
+  messageId: string,
+  options: {
+    title: string;
+    body?: string;
+    status?: "queued" | "running" | "done" | "failed";
+    agentId?: string;
+    items?: Array<{ label?: string; status?: string }>;
+  }
+) {
+  if (!conversationId) return;
+  const now = Date.now();
+  const agentId = options.agentId || "pmo";
+  const content = [options.title, options.body].filter(Boolean).join("\n");
+  const message: Message = {
+    id: messageId,
+    conversationId,
+    type: "task_card",
+    sender: agentId === "pmo" ? "planner" : agentId,
+    senderId: agentId,
+    content,
+    mentions: [],
+    timestamp: now,
+    payload: {
+      kind: "task_status",
+      title: options.title,
+      body: options.body || "",
+      status: options.status || "running",
+      agentId,
+      items: options.items ?? [],
+    },
+  };
+  useChatStore.getState().upsertMessage(conversationId, message);
 }
 
 export function useWebSocket(serverUrl?: string, enabled = true) {
@@ -129,8 +195,15 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         }
         case "task:created": {
           const conversationId = eventConversationId(msg);
-          if (conversationId) useChatStore.getState().setConversationStreaming(conversationId, true);
-          else useChatStore.getState().setStreaming(true);
+          if (conversationId) {
+            useChatStore.getState().setConversationStreaming(conversationId, true);
+            upsertTaskStatusMessage(conversationId, taskMessageId(msg.jobId, "queued"), {
+              title: "PMO 已收到任务",
+              body: "正在理解目标，并准备拆解给合适的 Agent。",
+              status: "running",
+              agentId: "pmo",
+            });
+          } else useChatStore.getState().setStreaming(true);
           break;
         }
         case "agent:status": {
@@ -143,7 +216,16 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         case "plan:created": {
           const conversationId = eventConversationId(msg);
           const plan = msg.plan.map((p) => ({ id: p.id, task: p.task }));
-          if (conversationId) useChatStore.getState().addConversationPlan(conversationId, plan);
+          if (conversationId) {
+            useChatStore.getState().addConversationPlan(conversationId, plan);
+            upsertTaskStatusMessage(conversationId, taskMessageId(msg.jobId, "plan"), {
+              title: "PMO 已完成任务拆解",
+              body: `已形成 ${plan.length} 个执行步骤，开始推进协作流程。`,
+              status: "running",
+              agentId: "pmo",
+              items: plan.map((step) => ({ label: step.task, status: "pending" })),
+            });
+          }
           else useChatStore.getState().addPlan(plan);
           if (!conversationId || isActiveConversation(conversationId)) {
             useWorkspaceStore.getState().setPlan(msg.plan);
@@ -167,6 +249,15 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           break;
         }
         case "task:assigned": {
+          const conversationId = eventConversationId(msg);
+          if (conversationId) {
+            upsertTaskStatusMessage(conversationId, taskMessageId(msg.jobId, `assigned-${msg.targetAgent}`), {
+              title: `${getAgentLabel(msg.targetAgent)} 已接单`,
+              body: msg.task || "正在处理分配任务。",
+              status: "running",
+              agentId: msg.targetAgent,
+            });
+          }
           useChatStore.getState().addTaskAssignment({
             targetAgent: msg.targetAgent ?? "",
             task: msg.task ?? "",
@@ -201,6 +292,16 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           const conversationId = eventConversationId(msg);
           if (conversationId) useChatStore.getState().updateConversationStepById(conversationId, msg.stepId, "running");
           else useChatStore.getState().updateStepById(msg.stepId, "running");
+          if (conversationId) {
+            const items = getConversationStepItems(conversationId);
+            upsertTaskStatusMessage(conversationId, taskMessageId(msg.jobId, "progress"), {
+              title: "执行步骤推进中",
+              body: msg.task || "Agent 正在处理当前步骤。",
+              status: "running",
+              agentId: msg.agentRole || "worker",
+              items: items.length > 0 ? items : [{ label: msg.task || msg.stepId, status: "running" }],
+            });
+          }
           if (!conversationId || isActiveConversation(conversationId)) {
             useWorkspaceStore.getState().updateNodeStatus(msg.stepId, "running");
             useTaskTreeStore.getState().updateStepStatus(msg.stepId, "running");
@@ -211,6 +312,18 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           const conversationId = eventConversationId(msg);
           if (conversationId) useChatStore.getState().updateConversationStepById(conversationId, msg.stepId, "done", msg.result);
           else useChatStore.getState().updateStepById(msg.stepId, "done", msg.result);
+          if (conversationId) {
+            const items = getConversationStepItems(conversationId);
+            const doneCount = items.filter((item) => item.status === "done").length;
+            const allDone = items.length > 0 && doneCount === items.length;
+            upsertTaskStatusMessage(conversationId, taskMessageId(msg.jobId, "progress"), {
+              title: allDone ? "执行步骤已全部完成" : "执行步骤已更新",
+              body: msg.task ? `已完成：${msg.task}` : `已完成 ${doneCount}/${items.length || 1} 个步骤。`,
+              status: allDone ? "done" : "running",
+              agentId: msg.toolUsed === "code" ? "codex" : "worker",
+              items: items.length > 0 ? items : [{ label: msg.task || msg.stepId, status: "done" }],
+            });
+          }
           if (!conversationId || isActiveConversation(conversationId)) {
             useWorkspaceStore.getState().updateNodeStatus(msg.stepId, "done");
             useWorkspaceStore.getState().addStepResult({ id: msg.stepId, task: msg.task || msg.stepId, result: msg.result });
@@ -221,8 +334,30 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         }
         case "job:completed": {
           const conversationId = eventConversationId(msg);
-          if (conversationId) useChatStore.getState().setConversationTaskSummary(conversationId, msg.summary, msg.jobId);
+          if (conversationId) {
+            useChatStore.getState().setConversationTaskSummary(conversationId, msg.summary, msg.jobId);
+            upsertTaskStatusMessage(conversationId, taskMessageId(msg.jobId, "completed"), {
+              title: "任务完成，结果已整理",
+              body: "文字结果已在消息中生成，代码或网页产物可继续预览、编辑和部署。",
+              status: "done",
+              agentId: "pmo",
+              items: getConversationStepItems(conversationId),
+            });
+          }
           else useChatStore.getState().setTaskSummary(msg.summary);
+          break;
+        }
+        case "job:failed": {
+          const conversationId = eventConversationId(msg);
+          if (conversationId) {
+            useChatStore.getState().setConversationStreaming(conversationId, false);
+            upsertTaskStatusMessage(conversationId, taskMessageId(msg.jobId, "failed"), {
+              title: "任务执行失败",
+              body: msg.error || "任务执行中断，可交给 PMO 重新拆解或交给 Codex 排查。",
+              status: "failed",
+              agentId: "pmo",
+            });
+          }
           break;
         }
         case "artifact:created": {

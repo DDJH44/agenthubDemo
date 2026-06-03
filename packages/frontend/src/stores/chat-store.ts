@@ -261,6 +261,7 @@ interface ChatStore {
   removeConversation: (id: string) => void;
   setActiveConversation: (id: string) => void;
   addMessage: (convId: string, msg: Message) => void;
+  upsertMessage: (convId: string, msg: Message) => void;
   mergeConversationHistory: (convId: string, messages: Message[]) => void;
   persistCurrentState: () => void;
   addPlan: (steps: Array<{ id: string; task: string }>) => void;
@@ -419,6 +420,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const newMessages = { ...s.messages, [convId]: updated };
       saveConversations(conversations);
       // 异步持久化
+      setTimeout(() => saveMessages(newMessages), 0);
+      return { messages: newMessages, conversations };
+    }),
+
+  upsertMessage: (convId, msg) =>
+    set((s) => {
+      const existing = s.messages[convId] ?? [];
+      const messageIndex = existing.findIndex((message) => message.id === msg.id);
+      const updated = messageIndex >= 0
+        ? existing.map((message, index) => (index === messageIndex ? { ...message, ...msg } : message))
+        : [...existing, msg].slice(-500);
+      const conversations = s.conversations.map((conversation) =>
+        conversation.id === convId
+          ? { ...conversation, lastMessage: msg.content.slice(0, 80), lastMessageAt: msg.timestamp, updatedAt: msg.timestamp }
+          : conversation
+      );
+      const newMessages = { ...s.messages, [convId]: updated };
+      saveConversations(conversations);
       setTimeout(() => saveMessages(newMessages), 0);
       return { messages: newMessages, conversations };
     }),
