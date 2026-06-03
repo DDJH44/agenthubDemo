@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useConversationFilesStore } from "../../stores/conversation-files-store";
 import { useAuthStore } from "../../stores/auth-store";
 import { renderMarkdown } from "../../lib/markdown-utils";
+import { isDocument, isDocumentRequest, shouldRenderDocumentCompletion } from "./assistant-intent";
 import { DocumentPreviewPanel } from "./DocumentPreviewPanel";
 
 const API_BASE = typeof window !== "undefined"
@@ -225,7 +226,7 @@ function buildAttachmentContext(attachments: AssistantAttachment[]): string {
   const parts = attachments.map((attachment, index) => {
     const header = `${index + 1}. ${attachment.kind === "image" ? "照片" : "文件"}：${attachment.name}（${attachment.mime}，${formatBytes(attachment.size)}）`;
     if (attachment.textPreview) return `${header}\n内容片段：\n${attachment.textPreview}`;
-    if (attachment.kind === "image") return `${header}\n说明：已上传图片附件，当前请求携带图片元信息，请结合用户描述继续处理。`;
+    if (attachment.kind === "image") return `${header}\n说明：图片内容已随本次请求发送给模型，请直接结合图片画面回答用户问题。`;
     return `${header}\n说明：该文件不是可直接读取的文本格式，当前请求携带文件元信息。`;
   });
   return `附件上下文：\n${parts.join("\n\n")}`;
@@ -330,13 +331,6 @@ function generateFileName(topic: string, index: number): string {
   return `${sanitized}${index > 0 ? `_${index + 1}` : ""}`;
 }
 
-function isDocument(content: string): boolean {
-  if (content.length < 400) return false;
-  const hasHeadings = /^#{1,3}\s/m.test(content);
-  const hasStructure = (content.match(/^[-*]\s|^\d+\.\s/gm) || []).length >= 3;
-  return hasHeadings || hasStructure;
-}
-
 function extractDocTitle(content: string, fallback: string): string {
   const h1 = content.match(/^#\s+(.+)$/m);
   if (h1) return h1[1].trim();
@@ -401,18 +395,6 @@ function extractDocumentHighlights(content: string, maxItems = 5): string[] {
       return true;
     })
     .slice(0, maxItems);
-}
-
-function isDocumentRequest(query: string): boolean {
-  const patterns = [
-    /生成(一份|一个|一篇)?(文档|报告|手册|方案|指南|PRD|需求|设计文档|技术文档|接口文档|用户手册|白皮书|材料|汇报)/,
-    /写(一份|一个|一篇)?(文档|报告|手册|方案|指南|PRD|需求|设计文档|技术文档)/,
-    /整理(一份)?(文档|报告|手册|方案)/,
-    /创建(一份)?(文档|报告|方案)/,
-    /帮我(写|生成|整理|做)(一个|一份|一篇)?(文档|报告|手册|方案|指南|PRD)/,
-    /(起草|拟定|编写)(一份)?(文档|报告|手册|方案|指南)/,
-  ];
-  return patterns.some(p => p.test(query));
 }
 
 function FileTreeView({ onFileClick, fileSearch, setFileSearch }: { onFileClick: (id: string) => void; fileSearch: string; setFileSearch: (v: string) => void }) {
@@ -754,7 +736,17 @@ export function AIAssistantView() {
       const res = await fetch(`${API_BASE}/api/assistant`, {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify({ text: outgoingText, history: buildHistory(prevMessages) }),
+        body: JSON.stringify({
+          text: outgoingText,
+          history: buildHistory(prevMessages),
+          attachments: currentAttachments.map((attachment) => ({
+            name: attachment.name,
+            kind: attachment.kind,
+            mime: attachment.mime,
+            size: attachment.size,
+            dataUrl: attachment.kind === "image" ? attachment.dataUrl : undefined,
+          })),
+        }),
         signal: controller.signal,
       });
 
@@ -1116,8 +1108,8 @@ export function AIAssistantView() {
           ) : (
             <div className="max-w-3xl mx-auto px-4 py-6 space-y-4">
               <AnimatePresence>
-                {messages.map((msg) => {
-                  const messageIsDocument = msg.role === "assistant" && isDocument(msg.content);
+                {messages.map((msg, index) => {
+                  const messageIsDocument = shouldRenderDocumentCompletion(messages, index);
                   const savedDocument = savedDocIds.has(msg.id);
                   const savedFile = messageIsDocument ? files.find((file) => file.messageId === msg.id) : undefined;
                   const documentTitle = messageIsDocument ? extractDocTitle(msg.content, "AI 生成文档") : "";

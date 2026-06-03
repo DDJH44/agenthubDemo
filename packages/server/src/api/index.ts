@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
+import type { ChatCompletionContentPart, ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { parseMentions, type PlanNode } from "@agenthub/shared";
 import { createOrchestrator, type StreamEvent } from "../orchestrator/index";
 import { createAdapterFromEnv } from "@agenthub/adapter";
@@ -27,6 +28,14 @@ import { writeTemporarySshKey } from "../deploy/ssh-key-file";
 
 interface RequestWithParams extends IncomingMessage {
   params?: Record<string, string>;
+}
+
+interface AssistantAttachmentPayload {
+  name?: string;
+  kind?: "file" | "image";
+  mime?: string;
+  size?: number;
+  dataUrl?: string;
 }
 
 type RouteHandler = (req: RequestWithParams, res: ServerResponse) => Promise<void>;
@@ -93,7 +102,12 @@ registerRoute("POST", "/api/assistant", async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
   const body = await readJsonBody(req);
-  const { text, history, systemPrompt } = body as { text?: string; history?: Array<{ role: string; content: string }>; systemPrompt?: string };
+  const { text, history, systemPrompt, attachments } = body as {
+    text?: string;
+    history?: Array<{ role: string; content: string }>;
+    systemPrompt?: string;
+    attachments?: AssistantAttachmentPayload[];
+  };
 
   if (!text) {
     res.writeHead(400, { "Content-Type": "application/json" });
@@ -117,9 +131,23 @@ registerRoute("POST", "/api/assistant", async (req, res) => {
       baseURL: process.env.OPENAI_BASE_URL,
     });
 
+    const imageAttachments = Array.isArray(attachments)
+      ? attachments.filter((attachment) => (
+          attachment.kind === "image" &&
+          typeof attachment.dataUrl === "string" &&
+          /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(attachment.dataUrl) &&
+          (attachment.size ?? 0) <= 8 * 1024 * 1024
+        ))
+      : [];
+
     const systemContent = `你是 AgentHub 的 AI 智能助手，用户的 AI 协作伙伴。中文交流，语气专业但不生硬。
 
-=== 文档类任务回复模板（必须严格遵守）===
+=== 意图判断优先级 ===
+1. 用户明确要求生成、撰写、整理、创建文档/报告/方案/PRD/手册/指南时，才进入“文档类任务回复模板”。
+2. 用户要求描述、识别、分析图片，且本轮消息包含图片时，直接观察图片并回答画面内容；不要生成文档，不要套用文档模板。
+3. 普通追问、解释、纠错、闲聊、图片描述、代码问答，都按“非文档类对话”回答。
+
+=== 文档类任务回复模板（仅在明确文档请求时使用）===
 
 当用户要求生成文档、PRD、方案、手册、报告时，按以下模板回复：
 
@@ -162,20 +190,34 @@ registerRoute("POST", "/api/assistant", async (req, res) => {
 
 === 非文档类对话 ===
 简短问答直接回答，代码问题给出示例，技术讨论分享见解。
+图片描述请求要先概括画面，再列出可见主体、文字、布局、颜色和可能用途；如果图片不可读取，只说明当前只能看到附件元信息。
 
 === 禁止 ===
 - 不要说"无法生成文件"、"请复制到 Word"
-- 不要跳过模板结构直接输出文档正文`;
+- 非文档请求不要说“文档已生成”
+- 非文档请求不要输出“文件在这里”或文档卡片式话术
+- 文档请求不要跳过模板结构直接输出文档正文`;
 
-    const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+    const messages: ChatCompletionMessageParam[] = [
       { role: "system", content: systemPrompt ? `${systemContent}\n\n=== 用户自定义规则 ===\n${systemPrompt}` : systemContent },
     ];
     if (history) {
       for (const h of history.slice(-10)) {
-        messages.push({ role: h.role as "user" | "assistant", content: h.content });
+        if (h.role === "user" || h.role === "assistant") {
+          messages.push({ role: h.role, content: h.content });
+        }
       }
     }
-    messages.push({ role: "user", content: text });
+    const userContent: string | ChatCompletionContentPart[] = imageAttachments.length > 0
+      ? [
+          { type: "text", text },
+          ...imageAttachments.map((attachment) => ({
+            type: "image_url" as const,
+            image_url: { url: attachment.dataUrl as string, detail: "auto" as const },
+          })),
+        ]
+      : text;
+    messages.push({ role: "user", content: userContent });
 
     const model = process.env.LLM_MODEL ?? "gpt-4o-mini";
     logger.info(`[Assistant] Streaming with model=${model}, messages=${messages.length}`, "Assistant");
