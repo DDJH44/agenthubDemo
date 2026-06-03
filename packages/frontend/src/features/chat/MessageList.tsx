@@ -121,25 +121,91 @@ function TextContent({ text }: { text: string }) {
   );
 }
 
-function splitCodeBlocks(content: string) {
-  const parts: Array<{ type: "text" | "code"; value: string; language?: string }> = [];
-  const regex = /```([\w-]*)\n?([\s\S]*?)```/g;
-  let lastIndex = 0;
+type MessageContentPart =
+  | { type: "text"; value: string }
+  | { type: "code"; value: string; language?: string; filename?: string; open?: boolean };
+
+function parseFenceHeader(header: string) {
+  const trimmed = header.trim();
+  const filenameMatch = trimmed.match(/(?:filename|file)=["']?([^"'\s]+)["']?/i);
+  const language = trimmed.split(/\s+/).find((token) => token && !token.includes("="));
+  return {
+    language: language || undefined,
+    filename: filenameMatch?.[1],
+  };
+}
+
+function splitLooseHtml(content: string): MessageContentPart[] | null {
+  const htmlStart = content.search(/<!doctype html|<html[\s>]/i);
+  if (htmlStart <= 0) return null;
+  const before = content.slice(0, htmlStart);
+  const html = content.slice(htmlStart);
+  if (html.trim().length < 40) return null;
+  return [
+    { type: "text", value: before },
+    { type: "code", value: html.trim(), language: "html", filename: "index.html" },
+  ];
+}
+
+function splitCodeBlocks(content: string): MessageContentPart[] {
+  const parts: MessageContentPart[] = [];
+  const fenceRegex = /```([^\n`]*)\n?/g;
+  let cursor = 0;
   let match: RegExpExecArray | null;
 
-  while ((match = regex.exec(content)) !== null) {
-    if (match.index > lastIndex) {
-      parts.push({ type: "text", value: content.slice(lastIndex, match.index) });
+  while ((match = fenceRegex.exec(content)) !== null) {
+    if (match.index > cursor) {
+      parts.push({ type: "text", value: content.slice(cursor, match.index) });
     }
-    parts.push({ type: "code", value: match[2].trim(), language: match[1] || undefined });
-    lastIndex = match.index + match[0].length;
+
+    const { language, filename } = parseFenceHeader(match[1] || "");
+    const codeStart = fenceRegex.lastIndex;
+    const closeIndex = content.indexOf("```", codeStart);
+
+    if (closeIndex === -1) {
+      parts.push({
+        type: "code",
+        value: content.slice(codeStart).trimEnd(),
+        language,
+        filename,
+        open: true,
+      });
+      cursor = content.length;
+      break;
+    }
+
+    parts.push({
+      type: "code",
+      value: content.slice(codeStart, closeIndex).trim(),
+      language,
+      filename,
+    });
+    cursor = closeIndex + 3;
+    fenceRegex.lastIndex = cursor;
   }
 
-  if (lastIndex < content.length) {
-    parts.push({ type: "text", value: content.slice(lastIndex) });
+  if (cursor < content.length) {
+    parts.push({ type: "text", value: content.slice(cursor) });
   }
 
-  return parts.length > 0 ? parts : [{ type: "text" as const, value: content }];
+  if (parts.length > 0) return parts;
+  return splitLooseHtml(content) ?? [{ type: "text", value: content }];
+}
+
+function inferCodeLanguage(language: string | undefined, code: string) {
+  const normalized = language?.toLowerCase();
+  if (normalized) return normalized;
+  const trimmed = code.trim();
+  if (/^<!doctype html|^<html[\s>]/i.test(trimmed)) return "html";
+  if (/^\s*[{[]/.test(trimmed)) {
+    try {
+      JSON.parse(trimmed);
+      return "json";
+    } catch {}
+  }
+  if (/^(import|export|const|let|var|function)\s/m.test(trimmed)) return "javascript";
+  if (/^[.#]?[a-z-]+\s*\{[\s\S]*\}/i.test(trimmed)) return "css";
+  return normalized;
 }
 
 function getCodeFilename(language?: string) {
@@ -167,31 +233,35 @@ function getCodeFilename(language?: string) {
 function InlineCodeBlock({
   code,
   language,
+  filename,
+  isOpen,
   messageId,
   conversationId,
 }: {
   code: string;
   language?: string;
+  filename?: string;
+  isOpen?: boolean;
   messageId: string;
   conversationId: string;
 }) {
   const setCurrentPreview = useChatStore((state) => state.setCurrentPreview);
-  const normalized = language?.toLowerCase();
+  const normalized = inferCodeLanguage(language, code);
   const isHtml = normalized === "html" || /<!doctype html|<html/i.test(code);
-  const filename = isHtml ? "index.html" : getCodeFilename(language);
+  const displayFilename = filename || (isHtml ? "index.html" : getCodeFilename(normalized));
   return (
     <ArtifactCard
       type={isHtml ? "html" : "code"}
       content={code}
-      language={isHtml ? "html" : language}
-      filename={filename}
-      artifactId={`${messageId}-${filename}`}
+      language={isHtml ? "html" : normalized}
+      filename={displayFilename}
+      artifactId={`${messageId}-${displayFilename}`}
       conversationId={conversationId}
-      onPreview={isHtml ? () => setCurrentPreview({
-        artifactId: `${messageId}-${filename}`,
+      onPreview={isHtml && !isOpen ? () => setCurrentPreview({
+        artifactId: `${messageId}-${displayFilename}`,
         type: "html",
         content: code,
-        filename,
+        filename: displayFilename,
       }) : undefined}
     />
   );
@@ -655,7 +725,15 @@ const MessageBubble = memo(function MessageBubble({
                   </div>
                 )}
                 {parts.map((part, index) => part.type === "code" ? (
-                  <InlineCodeBlock key={index} code={part.value} language={part.language} messageId={message.id} conversationId={message.conversationId} />
+                  <InlineCodeBlock
+                    key={index}
+                    code={part.value}
+                    language={part.language}
+                    filename={part.filename}
+                    isOpen={part.open}
+                    messageId={message.id}
+                    conversationId={message.conversationId}
+                  />
                 ) : (
                   <TextContent key={index} text={part.value} />
                 ))}
