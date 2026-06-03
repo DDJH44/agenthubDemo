@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import type { Artifact, Conversation, Message } from "@agenthub/shared";
+import type { Artifact, Conversation, Message, WorkflowReferencePayload } from "@agenthub/shared";
 import { useWebSocket } from "../../packages/frontend/src/hooks/useWebSocket";
 import { useChatStore } from "../../packages/frontend/src/stores/chat-store";
 import { useSettingsStore } from "../../packages/frontend/src/stores/settings-store";
@@ -44,6 +44,10 @@ const CHAT_STARTERS = [
   "检查代码冲突并输出 Diff",
   "把当前产物部署到预览环境",
 ];
+
+type SendMessageOptions = {
+  workflowRef?: WorkflowReferencePayload;
+};
 
 function ChatEmptyState({
   onCreate,
@@ -261,9 +265,17 @@ export default function Page() {
     window.dispatchEvent(event);
   }, []);
 
-  const handleSend = useCallback((text: string) => {
+  const handleSend = useCallback((text: string, options?: SendMessageOptions) => {
     const store = useChatStore.getState();
     const convId = store.activeConversationId;
+    const workflowPayload = options?.workflowRef
+      ? {
+          id: options.workflowRef.id,
+          name: options.workflowRef.name,
+          templateTitle: options.workflowRef.templateTitle,
+          nodeCount: options.workflowRef.plan.length,
+        }
+      : undefined;
 
     if (convId) {
       const msgId = crypto.randomUUID();
@@ -274,10 +286,11 @@ export default function Page() {
         sender: "user",
         content: text,
         mentions: [],
+        payload: workflowPayload ? { workflowRef: workflowPayload } : undefined,
         timestamp: Date.now(),
       };
       store.addMessage(convId, userMsg);
-      ws.send({ type: "message:send", conversationId: convId, text, clientMsgId: msgId });
+      ws.send({ type: "message:send", conversationId: convId, text, clientMsgId: msgId, workflowRef: options?.workflowRef });
     } else {
       store.setPendingMessage(text);
       ws.send({

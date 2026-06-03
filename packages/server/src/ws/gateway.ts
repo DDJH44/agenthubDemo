@@ -1,7 +1,7 @@
 import type { Server as HTTPServer, IncomingMessage } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { IAdapter } from "@agenthub/adapter";
-import type { ConversationListItem } from "@agenthub/shared";
+import type { AgentRole, ConversationListItem, PlanNode, WorkflowNodeType, WorkflowReferencePayload } from "@agenthub/shared";
 import { parseMentions } from "@agenthub/shared";
 import { messageRepo } from "../db/repositories/message";
 import { conversationRepo } from "../db/repositories/conversation";
@@ -122,6 +122,95 @@ async function checkConversationAccess(ws: WebSocket, conversationId: string, us
 
 const DEFAULT_WORKSPACE = "default";
 const AGENT_NAMES = ["planner", "worker", "critic", "researcher", "refiner"];
+const AGENT_ROLES: AgentRole[] = ["planner", "worker", "critic", "researcher", "refiner", "coder", "reviewer", "frontend", "backend", "design", "custom"];
+const WORKFLOW_NODE_TYPES: WorkflowNodeType[] = ["agent", "code", "condition", "loop", "variable"];
+
+function isObjectRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeString(value: unknown, fallback = "", maxLength = 300) {
+  return typeof value === "string" ? value.slice(0, maxLength) : fallback;
+}
+
+function normalizeStringArray(value: unknown, limit = 12) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string").slice(0, limit);
+}
+
+function normalizeWorkflowRole(value: unknown): AgentRole | undefined {
+  if (typeof value !== "string") return undefined;
+  return AGENT_ROLES.includes(value as AgentRole) ? value as AgentRole : undefined;
+}
+
+function normalizeWorkflowNodeType(value: unknown): WorkflowNodeType | undefined {
+  if (typeof value !== "string") return undefined;
+  return WORKFLOW_NODE_TYPES.includes(value as WorkflowNodeType) ? value as WorkflowNodeType : undefined;
+}
+
+function normalizeWorkflowReference(raw: unknown): WorkflowReferencePayload | undefined {
+  if (!isObjectRecord(raw)) return undefined;
+  const planSource = Array.isArray(raw.plan) ? raw.plan : [];
+  const plan = planSource
+    .slice(0, 24)
+    .map((item, index): PlanNode | null => {
+      if (!isObjectRecord(item)) return null;
+      const id = normalizeString(item.id, `step-${index + 1}`, 80);
+      const task = normalizeString(item.task, "", 1200).trim();
+      if (!id || !task) return null;
+      const config = isObjectRecord(item.config) ? item.config : undefined;
+      return {
+        id,
+        task,
+        dependsOn: normalizeStringArray(item.dependsOn, 12),
+        agentRole: normalizeWorkflowRole(item.agentRole),
+        type: normalizeWorkflowNodeType(item.type),
+        config,
+      };
+    })
+    .filter((item): item is PlanNode => Boolean(item));
+
+  if (plan.length === 0) return undefined;
+
+  const edges: Array<{ source: string; target: string; label?: string }> = [];
+  const edgesSource = Array.isArray(raw.edges) ? raw.edges : [];
+  for (const edge of edgesSource.slice(0, 48)) {
+    if (!isObjectRecord(edge)) continue;
+    const source = normalizeString(edge.source, "", 80);
+    const target = normalizeString(edge.target, "", 80);
+    if (!source || !target) continue;
+    const label = normalizeString(edge.label, "", 80);
+    edges.push({ source, target, label: label || undefined });
+  }
+
+  return {
+    id: normalizeString(raw.id, `workflow-${Date.now()}`, 120),
+    name: normalizeString(raw.name, "未命名工作流", 120),
+    task: normalizeString(raw.task, "", 1200) || undefined,
+    templateId: normalizeString(raw.templateId, "", 120) || undefined,
+    templateTitle: normalizeString(raw.templateTitle, "", 120) || undefined,
+    outputHint: normalizeString(raw.outputHint, "", 300) || undefined,
+    plan,
+    edges,
+  };
+}
+
+function getWorkflowAgentMentions(workflowRef: WorkflowReferencePayload) {
+  const roles = workflowRef.plan
+    .map((step) => step.agentRole)
+    .filter((role): role is AgentRole => Boolean(role));
+  return [...new Set(roles.filter((role) => AGENT_NAMES.includes(role)))];
+}
+
+function compactWorkflowReference(workflowRef: WorkflowReferencePayload) {
+  return {
+    id: workflowRef.id,
+    name: workflowRef.name,
+    templateTitle: workflowRef.templateTitle,
+    nodeCount: workflowRef.plan.length,
+    edgeCount: workflowRef.edges.length,
+  };
+}
 
 function safeDeployPath(path: string): string {
   const normalized = path.replace(/\\/g, "/").replace(/^\/+/, "").split("/").filter(Boolean);
@@ -406,6 +495,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const text: string = msg.text ?? msg.input ?? "";
             const conversationId: string = msg.conversationId ?? "default";
             const clientMsgId: string | undefined = (msg as { clientMsgId?: string }).clientMsgId;
+            const workflowRef = normalizeWorkflowReference((msg as { workflowRef?: unknown }).workflowRef);
 
             let convType = "group";
             let agentName = "planner";
@@ -425,7 +515,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             }
 
             const isDirectConv = convType === "direct";
-            const simpleChat = isSimpleChat(text);
+            const simpleChat = !workflowRef && isSimpleChat(text);
             const artifactTask = isArtifactGenerationTask(text);
 
             const convAgents = await conversationAgentRepo.listByConversation(conversationId);
@@ -480,7 +570,10 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
 
             let matchedAgents = agents;
             let matchSummary = "";
-            if (isAllAgents) {
+            if (workflowRef) {
+              matchedAgents = getWorkflowAgentMentions(workflowRef);
+              matchSummary = `引用工作流「${workflowRef.name}」 · ${workflowRef.plan.length} 个节点`;
+            } else if (isAllAgents) {
               matchedAgents = AGENT_NAMES;
               matchSummary = "已启用全部智能体";
             } else if (agents.length === 0) {
@@ -503,6 +596,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const userMsg = await messageRepo.createAndUpdateConv({
               conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: matchedAgents,
               id: clientMsgId,
+              payload: workflowRef ? { workflowRef: compactWorkflowReference(workflowRef) } : undefined,
             });
 
             broadcast(conversationId, {
@@ -510,16 +604,22 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               message: {
                 id: userMsg.id, conversationId: userMsg.conversationId,
                 type: userMsg.type, sender: userMsg.sender, senderId: userId, content: userMsg.content,
-                mentions: matchedAgents, timestamp: userMsg.timestamp.getTime(),
+                mentions: matchedAgents,
+                payload: workflowRef ? { workflowRef: compactWorkflowReference(workflowRef) } : undefined,
+                timestamp: userMsg.timestamp.getTime(),
               },
             });
 
+            const queueTask = workflowRef?.task || cleanText || text;
             const jobId = await queue.enqueue({
               workspaceId: DEFAULT_WORKSPACE,
               conversationId,
               userId,
-              task: cleanText || text,
+              task: queueTask,
               mentions: matchedAgents,
+              plan: workflowRef?.plan,
+              edges: workflowRef?.edges,
+              workflowRef,
               broadcast: (data) => broadcast(conversationId, data),
             });
 
@@ -531,7 +631,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                 type: "task:assigned",
                 jobId,
                 targetAgent: agentName,
-                task: `执行：${(cleanText || text).slice(0, 60)}`,
+                task: workflowRef
+                  ? `按工作流「${workflowRef.name}」执行：${queueTask.slice(0, 60)}`
+                  : `执行：${queueTask.slice(0, 60)}`,
                 timestamp: Date.now(),
               });
             }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Message } from "@agenthub/shared";
+import type { Message, WorkflowReferencePayload } from "@agenthub/shared";
 import { AnalyzeAndAssignFlow } from "./AnalyzeAndAssignFlow";
 import { AgentStepList } from "./AgentStepList";
 import { ConversationNavBar } from "./ConversationNavBar";
@@ -13,6 +13,11 @@ import { RightPanel } from "./RightPanel";
 import { TaskSteps } from "./TaskSteps";
 import { BrandMascot } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
+import {
+  stripWorkflowReferencePrompt,
+  toWorkflowReferencePayload,
+  type SavedWorkflowSnapshot,
+} from "@/features/workflows/saved-workflows";
 
 interface StepProgress {
   index: number;
@@ -31,7 +36,7 @@ interface Props {
   isStreaming: boolean;
   taskSummary: string;
   messages: Message[];
-  onSend: (text: string) => void;
+  onSend: (text: string, options?: { workflowRef?: WorkflowReferencePayload }) => void;
   onAssignAgent?: (conversationId: string, agentId: string, content: string) => void;
   onBackToList?: () => void;
   isMobile?: boolean;
@@ -92,12 +97,17 @@ export function AgentChatPanel({
     setConversationStreaming,
   } = useChatStore();
   const [text, setText] = useState("");
+  const [workflowReferenceState, setWorkflowReferenceState] = useState<{ conversationId: string | null; workflow: SavedWorkflowSnapshot | null }>({
+    conversationId: null,
+    workflow: null,
+  });
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [showPreviewPanel, setShowPreviewPanel] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const convId = activeConversationId ?? activeConversationIdProp;
   const currentMode = convId ? (conversationMode[convId] ?? "single") : "single";
   const contextCount = convId ? (contextReferences[convId]?.length ?? 0) : 0;
+  const workflowReference = workflowReferenceState.conversationId === convId ? workflowReferenceState.workflow : null;
 
   useEffect(() => {
     if (!convId) return;
@@ -142,9 +152,13 @@ export function AgentChatPanel({
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed || isStreaming) return;
-    onSend(trimmed);
+    const workflowRef = workflowReference
+      ? toWorkflowReferencePayload(workflowReference, stripWorkflowReferencePrompt(trimmed, workflowReference))
+      : undefined;
+    onSend(trimmed, workflowRef ? { workflowRef } : undefined);
     setText("");
-  }, [isStreaming, onSend, text]);
+    setWorkflowReferenceState({ conversationId: convId, workflow: null });
+  }, [convId, isStreaming, onSend, text, workflowReference]);
 
   const handleAssignAgent = useCallback((agentId: string, content: string) => {
     if (convId && onAssignAgent) onAssignAgent(convId, agentId, content);
@@ -157,6 +171,10 @@ export function AgentChatPanel({
   const handleStopStreaming = useCallback(() => {
     if (convId) setConversationStreaming(convId, false);
   }, [convId, setConversationStreaming]);
+
+  const handleWorkflowReferenceChange = useCallback((workflow: SavedWorkflowSnapshot | null) => {
+    setWorkflowReferenceState({ conversationId: convId, workflow });
+  }, [convId]);
 
   const handleOpenContextPanel = useCallback(() => {
     setShowPreviewPanel(true);
@@ -269,6 +287,8 @@ export function AgentChatPanel({
                 onAssignAgent={handleAssignAgent}
                 onMentionQueryChange={setMentionQuery}
                 contextCount={contextCount}
+                workflowReference={workflowReference}
+                onWorkflowReferenceChange={handleWorkflowReferenceChange}
               />
             </div>
           </div>

@@ -1,3 +1,5 @@
+import type { PlanNode, WorkflowReferencePayload } from "@agenthub/shared";
+
 export type JobPriority = "low" | "normal" | "high" | "urgent";
 
 export interface JobPayload {
@@ -6,6 +8,9 @@ export interface JobPayload {
   userId: string;
   task: string;
   mentions: string[];
+  plan?: PlanNode[];
+  edges?: Array<{ source: string; target: string; label?: string }>;
+  workflowRef?: WorkflowReferencePayload;
   priority?: JobPriority;
   timeoutMs?: number;          // max execution time before auto-cancel
   /** Callback to broadcast WS events to the conversation room */

@@ -32,7 +32,7 @@ function restoreClientIdMap() {
 
 restoreClientIdMap();
 import { createAgentSocket } from "@/lib/ws-client";
-import type { WSServerMessage, Conversation, WSClientMessage, Artifact, Message } from "@agenthub/shared";
+import type { WSServerMessage, Conversation, WSClientMessage, Artifact, Message, WorkflowReferencePayload } from "@agenthub/shared";
 
 function parseParticipants(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw as string[];
@@ -736,8 +736,8 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
     };
   }, [serverUrl, enabled]);
 
-  const sendMessage = useCallback((conversationId: string, text: string) => {
-    socketRef.current?.send({ type: "message:send", conversationId, text } as WSClientMessage);
+  const sendMessage = useCallback((conversationId: string, text: string, options?: { workflowRef?: WorkflowReferencePayload }) => {
+    socketRef.current?.send({ type: "message:send", conversationId, text, workflowRef: options?.workflowRef } as WSClientMessage);
   }, []);
 
   const pinConversation = useCallback((id: string) => {

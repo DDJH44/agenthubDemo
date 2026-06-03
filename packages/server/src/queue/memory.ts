@@ -322,9 +322,9 @@ export class MemoryQueue implements IJobQueue {
                 type: "agent_message",
                 sender: "refiner",
                 content: String(final.summary).slice(0, 2000),
-                payload: { ...(final as Record<string, unknown>), jobId },
+                payload: { ...(final as Record<string, unknown>), jobId, workflowRef: payload.workflowRef },
               });
-              emit({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, content: summaryMsg.content, payload: { ...(final as Record<string, unknown>), jobId }, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
+              emit({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, content: summaryMsg.content, payload: { ...(final as Record<string, unknown>), jobId, workflowRef: payload.workflowRef }, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
             }
           }
 
@@ -334,7 +334,7 @@ export class MemoryQueue implements IJobQueue {
           break;
         }
       }
-        }, undefined, undefined, payload.conversationId, controller.signal
+        }, payload.plan, payload.edges, payload.conversationId, controller.signal
         ),
         new Promise<never>((_, reject) => controller.signal.addEventListener("abort", () => {
           reject(new DOMException("Job cancelled", "AbortError"));

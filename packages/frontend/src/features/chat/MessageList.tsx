@@ -570,6 +570,19 @@ function MessageActions({
   );
 }
 
+function getWorkflowReferenceMeta(payload: Record<string, unknown> | undefined) {
+  const raw = payload?.workflowRef;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const ref = raw as Record<string, unknown>;
+  const name = typeof ref.name === "string" ? ref.name : "";
+  if (!name) return null;
+  return {
+    name,
+    templateTitle: typeof ref.templateTitle === "string" ? ref.templateTitle : "",
+    nodeCount: typeof ref.nodeCount === "number" ? ref.nodeCount : undefined,
+  };
+}
+
 const MessageBubble = memo(function MessageBubble({
   message,
   prevMessage,
@@ -594,6 +607,7 @@ const MessageBubble = memo(function MessageBubble({
   const displayContent = main || message.content;
   const artifactId = String(payload?.artifactId || payload?.modifiedArtifactId || payload?.originalArtifactId || message.id);
   const artifactFilename = payload?.filename as string | undefined;
+  const workflowReferenceMeta = getWorkflowReferenceMeta(payload);
   const previewArtifact = (type: string, content: string, filename?: string) => {
     setCurrentPreview({
       artifactId,
@@ -728,6 +742,14 @@ const MessageBubble = memo(function MessageBubble({
 
             {!isTaskCard && !artifactType && !htmlLike && !["diff_card", "deploy_card", "preview_card"].includes(message.type) && (
               <div className="px-4 py-3">
+                {workflowReferenceMeta && (
+                  <div className="mb-2 inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: isUser ? "rgba(255,255,255,0.72)" : "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+                    <span className="truncate">引用工作流：{workflowReferenceMeta.name}</span>
+                    {workflowReferenceMeta.nodeCount ? (
+                      <span className="shrink-0" style={{ color: "var(--fg-tertiary)" }}>· {workflowReferenceMeta.nodeCount} 节点</span>
+                    ) : null}
+                  </div>
+                )}
                 {hasThinking && (
                   <div className="mb-2 w-fit rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: isUser ? "rgba(255,255,255,0.56)" : "var(--surface-low)" }}>
                     已省略思考过程

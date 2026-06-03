@@ -17,6 +17,17 @@ export interface PlanNode {
   type?: WorkflowNodeType; config?: Record<string, unknown>;
 }
 
+export interface WorkflowReferencePayload {
+  id: string;
+  name: string;
+  task?: string;
+  templateId?: string;
+  templateTitle?: string;
+  outputHint?: string;
+  plan: PlanNode[];
+  edges: Array<{ source: string; target: string; label?: string }>;
+}
+
 export interface CodeNodeConfig { language?: "python" | "javascript" | "bash"; timeout?: number; }
 export interface ConditionNodeConfig { expression: string; }
 export interface VariableNodeConfig { operation: "set" | "get" | "transform"; variableName: string; value?: string; }

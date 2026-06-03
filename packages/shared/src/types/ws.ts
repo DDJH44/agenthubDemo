@@ -1,5 +1,5 @@
 import type { Message } from "./conversation";
-import type { PlanNode, JobStats, Artifact } from "./job";
+import type { PlanNode, JobStats, Artifact, WorkflowReferencePayload } from "./job";
 
 export interface OrchestratorEvent {
   type: "task:created" | "agent_update" | "stream:chunk" | "orchestrator:complete" | "agent:error";
@@ -9,8 +9,8 @@ export interface OrchestratorEvent {
 export type WSClientMessage =
   | { type: "conversation:subscribe"; conversationId: string }
   | { type: "conversation:unsubscribe"; conversationId: string }
-  | { type: "message:send"; conversationId: string; text: string; attachments?: string[]; clientMsgId?: string }
-  | { type: "task:submit"; conversationId: string; input: string; mentions?: string[] }
+  | { type: "message:send"; conversationId: string; text: string; attachments?: string[]; clientMsgId?: string; workflowRef?: WorkflowReferencePayload }
+  | { type: "task:submit"; conversationId: string; input: string; mentions?: string[]; workflowRef?: WorkflowReferencePayload }
   | { type: "conversation:create"; title?: string; convType?: string; participants?: string[]; workspaceId?: string; clientId?: string }
   | { type: "conversation:pin"; conversationId: string }
   | { type: "conversation:unpin"; conversationId: string }

@@ -1,5 +1,7 @@
 "use client";
 
+import type { AgentRole, PlanNode, WorkflowNodeType, WorkflowReferencePayload } from "@agenthub/shared";
+
 export interface SavedWorkflowNodeSnapshot {
   id: string;
   type?: string;
@@ -123,4 +125,81 @@ export function getWorkflowReferencePrompt(workflow: SavedWorkflowSnapshot) {
   ].filter(Boolean);
 
   return lines.join("\n");
+}
+
+const AGENT_ROLE_ALIASES: Record<string, AgentRole> = {
+  planner: "planner",
+  pmo: "planner",
+  worker: "worker",
+  codex: "worker",
+  coder: "worker",
+  "open-code": "worker",
+  critic: "critic",
+  reviewer: "critic",
+  "ux-reviewer": "critic",
+  researcher: "researcher",
+  refiner: "refiner",
+};
+
+const WORKFLOW_NODE_TYPES = new Set<WorkflowNodeType>(["agent", "code", "condition", "loop", "variable"]);
+
+function getNodeLabel(node: SavedWorkflowNodeSnapshot) {
+  const label = node.data.label ?? node.data.agentId ?? node.data.nodeType ?? node.id;
+  return typeof label === "string" ? label : node.id;
+}
+
+function getAgentRole(node: SavedWorkflowNodeSnapshot): AgentRole {
+  const agentId = typeof node.data.agentId === "string" ? node.data.agentId : "";
+  const nodeType = typeof node.data.nodeType === "string" ? node.data.nodeType : "";
+  return AGENT_ROLE_ALIASES[agentId] ?? AGENT_ROLE_ALIASES[nodeType] ?? (nodeType === "condition" || nodeType === "variable" ? "planner" : "worker");
+}
+
+function getWorkflowNodeType(node: SavedWorkflowNodeSnapshot): WorkflowNodeType {
+  const nodeType = typeof node.data.nodeType === "string" ? node.data.nodeType : "agent";
+  return WORKFLOW_NODE_TYPES.has(nodeType as WorkflowNodeType) ? nodeType as WorkflowNodeType : "agent";
+}
+
+function getNodeConfig(node: SavedWorkflowNodeSnapshot): Record<string, unknown> | undefined {
+  const config = node.data.config;
+  if (!config || typeof config !== "object" || Array.isArray(config)) return undefined;
+  return config as Record<string, unknown>;
+}
+
+export function stripWorkflowReferencePrompt(text: string, workflow: SavedWorkflowSnapshot) {
+  const prompt = getWorkflowReferencePrompt(workflow);
+  const stripped = text.replace(prompt, "").trim();
+  return stripped || workflow.task || text;
+}
+
+export function toWorkflowReferencePayload(workflow: SavedWorkflowSnapshot, userTask: string): WorkflowReferencePayload {
+  const task = userTask.trim() || workflow.task || `执行工作流「${workflow.name}」`;
+  const edges = workflow.edges.map((edge) => ({
+    source: edge.source,
+    target: edge.target,
+    label: edge.label,
+  }));
+
+  const plan: PlanNode[] = workflow.nodes.map((node) => {
+    const label = getNodeLabel(node);
+    const dependsOn = edges.filter((edge) => edge.target === node.id).map((edge) => edge.source);
+    return {
+      id: node.id,
+      task: `${label}: ${task}`,
+      dependsOn,
+      agentRole: getAgentRole(node),
+      type: getWorkflowNodeType(node),
+      config: getNodeConfig(node),
+    };
+  });
+
+  return {
+    id: workflow.id,
+    name: workflow.name,
+    task,
+    templateId: workflow.templateId,
+    templateTitle: workflow.templateTitle,
+    outputHint: workflow.outputHint,
+    plan,
+    edges,
+  };
 }

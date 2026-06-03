@@ -24,6 +24,8 @@ interface Props {
   onAssignAgent?: (agentId: string, content: string) => void;
   onMentionQueryChange?: (query: string | null) => void;
   contextCount?: number;
+  workflowReference?: SavedWorkflowSnapshot | null;
+  onWorkflowReferenceChange?: (workflow: SavedWorkflowSnapshot | null) => void;
 }
 
 function getCursorMentionQuery(value: string, cursorPos: number): string | null {
@@ -53,6 +55,8 @@ export function QuickReplyBar({
   onAssignAgent,
   onMentionQueryChange,
   contextCount = 0,
+  workflowReference = null,
+  onWorkflowReferenceChange,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const workflowMenuRef = useRef<HTMLDivElement>(null);
@@ -79,6 +83,10 @@ export function QuickReplyBar({
   useEffect(() => {
     fitTextarea();
   }, [fitTextarea, value]);
+
+  useEffect(() => {
+    if (!value.trim() && workflowReference) onWorkflowReferenceChange?.(null);
+  }, [onWorkflowReferenceChange, value, workflowReference]);
 
   useEffect(() => {
     const refreshSavedWorkflows = () => setSavedWorkflows(loadSavedWorkflows());
@@ -138,6 +146,7 @@ export function QuickReplyBar({
       ? `${value.trimEnd()}\n\n${prompt}`
       : prompt;
     onChange(nextValue);
+    onWorkflowReferenceChange?.(workflow);
     setIsWorkflowMenuOpen(false);
     window.requestAnimationFrame(() => {
       fitTextarea();
@@ -169,6 +178,19 @@ export function QuickReplyBar({
             {contextCount > 0 && (
               <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
                 上下文 {contextCount}
+              </span>
+            )}
+            {workflowReference && (
+              <span className="inline-flex max-w-[180px] items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+                <span className="truncate">工作流 {workflowReference.name}</span>
+                <button
+                  type="button"
+                  onClick={() => onWorkflowReferenceChange?.(null)}
+                  className="grid h-4 w-4 shrink-0 place-items-center rounded-full hover:bg-[var(--surface-white)]"
+                  aria-label="取消引用工作流"
+                >
+                  ×
+                </button>
               </span>
             )}
             {isGroup && (
