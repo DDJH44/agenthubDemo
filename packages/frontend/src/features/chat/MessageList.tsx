@@ -688,6 +688,8 @@ const MessageBubble = memo(function MessageBubble({
                 deployStatus={payload?.status as string | undefined}
                 deployProvider={(payload?.platformLabel || payload?.platform) as string | undefined}
                 deployError={payload?.error as string | undefined}
+                deployVerified={payload?.verified as boolean | undefined}
+                deployVerificationStatus={payload?.verificationStatus as number | undefined}
               />
             )}
 

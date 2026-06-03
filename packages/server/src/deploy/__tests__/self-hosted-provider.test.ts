@@ -1,4 +1,4 @@
-import { deployManager } from "../index";
+import { deployManager, ensureHtmlUtf8Meta } from "../index";
 
 describe("Self-hosted deploy provider", () => {
   const envKeys = [
@@ -52,5 +52,22 @@ describe("Self-hosted deploy provider", () => {
     expect(result.success).toBe(false);
     expect(result.error).toContain("SELF_HOSTED_SSH_HOST");
     expect(result.error).toContain("SELF_HOSTED_SSH_USER");
+  });
+
+  it("injects an UTF-8 meta tag into HTML artifacts before deployment", () => {
+    const result = ensureHtmlUtf8Meta({
+      path: "index.html",
+      content: "<!doctype html><html><head><title>测试</title></head><body>中文</body></html>",
+    });
+
+    expect(result.content).toContain('<meta charset="utf-8">');
+    expect(result.content.indexOf('<meta charset="utf-8">')).toBeLessThan(result.content.indexOf("<title>"));
+  });
+
+  it("keeps existing charset meta tags unchanged", () => {
+    const source = '<!doctype html><html><head><meta charset="UTF-8"><title>ok</title></head><body>中文</body></html>';
+    const result = ensureHtmlUtf8Meta({ path: "index.html", content: source });
+
+    expect(result.content).toBe(source);
   });
 });

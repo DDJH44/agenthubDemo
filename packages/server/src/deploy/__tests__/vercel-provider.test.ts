@@ -41,9 +41,10 @@ describe("Vercel deploy provider", () => {
 
     const createBody = JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string);
     expect(createBody.name).toBe("agenthub-smoke");
-    expect(createBody.files).toEqual([
-      { file: "index.html", data: "<!DOCTYPE html><html><body>ok</body></html>" },
-    ]);
+    expect(createBody.files).toHaveLength(1);
+    expect(createBody.files[0].file).toBe("index.html");
+    expect(createBody.files[0].data).toContain('<meta charset="utf-8">');
+    expect(createBody.files[0].data).toContain("<body>ok</body>");
   });
 
   it("returns a failed result when Vercel reports an error readyState", async () => {

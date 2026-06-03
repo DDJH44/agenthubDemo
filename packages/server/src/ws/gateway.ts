@@ -868,7 +868,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                   }
                 );
                 if (result.success) {
-                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:completed", deployId, url: result.url || "", providerId: msg.providerId, timestamp: Date.now() });
+                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:completed", deployId, url: result.url || "", providerId: msg.providerId, verified: result.verified ?? msg.providerId === "self-hosted", verificationStatus: result.verificationStatus, timestamp: Date.now() });
                 } else {
                   emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:failed", deployId, error: result.error || "部署失败", providerId: msg.providerId, timestamp: Date.now() });
                 }
@@ -881,7 +881,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                   }
                 );
                 if (result.success) {
-                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:completed", deployId, url: result.url || "", providerId: msg.providerId, timestamp: Date.now() });
+                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:completed", deployId, url: result.url || "", providerId: msg.providerId, verified: result.verified ?? msg.providerId === "self-hosted", verificationStatus: result.verificationStatus, timestamp: Date.now() });
                 } else {
                   emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:failed", deployId, error: result.error || "部署失败", providerId: msg.providerId, timestamp: Date.now() });
                 }

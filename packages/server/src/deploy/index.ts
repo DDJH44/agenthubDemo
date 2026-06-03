@@ -45,6 +45,8 @@ export interface DeployResult {
   logs: string[];
   error?: string;
   downloadPath?: string;
+  verified?: boolean;
+  verificationStatus?: number;
 }
 
 export interface IDeployProvider {
@@ -56,6 +58,46 @@ export interface IDeployProvider {
     config: DeployConfig,
     onProgress: DeployProgressCallback
   ): Promise<DeployResult>;
+}
+
+const HTML_CHARSET_META = '<meta charset="utf-8">';
+const HTML_CHARSET_RE = /<meta\s+[^>]*charset\s*=/i;
+const HTML_PATH_RE = /\.html?$/i;
+const HTML_DOCUMENT_RE = /<!doctype\s+html|<html[\s>]/i;
+const HTML_HEAD_RE = /<head(\s[^>]*)?>/i;
+const HTML_ROOT_RE = /<html(\s[^>]*)?>/i;
+
+function isHtmlArtifact(artifact: DeployArtifact): boolean {
+  return HTML_PATH_RE.test(artifact.path) || HTML_DOCUMENT_RE.test(artifact.content);
+}
+
+export function ensureHtmlUtf8Meta(artifact: DeployArtifact): DeployArtifact {
+  if (!isHtmlArtifact(artifact) || HTML_CHARSET_RE.test(artifact.content)) {
+    return artifact;
+  }
+
+  if (HTML_HEAD_RE.test(artifact.content)) {
+    return {
+      ...artifact,
+      content: artifact.content.replace(HTML_HEAD_RE, (match) => `${match}\n    ${HTML_CHARSET_META}`),
+    };
+  }
+
+  if (HTML_ROOT_RE.test(artifact.content)) {
+    return {
+      ...artifact,
+      content: artifact.content.replace(HTML_ROOT_RE, (match) => `${match}\n<head>\n    ${HTML_CHARSET_META}\n</head>`),
+    };
+  }
+
+  return {
+    ...artifact,
+    content: `<!doctype html>\n<html>\n<head>\n    ${HTML_CHARSET_META}\n</head>\n<body>\n${artifact.content}\n</body>\n</html>`,
+  };
+}
+
+export function prepareDeployArtifacts(artifacts: DeployArtifact[]): DeployArtifact[] {
+  return artifacts.map(ensureHtmlUtf8Meta);
 }
 
 class VercelProvider implements IDeployProvider {
@@ -505,6 +547,42 @@ class SelfHostedProvider implements IDeployProvider {
     ];
   }
 
+  private verificationTimeoutMs(): number {
+    const parsed = Number(process.env.SELF_HOSTED_VERIFY_TIMEOUT_MS ?? 8000);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 8000;
+  }
+
+  private async verifyPublicUrl(url: string): Promise<{ ok: boolean; status?: number; error?: string }> {
+    if (!/^https?:\/\//i.test(url)) {
+      return { ok: false, error: "访问地址需要以 http:// 或 https:// 开头" };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.verificationTimeoutMs());
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        redirect: "follow",
+        signal: controller.signal,
+        headers: { "Cache-Control": "no-cache" },
+      });
+      return {
+        ok: response.ok,
+        status: response.status,
+        error: response.ok ? undefined : `HTTP ${response.status}`,
+      };
+    } catch (err) {
+      const error = err instanceof Error && err.name === "AbortError"
+        ? "访问验证超时"
+        : err instanceof Error
+          ? err.message
+          : String(err);
+      return { ok: false, error };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   private resolveConfig(config: DeployConfig, deployId: string) {
     const sshHost = config.sshHost || process.env.SELF_HOSTED_SSH_HOST;
     const sshUser = config.sshUser || process.env.SELF_HOSTED_SSH_USER;
@@ -629,6 +707,14 @@ class SelfHostedProvider implements IDeployProvider {
       }
 
       const url = target.publicUrl;
+      onProgress(94, "正在验证公网访问地址...");
+      logs.push(`访问验证: ${url}`);
+      const verification = await this.verifyPublicUrl(url);
+      if (!verification.ok) {
+        const detail = verification.status ? `HTTP ${verification.status}` : verification.error || "未知错误";
+        throw new Error(`部署已上传，但访问验证失败：${detail}`);
+      }
+      logs.push(`访问验证通过: HTTP ${verification.status}`);
       onProgress(100, `部署成功: ${url}`);
       logs.push(`部署成功: ${url}`);
 
@@ -638,6 +724,8 @@ class SelfHostedProvider implements IDeployProvider {
         url,
         providerId: this.id,
         logs,
+        verified: true,
+        verificationStatus: verification.status,
       };
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "未知错误";
@@ -698,7 +786,7 @@ class DeployManager {
       };
     }
 
-    return provider.deploy(deployId, artifacts, config, onProgress);
+    return provider.deploy(deployId, prepareDeployArtifacts(artifacts), config, onProgress);
   }
 }
 

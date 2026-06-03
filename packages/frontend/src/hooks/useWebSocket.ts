@@ -640,6 +640,13 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         case "deploy:failed": {
           const status = msg.type === "deploy:progress" ? "deploying" : msg.type === "deploy:completed" ? "success" : "failed";
           const url = "url" in msg ? msg.url : undefined;
+          const finalLog = msg.type === "deploy:completed"
+            ? msg.verified
+              ? `部署完成，已验证可访问：${msg.url}`
+              : `部署完成：${msg.url}`
+            : msg.type === "deploy:failed"
+              ? msg.error
+              : "";
           const conversationId = eventConversationId(msg);
           if (!conversationId || isActiveConversation(conversationId)) {
             useWorkspaceStore.getState().setDeployStatus(status, url, {
@@ -647,6 +654,15 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
               providerId: msg.providerId,
               logs: msg.type === "deploy:progress" ? msg.logs : [msg.type === "deploy:completed" ? `部署完成：${msg.url}` : msg.error],
               error: msg.type === "deploy:failed" ? msg.error : null,
+            });
+          }
+
+          if (msg.type === "deploy:completed" && msg.verified && (!conversationId || isActiveConversation(conversationId))) {
+            useWorkspaceStore.getState().setDeployStatus("success", url, {
+              progress: 100,
+              providerId: msg.providerId,
+              logs: [finalLog],
+              error: null,
             });
           }
 
@@ -664,6 +680,8 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
                 providerId: msg.providerId,
                 deployId: msg.deployId,
                 status: "success",
+                verified: msg.verified,
+                verificationStatus: msg.verificationStatus,
                 changeSummary: `部署成功：${msg.providerId}`,
               },
             };
@@ -682,6 +700,8 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
                 url: msg.url,
                 deployId: msg.deployId,
                 artifactId: artifact.id,
+                verified: msg.verified,
+                verificationStatus: msg.verificationStatus,
               },
               timestamp: Date.now(),
             });

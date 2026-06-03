@@ -23,6 +23,8 @@ interface Props {
   deployStatus?: string;
   deployProvider?: string;
   deployError?: string;
+  deployVerified?: boolean;
+  deployVerificationStatus?: number;
   onEdit?: (content: string) => void;
   onDeploy?: () => void;
   onPreview?: () => void;
@@ -582,18 +584,23 @@ function DeployView({
   status,
   provider,
   error,
+  verified,
+  verificationStatus,
   conversationId,
 }: {
   url?: string;
   status?: string;
   provider?: string;
   error?: string;
+  verified?: boolean;
+  verificationStatus?: number;
   conversationId?: string;
 }) {
   const done = status === "done" || status === "completed";
   const failed = status === "failed" || status === "error";
   const label = done ? "部署完成" : failed ? "部署失败" : "部署中";
   const color = done ? "var(--success)" : failed ? "var(--danger)" : "#174ea6";
+  const displayLabel = done && verified ? "部署完成，已验证" : label;
   const addMessage = useChatStore((state) => state.addMessage);
 
   const handoffToCodex = () => {
@@ -650,8 +657,13 @@ function DeployView({
       <div className="p-3">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full" style={{ background: color }} />
-          <span className="text-sm font-semibold" style={{ color }}>{label}</span>
+          <span className="text-sm font-semibold" style={{ color }}>{displayLabel}</span>
         </div>
+        {verified && (
+          <p className="mt-2 w-fit rounded-md px-2 py-1 text-[11px] font-semibold" style={{ color: "var(--success)", background: "var(--success-subtle)", border: "1px solid var(--success-border)" }}>
+            已验证可访问{verificationStatus ? ` · HTTP ${verificationStatus}` : ""}
+          </p>
+        )}
         {error && (
           <p className="mt-2 rounded-md px-2 py-1.5 text-xs" style={{ color: "var(--danger)", background: "var(--danger-subtle)", lineHeight: 1.5 }}>
             {error}
@@ -683,6 +695,8 @@ export function ArtifactCard({
   deployStatus,
   deployProvider,
   deployError,
+  deployVerified,
+  deployVerificationStatus,
   onEdit,
   onPreview,
 }: Props) {
@@ -697,10 +711,10 @@ export function ArtifactCard({
       return <DocumentView content={content} filename={filename} artifactId={artifactId} conversationId={conversationId} onPreview={onPreview} />;
     case "slides":
       return <SlidesView content={content} filename={filename} artifactId={artifactId} onPreview={onPreview} />;
-    case "preview_url":
-      return <PreviewView url={deployUrl || content} content={content} />;
+      case "preview_url":
+        return <PreviewView url={deployUrl || content} content={content} />;
     case "deploy_url":
-      return <DeployView url={deployUrl || content} status={deployStatus} provider={deployProvider} error={deployError} conversationId={conversationId} />;
+      return <DeployView url={deployUrl || content} status={deployStatus} provider={deployProvider} error={deployError} verified={deployVerified} verificationStatus={deployVerificationStatus} conversationId={conversationId} />;
     case "diff":
       return <DiffView content={content} />;
     default:

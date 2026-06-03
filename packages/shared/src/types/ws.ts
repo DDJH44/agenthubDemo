@@ -122,7 +122,7 @@ export type WSServerMessage =
   | { type: "artifact:updated"; conversationId: string; artifact: Artifact }
   | { type: "artifact:version"; conversationId: string; artifactId: string; versions: Array<{ version: number; content: string; createdBy: string; createdAt: number; changeSummary?: string }> }
   | { type: "deploy:progress"; conversationId?: string; deployId: string; status: string; progress: number; providerId: string; logs: string[] }
-  | { type: "deploy:completed"; conversationId?: string; deployId: string; url: string; providerId: string }
+  | { type: "deploy:completed"; conversationId?: string; deployId: string; url: string; providerId: string; verified?: boolean; verificationStatus?: number }
   | { type: "deploy:failed"; conversationId?: string; deployId: string; error: string; providerId: string };
 
 export interface McpServerInfo {
