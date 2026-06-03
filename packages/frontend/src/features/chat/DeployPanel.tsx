@@ -109,6 +109,10 @@ function normalizeStatus(status: string | null) {
   return "idle";
 }
 
+function preferredUserDeploymentTarget(targets: DeploymentTarget[]) {
+  return targets.find((target) => target.status === "ready") ?? targets[0] ?? null;
+}
+
 function lifecycleState(stepProgress: number, currentProgress: number, status: string) {
   if (status === "failed" && currentProgress >= stepProgress - 20) return "failed";
   if (status === "success" || currentProgress >= stepProgress) return "done";
@@ -186,6 +190,11 @@ export function DeployPanel() {
         if (cancelled) return;
         setDefaultDeploymentTarget(data.defaultTarget);
         setDeploymentTargets(data.targets);
+        const fallbackTarget = data.defaultTarget.configured === false ? preferredUserDeploymentTarget(data.targets) : null;
+        if (fallbackTarget) {
+          setSelectedDeploymentTargetId((current) => current === "platform-default" ? fallbackTarget.id : current);
+          setStatusMessage(`默认服务器未配置，已自动选择你的服务器目标：${fallbackTarget.name}`);
+        }
       })
       .catch((error) => {
         if (!cancelled) setStatusMessage(error instanceof Error ? error.message : "部署目标加载失败");
@@ -238,7 +247,7 @@ export function DeployPanel() {
     if (!defaultDeploymentTarget?.envTemplate) return;
     try {
       await navigator.clipboard.writeText(defaultDeploymentTarget.envTemplate);
-      setStatusMessage("默认服务器环境变量模板已复制，可粘贴到 .env.local。");
+      setStatusMessage("默认服务器环境变量模板已复制，可由管理员粘贴到服务端 .env.local。");
     } catch {
       setStatusMessage("浏览器暂不允许自动复制，请手动选中模板复制。");
     }
@@ -271,9 +280,11 @@ export function DeployPanel() {
     setStatusMessage(null);
     try {
       await api.delete<{ ok: boolean }>(`/api/deployment-targets/${target.id}`);
-      setDeploymentTargets((targets) => targets.filter((item) => item.id !== target.id));
+      const nextTargets = deploymentTargets.filter((item) => item.id !== target.id);
+      setDeploymentTargets(nextTargets);
       if (selectedDeploymentTargetId === target.id) {
-        setSelectedDeploymentTargetId("platform-default");
+        const fallbackTarget = defaultDeploymentTarget?.configured === false ? preferredUserDeploymentTarget(nextTargets) : null;
+        setSelectedDeploymentTargetId(fallbackTarget?.id ?? "platform-default");
         setTargetPublicKey("");
       }
       setStatusMessage("服务器目标已删除。");
@@ -519,7 +530,7 @@ export function DeployPanel() {
           <div className="mb-3 flex items-center justify-between gap-2">
             <div>
               <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>服务器目标</p>
-              <p className="mt-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>默认目标免配置，自有服务器使用公钥授权</p>
+              <p className="mt-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>平台默认目标由管理员配置，自有服务器使用公钥授权</p>
             </div>
             <button
               type="button"
@@ -552,7 +563,7 @@ export function DeployPanel() {
                     </span>
                   </div>
                   <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
-                    {defaultDeploymentTarget?.publicUrl || "管理员配置后可直接部署"}
+                    {defaultDeploymentTarget?.publicUrl || "未配置时可使用下方自有服务器"}
                   </p>
                 </button>
                 <button
@@ -586,6 +597,9 @@ export function DeployPanel() {
                     <div className="rounded-lg px-2 py-1.5" style={{ color: "var(--danger)", background: "var(--danger-subtle)", border: "1px solid var(--danger-border)" }}>
                       <p className="text-[10px] font-bold">缺少环境变量</p>
                       <p className="mt-1 text-[10px]">{defaultDeploymentTarget.missingEnv?.join(" / ")}</p>
+                      <p className="mt-1 text-[10px]" style={{ color: "var(--fg-secondary)" }}>
+                        这是平台默认服务器的服务端配置；普通用户可直接选择已添加的自有服务器目标。
+                      </p>
                     </div>
                   )}
 
