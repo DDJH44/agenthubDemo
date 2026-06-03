@@ -19,6 +19,8 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { useChatStore } from "@/stores/chat-store";
+import { useNavigationStore } from "@/stores/navigation-store";
 
 type NodeStatus = "idle" | "running" | "done" | "failed";
 
@@ -244,7 +246,36 @@ function LogItem({ item }: { item: string }) {
   );
 }
 
-function OutputPanel({ output }: { output: WorkflowOutput | null }) {
+function serializeWorkflowOutput(output: WorkflowOutput) {
+  const steps = output.steps.map((step) => {
+    const tool = step.toolUsed ? `\n工具：${step.toolUsed}` : "";
+    return `### ${step.id}. ${step.task}${tool}\n${step.result}`;
+  }).join("\n\n");
+
+  return [
+    `# ${output.title}`,
+    `状态：${output.status}`,
+    "## 摘要",
+    output.summary,
+    steps ? "## 步骤结果" : "",
+    steps,
+    output.errors?.length ? `## 错误\n${output.errors.join("\n")}` : "",
+  ].filter(Boolean).join("\n\n");
+}
+
+function OutputPanel({
+  output,
+  actionStatus,
+  onCopy,
+  onSendToChat,
+  onAskFollowUp,
+}: {
+  output: WorkflowOutput | null;
+  actionStatus: string;
+  onCopy: () => void;
+  onSendToChat: () => void;
+  onAskFollowUp: () => void;
+}) {
   if (!output) {
     return (
       <div className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
@@ -301,11 +332,46 @@ function OutputPanel({ output }: { output: WorkflowOutput | null }) {
           {output.errors.join("；")}
         </div>
       ) : null}
+
+      <div className="mt-3 grid grid-cols-3 gap-1.5">
+        <button
+          type="button"
+          onClick={onCopy}
+          disabled={output.status === "running"}
+          className="h-8 rounded-md text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ border: "1px solid var(--border)", color: "var(--fg-secondary)", background: "var(--surface-white)" }}
+        >
+          复制
+        </button>
+        <button
+          type="button"
+          onClick={onSendToChat}
+          disabled={output.status === "running"}
+          className="h-8 rounded-md text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ border: "1px solid var(--accent-border)", color: "var(--accent)", background: "var(--accent-subtle)" }}
+        >
+          发到会话
+        </button>
+        <button
+          type="button"
+          onClick={onAskFollowUp}
+          disabled={output.status === "running"}
+          className="h-8 rounded-md text-[11px] font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+          style={{ background: "var(--accent)" }}
+        >
+          继续追问
+        </button>
+      </div>
+
+      {actionStatus && (
+        <p className="mt-2 text-[11px]" style={{ color: "var(--fg-tertiary)" }}>{actionStatus}</p>
+      )}
     </div>
   );
 }
 
 export function WorkflowsView() {
+  const setActiveNav = useNavigationStore((state) => state.setActiveNav);
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
@@ -313,6 +379,7 @@ export function WorkflowsView() {
   const [task, setTask] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState<WorkflowTemplate | null>(null);
   const [workflowOutput, setWorkflowOutput] = useState<WorkflowOutput | null>(null);
+  const [outputActionStatus, setOutputActionStatus] = useState("");
   const [runLog, setRunLog] = useState<string[]>(["选择模板或拖拽节点，形成一个可复用的多 Agent 流程。"]);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
@@ -380,6 +447,7 @@ export function WorkflowsView() {
     setMode("edit");
     setSelectedTemplate(null);
     setWorkflowOutput(null);
+    setOutputActionStatus("");
     setRunLog(["画布已清空，可以重新选择模板或拖拽节点。"]);
   }, [setEdges, setNodes]);
 
@@ -391,6 +459,7 @@ export function WorkflowsView() {
     setMode("edit");
     setSelectedTemplate(template);
     setWorkflowOutput(null);
+    setOutputActionStatus("");
     setTask(template.task);
     setRunLog([`已载入模板：${template.title}`, `预期输出：${template.output}`, template.desc]);
   }, [setEdges, setNodes]);
@@ -419,6 +488,7 @@ export function WorkflowsView() {
 
     setMode("run");
     setRunLog(["开始执行工作流，正在提交给后端编排器。"]);
+    setOutputActionStatus("");
     setWorkflowOutput({
       status: "running",
       title: selectedTemplate ? selectedTemplate.title : "自定义工作流",
@@ -511,6 +581,31 @@ export function WorkflowsView() {
       });
       setRunLog((items) => [`执行失败：${error instanceof Error ? error.message : "未知错误"}`, ...items].slice(0, 8));
     }
+  };
+
+  const copyWorkflowOutput = async () => {
+    if (!workflowOutput || workflowOutput.status === "running") return;
+    try {
+      await navigator.clipboard.writeText(serializeWorkflowOutput(workflowOutput));
+      setOutputActionStatus("结果已复制到剪贴板。");
+    } catch {
+      setOutputActionStatus("复制失败，请手动选择文本复制。");
+    }
+  };
+
+  const sendWorkflowOutputToChat = (intent: "handoff" | "follow-up") => {
+    if (!workflowOutput || workflowOutput.status === "running") return;
+    const serialized = serializeWorkflowOutput(workflowOutput);
+    const text = intent === "follow-up"
+      ? `请基于以下工作流输出继续推进，补充下一步可执行方案：\n\n${serialized}`
+      : `请接收并继续处理以下工作流输出：\n\n${serialized}`;
+    const chatStore = useChatStore.getState();
+    if (!chatStore.activeConversationId) {
+      chatStore.setPendingMessage(text);
+    }
+    window.dispatchEvent(new CustomEvent("dashboard:send", { detail: { text } }));
+    setActiveNav("chat");
+    setOutputActionStatus(intent === "follow-up" ? "已发送到会话继续追问。" : "已发送到会话。");
   };
 
   const selectedData = selectedNode?.data;
@@ -687,7 +782,13 @@ export function WorkflowsView() {
 
           <aside className="w-[340px] shrink-0 overflow-y-auto p-4" style={{ borderLeft: "1px solid var(--border)", background: "var(--page-bg)" }}>
             <section className="mb-4">
-              <OutputPanel output={workflowOutput} />
+              <OutputPanel
+                output={workflowOutput}
+                actionStatus={outputActionStatus}
+                onCopy={copyWorkflowOutput}
+                onSendToChat={() => sendWorkflowOutputToChat("handoff")}
+                onAskFollowUp={() => sendWorkflowOutputToChat("follow-up")}
+              />
             </section>
 
             <section className="mb-4">
