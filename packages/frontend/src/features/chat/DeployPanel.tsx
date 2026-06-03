@@ -164,6 +164,7 @@ export function DeployPanel() {
   const [targetFormOpen, setTargetFormOpen] = useState(false);
   const [targetSaving, setTargetSaving] = useState(false);
   const [targetTesting, setTargetTesting] = useState(false);
+  const [targetDeletingId, setTargetDeletingId] = useState<string | null>(null);
   const [targetPublicKey, setTargetPublicKey] = useState("");
   const [targetForm, setTargetForm] = useState({
     name: "",
@@ -280,6 +281,27 @@ export function DeployPanel() {
       setStatusMessage(error instanceof Error ? error.message : "服务器连接测试失败");
     } finally {
       setTargetTesting(false);
+    }
+  };
+
+  const deleteDeploymentTarget = async (target: DeploymentTarget) => {
+    const confirmed = window.confirm(`确定删除服务器目标「${target.name}」吗？`);
+    if (!confirmed) return;
+
+    setTargetDeletingId(target.id);
+    setStatusMessage(null);
+    try {
+      await api.delete<{ ok: boolean }>(`/api/deployment-targets/${target.id}`);
+      setDeploymentTargets((targets) => targets.filter((item) => item.id !== target.id));
+      if (selectedDeploymentTargetId === target.id) {
+        setSelectedDeploymentTargetId("platform-default");
+        setTargetPublicKey("");
+      }
+      setStatusMessage("服务器目标已删除。");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "服务器目标删除失败");
+    } finally {
+      setTargetDeletingId(null);
     }
   };
 
@@ -549,29 +571,55 @@ export function DeployPanel() {
             </button>
 
             {deploymentTargets.map((target) => (
-              <button
+              <div
                 key={target.id}
-                type="button"
-                onClick={() => {
-                  setSelectedDeploymentTargetId(target.id);
-                  setTargetPublicKey("");
-                }}
-                className="w-full rounded-lg p-2.5 text-left"
+                className="flex items-stretch gap-2 rounded-lg p-2.5"
                 style={{
                   background: selectedDeploymentTargetId === target.id ? "var(--accent-subtle)" : "var(--surface-low)",
                   border: `1px solid ${selectedDeploymentTargetId === target.id ? "var(--accent-border)" : "var(--border)"}`,
                 }}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{target.name}</p>
-                  <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: target.status === "ready" ? "var(--success)" : "var(--accent)", background: target.status === "ready" ? "var(--success-subtle)" : "var(--accent-subtle)" }}>
-                    {target.status === "ready" ? "已验证" : "待授权"}
-                  </span>
-                </div>
-                <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
-                  {target.username}@{target.host}:{target.port} · {target.publicUrl}
-                </p>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedDeploymentTargetId(target.id);
+                    setTargetPublicKey("");
+                  }}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{target.name}</p>
+                    <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: target.status === "ready" ? "var(--success)" : "var(--accent)", background: target.status === "ready" ? "var(--success-subtle)" : "var(--accent-subtle)" }}>
+                      {target.status === "ready" ? "已验证" : "待授权"}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+                    {target.username}@{target.host}:{target.port} · {target.publicUrl}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteDeploymentTarget(target)}
+                  disabled={targetDeletingId === target.id}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg"
+                  title="删除服务器目标"
+                  aria-label={`删除服务器目标 ${target.name}`}
+                  style={{
+                    color: "var(--danger)",
+                    background: "var(--surface-white)",
+                    border: "1px solid var(--border)",
+                    opacity: targetDeletingId === target.id ? 0.55 : 1,
+                  }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M3 6h18" />
+                    <path d="M8 6V4h8v2" />
+                    <path d="M19 6l-1 14H6L5 6" />
+                    <path d="M10 11v5" />
+                    <path d="M14 11v5" />
+                  </svg>
+                </button>
+              </div>
             ))}
           </div>
 
