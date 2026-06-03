@@ -236,7 +236,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         case "agent:stream": {
           const conversationId = eventConversationId(msg);
           if (conversationId) {
-            useChatStore.getState().appendStreamChunk(conversationId, msg.messageId, msg.chunk, msg.agentId);
+            useChatStore.getState().appendStreamChunk(conversationId, msg.messageId, msg.chunk, msg.agentId, msg.jobId);
           }
           break;
         }
@@ -336,6 +336,8 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           const conversationId = eventConversationId(msg);
           if (conversationId) {
             useChatStore.getState().setConversationTaskSummary(conversationId, msg.summary, msg.jobId);
+            useChatStore.getState().setConversationStreaming(conversationId, false);
+            useChatStore.getState().clearConversationTyping(conversationId);
             upsertTaskStatusMessage(conversationId, taskMessageId(msg.jobId, "completed"), {
               title: "任务完成，结果已整理",
               body: "文字结果已在消息中生成，代码或网页产物可继续预览、编辑和部署。",
@@ -351,6 +353,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           const conversationId = eventConversationId(msg);
           if (conversationId) {
             useChatStore.getState().setConversationStreaming(conversationId, false);
+            useChatStore.getState().clearConversationTyping(conversationId);
             upsertTaskStatusMessage(conversationId, taskMessageId(msg.jobId, "failed"), {
               title: "任务执行失败",
               body: msg.error || "任务执行中断，可交给 PMO 重新拆解或交给 Codex 排查。",

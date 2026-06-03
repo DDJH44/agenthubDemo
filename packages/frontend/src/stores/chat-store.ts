@@ -185,6 +185,31 @@ function syncActiveTaskFields(
   };
 }
 
+function getCompletedJobIdsFromMessages(messages: Message[]): string[] {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    const jobId = message.type === "agent_message" && typeof message.payload?.jobId === "string"
+      ? message.payload.jobId
+      : null;
+    if (jobId) ids.add(jobId);
+  }
+  return [...ids];
+}
+
+function findLatestCompletedSummary(messages: Message[]): string {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.type === "agent_message" && typeof message.payload?.jobId === "string") {
+      return message.content;
+    }
+  }
+  return "";
+}
+
+function mergeJobIds(existing: string[], incoming: string[]): string[] {
+  return [...new Set([...existing, ...incoming])].slice(-20);
+}
+
 interface ChatStore {
   connected: boolean; conversations: Conversation[]; activeConversationId: string | null;
   messages: Record<string, Message[]>; agentStates: Record<string, AgentState>;
@@ -241,6 +266,7 @@ interface ChatStore {
 
   setConversationMode: (convId: string, mode: "single" | "group") => void;
   setAgentTyping: (convId: string, agentId: string, isTyping: boolean) => void;
+  clearConversationTyping: (convId: string) => void;
   setCurrentPreview: (preview: ChatStore["currentPreview"]) => void;
   addAgentMessage: (convId: string, msg: { agentId: string; agentName: string; agentRole: string; content: string; timestamp: number }) => void;
   addContextReference: (convId: string, ref: Omit<ContextReference, "id" | "createdAt"> & { id?: string; createdAt?: number }) => void;
@@ -270,7 +296,7 @@ interface ChatStore {
   updateStepById: (stepId: string, status: StepProgress["status"], result?: string) => void;
   updateConversationStepById: (convId: string, stepId: string, status: StepProgress["status"], result?: string) => void;
   updateAgentState: (id: string, state: Partial<AgentState>) => void;
-  appendStreamChunk: (convId: string, messageId: string, chunk: string, agentId?: string) => void;
+  appendStreamChunk: (convId: string, messageId: string, chunk: string, agentId?: string, jobId?: string) => void;
   addAgentStep: (step: AgentStepInfo) => void;
   addConversationAgentStep: (convId: string, step: AgentStepInfo) => void;
   clearAgentSteps: () => void;
@@ -449,7 +475,28 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         ? existing
         : mergeMessageLists(existing, messages);
       const nextMessages = { ...s.messages, [convId]: merged };
+      const completedJobIds = getCompletedJobIdsFromMessages(merged);
       saveMessages(nextMessages);
+      if (completedJobIds.length > 0) {
+        const previousTaskState = taskStateFor(s.conversationTasks, convId);
+        const nextTaskState: ConversationTaskState = {
+          ...previousTaskState,
+          taskSummary: previousTaskState.taskSummary || findLatestCompletedSummary(merged),
+          isStreaming: false,
+          streamBuffer: "",
+        };
+        return {
+          messages: nextMessages,
+          conversationTasks: { ...s.conversationTasks, [convId]: nextTaskState },
+          streamingMessages: { ...s.streamingMessages, [convId]: {} },
+          completedJobs: {
+            ...s.completedJobs,
+            [convId]: mergeJobIds(s.completedJobs[convId] ?? [], completedJobIds),
+          },
+          agentTyping: { ...s.agentTyping, [convId]: [] },
+          ...syncActiveTaskFields(s.activeConversationId, convId, nextTaskState),
+        };
+      }
       return { messages: nextMessages };
     }),
 
@@ -516,9 +563,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return { agentStates: next };
     }),
 
-  appendStreamChunk: (convId, messageId, chunk, agentId = "assistant") => {
+  appendStreamChunk: (convId, messageId, chunk, agentId = "assistant", jobId) => {
     if (!convId || !messageId || !chunk) return;
     set((s) => {
+      const completedForConversation = s.completedJobs[convId] ?? [];
+      const isCompletedJob = jobId
+        ? completedForConversation.includes(jobId)
+        : completedForConversation.some((completedJobId) => messageId.startsWith(`${completedJobId}-`));
+      if (isCompletedJob) return {};
+
       const existing = s.messages[convId] ?? [];
       const messageIndex = existing.findIndex((message) => message.id === messageId);
       const now = Date.now();
@@ -658,6 +711,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         conversationTasks: { ...s.conversationTasks, [convId]: nextTaskState },
         streamingMessages: { ...s.streamingMessages, [convId]: {} },
         completedJobs: nextCompletedJobs,
+        agentTyping: { ...s.agentTyping, [convId]: [] },
         ...syncActiveTaskFields(s.activeConversationId, convId, nextTaskState),
       };
     }),
@@ -923,6 +977,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         : current.filter((id) => id !== agentId);
       return { agentTyping: { ...s.agentTyping, [convId]: next } };
     }),
+
+  clearConversationTyping: (convId) =>
+    set((s) => ({ agentTyping: { ...s.agentTyping, [convId]: [] } })),
 
   setCurrentPreview: (preview) => set({ currentPreview: preview }),
 
