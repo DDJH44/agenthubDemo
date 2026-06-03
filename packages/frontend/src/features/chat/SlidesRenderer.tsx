@@ -1,261 +1,213 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { Artifact } from "@agenthub/shared";
+import { parseSlidesArtifact, type ParsedSlide, type SlideBlock } from "./slide-parser";
 
-interface Slide {
-  title: string;
-  content: string;
-  notes?: string;
+function isSafeImageSrc(src: string) {
+  return /^(https?:\/\/|data:image\/|\/)/i.test(src);
 }
 
-function parseSlidesFromMarkdown(md: string): Slide[] {
-  const slides: Slide[] = [];
-  const content = md.trim();
-  const parts = content.split(/(?=^## )/m);
-
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (!trimmed) continue;
-    const lines = trimmed.split("\n");
-    let title = "";
-    let body = "";
-    let notes: string | undefined;
-    let inNotes = false;
-
-    for (const line of lines) {
-      if (line.startsWith("## ")) {
-        title = line.replace("## ", "").trim();
-      } else if (line.startsWith("> ")) {
-        inNotes = true;
-        notes = (notes ?? "") + line.replace("> ", "").trim() + "\n";
-      } else if (inNotes) {
-        notes = (notes ?? "") + line.trim() + "\n";
-      } else {
-        body += line + "\n";
-      }
-    }
-
-    slides.push({ title, content: body.trim(), notes: notes?.trim() });
+function SlideBlockView({ block }: { block: SlideBlock }) {
+  switch (block.type) {
+    case "heading":
+      return <h3 className="m-0 text-lg font-bold leading-tight" style={{ color: "var(--fg-primary)" }}>{block.text}</h3>;
+    case "bullet":
+      return (
+        <ul className="m-0 space-y-2 pl-0">
+          {block.items.map((item, index) => (
+            <li key={`${index}-${item}`} className="flex gap-2 text-sm leading-relaxed" style={{ color: "var(--fg-secondary)" }}>
+              <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--accent)" }} />
+              <span>{item}</span>
+            </li>
+          ))}
+        </ul>
+      );
+    case "image":
+      return isSafeImageSrc(block.src) ? (
+        <figure className="m-0 overflow-hidden rounded-lg" style={{ border: "1px solid var(--border)", background: "var(--surface-low)" }}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={block.src} alt={block.alt || ""} className="max-h-[220px] w-full object-contain" />
+          {block.alt && <figcaption className="px-3 py-1.5 text-[11px]" style={{ color: "var(--fg-tertiary)" }}>{block.alt}</figcaption>}
+        </figure>
+      ) : null;
+    case "code":
+      return (
+        <pre className="m-0 max-h-[180px] overflow-auto rounded-lg p-3 text-[11px] leading-relaxed" style={{ color: "#dbe7ff", background: "#10182b" }}>
+          <code>{block.code}</code>
+        </pre>
+      );
+    case "quote":
+      return (
+        <blockquote className="m-0 rounded-lg px-3 py-2 text-sm leading-relaxed" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)", borderLeft: "3px solid var(--accent)" }}>
+          {block.text}
+        </blockquote>
+      );
+    case "metric":
+      return (
+        <div className="rounded-lg px-4 py-3" style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+          <div className="text-2xl font-bold" style={{ color: "var(--accent)" }}>{block.value}</div>
+          <div className="mt-1 text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{block.label}</div>
+          {block.helper && <div className="mt-1 text-[11px]" style={{ color: "var(--fg-tertiary)" }}>{block.helper}</div>}
+        </div>
+      );
+    case "text":
+    default:
+      return <p className="m-0 whitespace-pre-wrap text-sm leading-relaxed" style={{ color: "var(--fg-secondary)" }}>{block.text}</p>;
   }
-
-  if (slides.length === 0 && content.length > 0) {
-    slides.push({ title: "幻灯片 1", content });
-  }
-
-  return slides;
 }
 
-function parseSlidesFromJson(json: string): Slide[] {
-  try {
-    const data = JSON.parse(json);
-    if (Array.isArray(data)) return data;
-    if (data.slides && Array.isArray(data.slides)) return data.slides;
-    return [];
-  } catch {
-    return [];
-  }
+function Thumbnail({ slide, index, active, onClick }: { slide: ParsedSlide; index: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-start gap-2 rounded-lg p-2 text-left transition-colors"
+      style={{
+        background: active ? "var(--accent-subtle)" : "transparent",
+        border: `1px solid ${active ? "var(--accent-border)" : "transparent"}`,
+      }}
+    >
+      <span
+        className="grid h-5 w-5 shrink-0 place-items-center rounded-md text-[10px] font-bold"
+        style={{ color: active ? "#fff" : "var(--fg-tertiary)", background: active ? "var(--accent)" : "var(--surface-low)" }}
+      >
+        {index + 1}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{slide.title}</span>
+        <span className="mt-0.5 block truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+          {slide.subtitle || `${slide.blocks.length} blocks`}
+        </span>
+      </span>
+    </button>
+  );
 }
 
-function renderSlideContentToHtml(content: string): string {
-  let html = content
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+function SlideCanvas({ slide, index, total }: { slide: ParsedSlide; index: number; total: number }) {
+  const isTitleLayout = slide.layout === "title" || slide.layout === "section";
+  const blocks = slide.blocks.length > 0 ? slide.blocks : [{ type: "text" as const, text: "暂无正文内容" }];
 
-  html = html.replace(/^### (.+)$/gm, "<h3>$1</h3>");
-  html = html.replace(/^## (.+)$/gm, "<h2>$1</h2>");
-  html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
-  html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
-  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+  return (
+    <div className="flex h-full flex-col overflow-hidden rounded-lg" style={{ background: "#ffffff", border: "1px solid var(--border)", boxShadow: "0 16px 40px rgba(31, 42, 68, 0.10)" }}>
+      <div
+        className="shrink-0 px-7 py-5"
+        style={{
+          background: isTitleLayout ? "linear-gradient(135deg, #f8faff 0%, #eef3ff 100%)" : "#f8faff",
+          borderBottom: "1px solid var(--divider)",
+        }}
+      >
+        <div className="mb-2 h-1 w-10 rounded-full" style={{ background: "var(--accent)" }} />
+        <h2 className="m-0 text-2xl font-bold leading-tight" style={{ color: "var(--fg-primary)", letterSpacing: 0 }}>{slide.title}</h2>
+        {slide.subtitle && <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--fg-tertiary)" }}>{slide.subtitle}</p>}
+      </div>
 
-  html = html.replace(/^- (.+)$/gm, "<li>$1</li>");
-  html = html.replace(/(<li>.*<\/li>\n?)+/g, "<ul>$&</ul>");
-  html = html.replace(/<\/ul>\n<ul>/g, "");
+      <div className={`grid flex-1 gap-4 overflow-auto p-7 ${isTitleLayout ? "content-center" : "content-start"}`}>
+        {blocks.map((block, blockIndex) => <SlideBlockView key={`${block.type}-${blockIndex}`} block={block} />)}
+      </div>
 
-  html = html.replace(/\n\n/g, "</p><p>");
-  html = html.replace(/\n/g, "<br>");
-
-  return `<p>${html}</p>`;
+      <div className="flex h-9 shrink-0 items-center justify-between px-7 text-[10px]" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", borderTop: "1px solid var(--divider)" }}>
+        <span>AgentHub Slides</span>
+        <span>{index + 1} / {total}</span>
+      </div>
+    </div>
+  );
 }
 
 export function SlidesRenderer({ artifact }: { artifact: Artifact }) {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [showNotes, setShowNotes] = useState(false);
+  const slides = useMemo(() => parseSlidesArtifact(artifact), [artifact]);
+  const totalSlides = slides.length;
 
-  const slides: Slide[] = useMemo(() => {
-    if (!artifact.content) return [];
-    if (artifact.type === "slides" || artifact.filename?.endsWith(".json")) {
-      const jsonSlides = parseSlidesFromJson(artifact.content);
-      if (jsonSlides.length > 0) return jsonSlides;
-    }
-    return parseSlidesFromMarkdown(artifact.content);
-  }, [artifact.content, artifact.type, artifact.filename]);
-
-  if (slides.length === 0) {
+  if (totalSlides === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--fg-disabled)" strokeWidth="1.5" strokeLinecap="round">
+      <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--fg-disabled)" strokeWidth="1.5" strokeLinecap="round" aria-hidden="true">
           <rect x="2" y="4" width="20" height="16" rx="2" />
           <path d="M6 8h.01M6 12h.01M6 16h.01M10 8h8M10 12h8M10 16h8" />
         </svg>
-        <p style={{ fontSize: "var(--text-xs)", color: "var(--fg-disabled)", marginTop: 12 }}>无法解析幻灯片内容</p>
+        <p className="mt-3 text-xs" style={{ color: "var(--fg-disabled)" }}>无法解析幻灯片内容</p>
       </div>
     );
   }
 
-  const slide = slides[currentSlide];
-  const totalSlides = slides.length;
+  const safeCurrentSlide = Math.min(currentSlide, Math.max(0, totalSlides - 1));
+  const slide = slides[safeCurrentSlide];
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "var(--surface-white)" }}>
-      {/* 幻灯片区域 */}
-      <div className="flex-1 flex flex-col overflow-hidden" style={{ background: "#fff" }}>
-        {/* 幻灯片卡片 */}
-        <div className="flex-1 flex items-center justify-center p-6 overflow-auto">
-          <div
-            className="w-full max-w-3xl rounded-xl overflow-hidden"
-            style={{
-              boxShadow: "0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06)",
-              border: "1px solid var(--border)",
-              aspectRatio: "16 / 9",
-              display: "flex",
-              flexDirection: "column",
-            }}
-          >
-            {/* 幻灯片头部 */}
-            <div
-              className="shrink-0 px-8 py-5"
-              style={{ borderBottom: "1px solid var(--border)", background: "linear-gradient(135deg, var(--accent), #6366f1)" }}
-            >
-              <h2 style={{ fontSize: 22, fontWeight: 700, color: "#fff", margin: 0, letterSpacing: 0 }}>
-                {slide.title || `幻灯片 ${currentSlide + 1}`}
-              </h2>
-              {slide.notes && (
-                <p style={{ fontSize: "var(--text-xs)", color: "rgba(255,255,255,0.7)", margin: "4px 0 0" }}>含演讲者备注</p>
-              )}
-            </div>
+    <div className="grid h-full min-h-0 grid-cols-[150px_minmax(0,1fr)] overflow-hidden" style={{ background: "var(--surface-white)" }}>
+      <aside className="min-h-0 overflow-y-auto p-2" style={{ background: "var(--surface-low)", borderRight: "1px solid var(--divider)" }}>
+        <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--fg-tertiary)" }}>
+          {totalSlides} slides
+        </div>
+        <div className="space-y-1">
+          {slides.map((item, index) => (
+            <Thumbnail
+              key={item.id}
+              slide={item}
+              index={index}
+              active={index === safeCurrentSlide}
+              onClick={() => setCurrentSlide(index)}
+            />
+          ))}
+        </div>
+      </aside>
 
-            {/* 幻灯片内容 */}
-            <div
-              className="flex-1 overflow-auto px-8 py-6"
-              style={{ background: "#fafbfc" }}
-            >
-              <div
-                className="slide-content"
-                style={{
-                  fontSize: "var(--text-sm)",
-                  color: "var(--fg-primary)",
-                  lineHeight: 1.8,
-                }}
-                dangerouslySetInnerHTML={{
-                  __html: renderSlideContentToHtml(slide.content),
-                }}
-              />
-            </div>
-
-            {/* 幻灯片页脚 */}
-            <div
-              className="shrink-0 flex items-center justify-between px-8 py-2.5"
-              style={{ borderTop: "1px solid var(--border)", background: "var(--surface-low)" }}
-            >
-              <span style={{ fontSize: 10, color: "var(--fg-disabled)" }}>
-                {currentSlide + 1} / {totalSlides}
-              </span>
-              <span style={{ fontSize: 10, color: "var(--fg-disabled)" }}>{artifact.filename || "slides.md"}</span>
+      <div className="flex min-h-0 flex-col">
+        <div className="min-h-0 flex-1 p-4">
+          <div className="mx-auto h-full max-w-4xl">
+            <div className="mx-auto h-full max-h-full" style={{ aspectRatio: "16 / 9" }}>
+              <SlideCanvas slide={slide} index={currentSlide} total={totalSlides} />
             </div>
           </div>
         </div>
 
-        {/* 导航和备注 */}
-        <div className="shrink-0 px-4 py-3 border-t" style={{ borderColor: "var(--border)" }}>
-          <div className="flex items-center justify-between gap-2">
+        <div className="shrink-0 px-4 py-3" style={{ borderTop: "1px solid var(--divider)" }}>
+          <div className="flex items-center justify-between gap-3">
             <button
-              onClick={() => setCurrentSlide(Math.max(0, currentSlide - 1))}
-              disabled={currentSlide === 0}
-              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
-              style={{
-                background: currentSlide === 0 ? "var(--surface-low)" : "var(--accent-subtle)",
-                color: currentSlide === 0 ? "var(--fg-disabled)" : "var(--accent)",
-                opacity: currentSlide === 0 ? 0.4 : 1,
-                cursor: currentSlide === 0 ? "default" : "pointer",
-                border: `1px solid ${currentSlide === 0 ? "var(--border)" : "var(--accent-border)"}`,
-              }}
+              type="button"
+              onClick={() => setCurrentSlide((current) => Math.max(0, current - 1))}
+              disabled={safeCurrentSlide === 0}
+              className="grid h-8 w-8 place-items-center rounded-lg transition-colors"
+              style={{ color: safeCurrentSlide === 0 ? "var(--fg-disabled)" : "var(--accent)", background: "var(--surface-low)", border: "1px solid var(--border)" }}
               title="上一页"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M15 18l-6-6 6-6" />
               </svg>
             </button>
 
-            <button
-              onClick={() => setShowNotes(!showNotes)}
-              className="px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
-              style={{
-                fontSize: "var(--text-2xs)",
-                fontWeight: 500,
-                background: showNotes ? "var(--accent-subtle)" : "var(--surface-low)",
-                color: showNotes ? "var(--accent)" : "var(--fg-tertiary)",
-                border: `1px solid ${showNotes ? "var(--accent-border)" : "var(--border)"}`,
-              }}
-              title="演讲者备注"
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" y1="13" x2="8" y2="13" />
-                <line x1="16" y1="17" x2="8" y2="17" />
-                <polyline points="10 9 9 9 8 9" />
-              </svg>
-              备注
-            </button>
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-2">
+              <span className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{slide.title}</span>
+              <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{safeCurrentSlide + 1}/{totalSlides}</span>
+              <button
+                type="button"
+                onClick={() => setShowNotes((value) => !value)}
+                className="rounded-md px-2 py-1 text-[10px] font-semibold"
+                style={{ color: showNotes ? "var(--accent)" : "var(--fg-tertiary)", background: showNotes ? "var(--accent-subtle)" : "var(--surface-low)", border: "1px solid var(--border)" }}
+              >
+                备注
+              </button>
+            </div>
 
             <button
-              onClick={() => setCurrentSlide(Math.min(totalSlides - 1, currentSlide + 1))}
-              disabled={currentSlide >= totalSlides - 1}
-              className="w-8 h-8 rounded-lg flex items-center justify-center transition-all"
-              style={{
-                background: currentSlide >= totalSlides - 1 ? "var(--surface-low)" : "var(--accent-subtle)",
-                color: currentSlide >= totalSlides - 1 ? "var(--fg-disabled)" : "var(--accent)",
-                opacity: currentSlide >= totalSlides - 1 ? 0.4 : 1,
-                cursor: currentSlide >= totalSlides - 1 ? "default" : "pointer",
-                border: `1px solid ${currentSlide >= totalSlides - 1 ? "var(--border)" : "var(--accent-border)"}`,
-              }}
+              type="button"
+              onClick={() => setCurrentSlide((current) => Math.min(totalSlides - 1, current + 1))}
+              disabled={safeCurrentSlide >= totalSlides - 1}
+              className="grid h-8 w-8 place-items-center rounded-lg transition-colors"
+              style={{ color: safeCurrentSlide >= totalSlides - 1 ? "var(--fg-disabled)" : "var(--accent)", background: "var(--surface-low)", border: "1px solid var(--border)" }}
               title="下一页"
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M9 18l6-6-6-6" />
               </svg>
             </button>
           </div>
 
-          {/* 页面缩略图 */}
-          <div className="flex items-center justify-center gap-1 mt-3 overflow-x-auto pb-1">
-            {slides.map((_, i) => (
-              <button
-                key={i}
-                onClick={() => setCurrentSlide(i)}
-                className="shrink-0 rounded transition-all"
-                style={{
-                  width: i === currentSlide ? 10 : 7,
-                  height: i === currentSlide ? 10 : 7,
-                  background: i === currentSlide ? "var(--accent)" : "var(--border)",
-                  borderRadius: "50%",
-                  border: "none",
-                  cursor: "pointer",
-                }}
-                title={`幻灯片 ${i + 1}`}
-              />
-            ))}
-          </div>
-
-          {/* 演讲者备注 */}
-          {showNotes && slide.notes && (
-            <div className="mt-3 px-4 py-3 rounded-lg" style={{ background: "#fffbeb", border: "1px solid #fde68a" }}>
-              <div style={{ fontSize: 10, fontWeight: 600, color: "#92400e", marginBottom: 4 }}>演讲者备注</div>
-              <pre style={{ fontSize: "var(--text-2xs)", color: "#78350f", lineHeight: 1.6, whiteSpace: "pre-wrap", margin: 0, fontFamily: "var(--font-sans)" }}>
-                {slide.notes}
-              </pre>
+          {showNotes && (
+            <div className="mt-3 rounded-lg px-3 py-2 text-xs leading-relaxed" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+              {slide.notes || "当前页暂无备注。"}
             </div>
           )}
         </div>
@@ -266,13 +218,13 @@ export function SlidesRenderer({ artifact }: { artifact: Artifact }) {
 
 export function SlidesTab({ artifacts }: { artifacts: Artifact[] }) {
   const slidesArtifacts = artifacts.filter(
-    (a) => a.type === "slides" || a.filename?.endsWith(".md") || a.type === "document"
+    (artifact) => artifact.type === "slides" || artifact.filename?.endsWith(".md") || artifact.filename?.endsWith(".json")
   );
 
   if (slidesArtifacts.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center">
-        <p style={{ fontSize: "var(--text-xs)", color: "var(--fg-disabled)" }}>暂无幻灯片产物</p>
+        <p className="text-xs" style={{ color: "var(--fg-disabled)" }}>暂无幻灯片产物</p>
       </div>
     );
   }
