@@ -102,8 +102,12 @@ interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  displayContent?: string;
+  attachments?: AssistantAttachment[];
   timestamp: number;
 }
+
+type AttachmentReadState = "image" | "text" | "metadata";
 
 interface AssistantAttachment {
   id: string;
@@ -111,8 +115,11 @@ interface AssistantAttachment {
   kind: "file" | "image";
   mime: string;
   size: number;
+  readState: AttachmentReadState;
+  note?: string;
   textPreview?: string;
   dataUrl?: string;
+  previewUrl?: string;
 }
 
 interface SpeechRecognitionAlternativeLike {
@@ -155,6 +162,14 @@ const WORKFLOW_HINTS = [
   "文档型回复会进入文件面板",
   "支持流式输出和中途停止",
 ];
+const MAX_ATTACHMENTS = 8;
+const MAX_UPLOAD_BATCH = 6;
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const TEXT_PREVIEW_LIMIT = 12000;
+const TEXT_FILE_READ_LIMIT = 512 * 1024;
+const TEXT_FILE_EXTENSIONS = ["md", "txt", "json", "csv", "ts", "tsx", "js", "jsx", "html", "css", "xml", "yaml", "yml", "log"];
+const FILE_ACCEPT = ".txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.log,.pdf,.doc,.docx,.ppt,.pptx";
+const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 
 function formatMessageTime(ts: number): string {
   return new Date(ts).toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
@@ -175,8 +190,19 @@ function isTextLikeFile(file: File): boolean {
   const ext = file.name.split(".").pop()?.toLowerCase();
   return Boolean(
     file.type.startsWith("text/") ||
-    ["md", "txt", "json", "csv", "ts", "tsx", "js", "jsx", "html", "css", "xml", "yaml", "yml", "log"].includes(ext ?? "")
+    TEXT_FILE_EXTENSIONS.includes(ext ?? "")
   );
+}
+
+function attachmentStatusLabel(attachment: AssistantAttachment): string {
+  if (attachment.readState === "image") return "图片已发送";
+  if (attachment.readState === "text") return "已读入片段";
+  return "仅元信息";
+}
+
+function attachmentStatusTone(attachment: AssistantAttachment): { color: string; background: string } {
+  if (attachment.readState === "metadata") return { color: "var(--warning)", background: "var(--warning-subtle)" };
+  return { color: "var(--accent)", background: "var(--accent-subtle)" };
 }
 
 function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
@@ -194,6 +220,35 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+function createImagePreview(file: File, dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") {
+      resolve(dataUrl);
+      return;
+    }
+
+    const image = new window.Image();
+    image.onload = () => {
+      const maxSide = 320;
+      const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+      const width = Math.max(1, Math.round(image.width * scale));
+      const height = Math.max(1, Math.round(image.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(image, 0, 0, width, height);
+      resolve(canvas.toDataURL(file.type === "image/png" ? "image/png" : "image/jpeg", 0.76));
+    };
+    image.onerror = () => resolve(dataUrl);
+    image.src = dataUrl;
+  });
+}
+
 async function createAssistantAttachment(file: File, kind: AssistantAttachment["kind"]): Promise<AssistantAttachment> {
   const base = {
     id: crypto.randomUUID(),
@@ -204,30 +259,59 @@ async function createAssistantAttachment(file: File, kind: AssistantAttachment["
   };
 
   if (kind === "image") {
+    if (!file.type.startsWith("image/")) {
+      throw new Error(`${file.name} 不是可识别的图片文件`);
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      throw new Error(`${file.name} 超过 8 MB，图片会被模型拒收`);
+    }
+    const dataUrl = await fileToDataUrl(file);
     return {
       ...base,
-      dataUrl: await fileToDataUrl(file),
+      readState: "image",
+      dataUrl,
+      previewUrl: await createImagePreview(file, dataUrl),
     };
   }
 
   if (isTextLikeFile(file)) {
-    const text = await file.text();
+    const text = await file.slice(0, TEXT_FILE_READ_LIMIT).text();
+    const truncated = file.size > TEXT_FILE_READ_LIMIT || text.length > TEXT_PREVIEW_LIMIT;
     return {
       ...base,
-      textPreview: text.slice(0, 6000),
+      readState: "text",
+      textPreview: text.slice(0, TEXT_PREVIEW_LIMIT),
+      note: truncated ? "已读取文件开头片段，超出部分未进入本轮上下文" : undefined,
     };
   }
 
-  return base;
+  return {
+    ...base,
+    readState: "metadata",
+    note: "当前格式暂不解析正文，只会把文件名、类型和大小发送给助手",
+  };
+}
+
+function toMessageAttachment(attachment: AssistantAttachment): AssistantAttachment {
+  return {
+    id: attachment.id,
+    name: attachment.name,
+    kind: attachment.kind,
+    mime: attachment.mime,
+    size: attachment.size,
+    readState: attachment.readState,
+    note: attachment.note,
+    previewUrl: attachment.previewUrl,
+  };
 }
 
 function buildAttachmentContext(attachments: AssistantAttachment[]): string {
   if (attachments.length === 0) return "";
   const parts = attachments.map((attachment, index) => {
     const header = `${index + 1}. ${attachment.kind === "image" ? "照片" : "文件"}：${attachment.name}（${attachment.mime}，${formatBytes(attachment.size)}）`;
-    if (attachment.textPreview) return `${header}\n内容片段：\n${attachment.textPreview}`;
+    if (attachment.textPreview) return `${header}\n已读取内容片段：\n${attachment.textPreview}${attachment.note ? `\n说明：${attachment.note}` : ""}`;
     if (attachment.kind === "image") return `${header}\n说明：图片内容已随本次请求发送给模型，请直接结合图片画面回答用户问题。`;
-    return `${header}\n说明：该文件不是可直接读取的文本格式，当前请求携带文件元信息。`;
+    return `${header}\n说明：${attachment.note ?? "该文件不是可直接读取的文本格式，当前请求携带文件元信息。"}`;
   });
   return `附件上下文：\n${parts.join("\n\n")}`;
 }
@@ -301,6 +385,65 @@ function MessageToolButton({
     >
       {children}
     </button>
+  );
+}
+
+function AttachmentChip({
+  attachment,
+  onRemove,
+  compact = false,
+}: {
+  attachment: AssistantAttachment;
+  onRemove?: (id: string) => void;
+  compact?: boolean;
+}) {
+  const tone = attachmentStatusTone(attachment);
+  const previewUrl = attachment.previewUrl || attachment.dataUrl;
+
+  return (
+    <div
+      className={`flex min-w-0 items-center gap-2 rounded-lg border ${compact ? "px-2 py-1" : "px-2.5 py-2"}`}
+      style={{ color: "var(--fg-secondary)", background: "var(--surface-tinted)", borderColor: "var(--border)" }}
+    >
+      {previewUrl ? (
+        <span
+          aria-hidden="true"
+          className={`${compact ? "h-8 w-8" : "h-10 w-10"} shrink-0 rounded-md bg-cover bg-center`}
+          style={{ backgroundImage: `url(${previewUrl})` }}
+        />
+      ) : (
+        <span className={`${compact ? "h-7 w-7" : "h-9 w-9"} grid shrink-0 place-items-center rounded-md`} style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
+          <Icon path="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6" size={compact ? 12 : 14} />
+        </span>
+      )}
+
+      <div className="min-w-0 flex-1 text-left">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-[11px] font-semibold" style={{ color: "var(--fg-primary)" }}>{attachment.name}</span>
+          <span className="shrink-0 text-[10px]" style={{ color: "var(--fg-disabled)" }}>{formatBytes(attachment.size)}</span>
+        </div>
+        <div className="mt-1 flex min-w-0 items-center gap-1.5">
+          <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold" style={tone}>
+            {attachmentStatusLabel(attachment)}
+          </span>
+          {attachment.note && !compact && (
+            <span className="truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{attachment.note}</span>
+          )}
+        </div>
+      </div>
+
+      {onRemove && (
+        <button
+          type="button"
+          onClick={() => onRemove(attachment.id)}
+          className="grid h-6 w-6 shrink-0 place-items-center rounded-md transition-colors hover:bg-[var(--surface-low)]"
+          style={{ color: "var(--fg-tertiary)" }}
+          title="移除附件"
+        >
+          <Icon path="M18 6 6 18M6 6l12 12" size={11} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -707,7 +850,8 @@ export function AIAssistantView() {
     const currentAttachments = attachments;
     if ((!trimmed && currentAttachments.length === 0) || isStreamingRef.current) return;
     const attachmentContext = buildAttachmentContext(currentAttachments);
-    const outgoingText = [trimmed || "请处理这些附件。", attachmentContext].filter(Boolean).join("\n\n");
+    const displayText = trimmed || "请处理这些附件。";
+    const outgoingText = [displayText, attachmentContext].filter(Boolean).join("\n\n");
 
     sendingRef.current = true;
     isStreamingRef.current = true;
@@ -716,15 +860,22 @@ export function AIAssistantView() {
     setAttachments([]);
     setInputNotice(null);
     setStreamBuffer("");
-    lastUserQueryRef.current = outgoingText;
-    isDocRequestRef.current = isDocumentRequest(outgoingText);
+    lastUserQueryRef.current = displayText;
+    isDocRequestRef.current = isDocumentRequest(displayText);
 
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
       inputRef.current.disabled = true;
     }
 
-    const userMsg: ChatMessage = { id: crypto.randomUUID(), role: "user", content: outgoingText, timestamp: Date.now() };
+    const userMsg: ChatMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: outgoingText,
+      displayContent: displayText,
+      attachments: currentAttachments.map(toMessageAttachment),
+      timestamp: Date.now(),
+    };
     const prevMessages = messagesRef.current;
     setMessages((prev) => [...prev, userMsg]);
 
@@ -851,8 +1002,30 @@ export function AIAssistantView() {
     if (selectedFiles.length === 0) return;
     setInputNotice(null);
     try {
-      const nextAttachments = await Promise.all(selectedFiles.slice(0, 6).map((file) => createAssistantAttachment(file, kind)));
-      setAttachments((current) => [...current, ...nextAttachments].slice(-8));
+      const availableSlots = Math.max(0, MAX_ATTACHMENTS - attachments.length);
+      if (availableSlots === 0) {
+        setInputNotice(`最多同时携带 ${MAX_ATTACHMENTS} 个附件。`);
+        return;
+      }
+
+      const uploadBatch = selectedFiles.slice(0, Math.min(MAX_UPLOAD_BATCH, availableSlots));
+      const results = await Promise.allSettled(uploadBatch.map((file) => createAssistantAttachment(file, kind)));
+      const nextAttachments = results
+        .filter((result): result is PromiseFulfilledResult<AssistantAttachment> => result.status === "fulfilled")
+        .map((result) => result.value);
+      const errors = results
+        .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+        .map((result) => result.reason instanceof Error ? result.reason.message : "附件读取失败");
+
+      if (nextAttachments.length > 0) {
+        setAttachments((current) => [...current, ...nextAttachments].slice(0, MAX_ATTACHMENTS));
+      }
+
+      const notices = [
+        selectedFiles.length > uploadBatch.length ? `已限制本次选择 ${uploadBatch.length} 个附件` : "",
+        ...errors.slice(0, 2),
+      ].filter(Boolean);
+      setInputNotice(notices[0] ?? null);
       inputRef.current?.focus();
     } catch (error) {
       setInputNotice(error instanceof Error ? error.message : "附件读取失败");
@@ -946,7 +1119,7 @@ export function AIAssistantView() {
 
   const copyMessage = async (message: ChatMessage) => {
     try {
-      await navigator.clipboard.writeText(message.content);
+      await navigator.clipboard.writeText(message.role === "user" ? message.displayContent ?? message.content : message.content);
       setCopiedId(message.id);
       window.setTimeout(() => setCopiedId(null), 1400);
     } catch {
@@ -956,7 +1129,7 @@ export function AIAssistantView() {
 
   const reuseMessage = (message: ChatMessage) => {
     applyPreset(message.role === "user"
-      ? message.content
+      ? message.displayContent ?? message.content
       : `请基于这段回复继续展开，给出更具体的下一步：\n\n${message.content.slice(0, 1200)}`);
   };
 
@@ -1164,7 +1337,16 @@ export function AIAssistantView() {
                           }}
                         >
                           {msg.role === "user" ? (
-                            <p style={{ fontSize: "14px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{msg.content}</p>
+                            <div className="space-y-2">
+                              <p style={{ fontSize: "14px", lineHeight: 1.7, whiteSpace: "pre-wrap" }}>{msg.displayContent ?? msg.content}</p>
+                              {(msg.attachments?.length ?? 0) > 0 && (
+                                <div className="grid gap-1.5 text-left">
+                                  {msg.attachments?.map((attachment) => (
+                                    <AttachmentChip key={attachment.id} attachment={attachment} compact />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           ) : messageIsDocument ? (
                             <DocumentCompletionView
                               title={documentTitle}
@@ -1219,7 +1401,7 @@ export function AIAssistantView() {
                 type="file"
                 multiple
                 className="hidden"
-                accept=".txt,.md,.json,.csv,.ts,.tsx,.js,.jsx,.html,.css,.xml,.yaml,.yml,.log,.pdf,.doc,.docx,.ppt,.pptx"
+                accept={FILE_ACCEPT}
                 onChange={(event) => void handleUpload(event.target.files, "file")}
               />
               <input
@@ -1227,7 +1409,7 @@ export function AIAssistantView() {
                 type="file"
                 multiple
                 className="hidden"
-                accept="image/*"
+                accept={IMAGE_ACCEPT}
                 onChange={(event) => void handleUpload(event.target.files, "image")}
               />
               <textarea
@@ -1241,39 +1423,12 @@ export function AIAssistantView() {
                 style={{ fontSize: "14px", color: "var(--fg-primary)", minHeight: 28, maxHeight: 160, lineHeight: 1.6 }}
               />
               {(attachments.length > 0 || inputNotice) && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
                   {attachments.map((attachment) => (
-                    <div
-                      key={attachment.id}
-                      className="flex max-w-full items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-semibold"
-                      style={{ color: "var(--fg-secondary)", background: "var(--surface-tinted)", border: "1px solid var(--border)" }}
-                    >
-                      {attachment.dataUrl ? (
-                        <span
-                          aria-hidden="true"
-                          className="h-5 w-5 shrink-0 rounded bg-cover bg-center"
-                          style={{ backgroundImage: `url(${attachment.dataUrl})` }}
-                        />
-                      ) : (
-                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
-                          <Icon path="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6" size={11} />
-                        </span>
-                      )}
-                      <span className="truncate">{attachment.name}</span>
-                      <span className="shrink-0" style={{ color: "var(--fg-disabled)" }}>{formatBytes(attachment.size)}</span>
-                      <button
-                        type="button"
-                        onClick={() => removeAttachment(attachment.id)}
-                        className="grid h-5 w-5 shrink-0 place-items-center rounded hover:bg-[var(--surface-low)]"
-                        style={{ color: "var(--fg-tertiary)" }}
-                        title="移除附件"
-                      >
-                        <Icon path="M18 6 6 18M6 6l12 12" size={10} />
-                      </button>
-                    </div>
+                    <AttachmentChip key={attachment.id} attachment={attachment} onRemove={removeAttachment} compact />
                   ))}
                   {inputNotice && (
-                    <span className="rounded-lg px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--warning)", background: "var(--warning-subtle)" }}>
+                    <span className="rounded-lg px-2 py-1 text-[10px] font-semibold sm:col-span-2" style={{ color: "var(--warning)", background: "var(--warning-subtle)" }}>
                       {inputNotice}
                     </span>
                   )}
