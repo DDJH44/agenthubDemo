@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   addEdge,
   Background,
@@ -59,6 +59,20 @@ interface WorkflowOutput {
   steps: Array<{ id: string; task: string; result: string; toolUsed?: string | null }>;
   errors?: string[];
 }
+
+interface WorkflowRunHistoryItem {
+  id: string;
+  task: string;
+  templateId?: string;
+  templateTitle?: string;
+  output: WorkflowOutput;
+  nodes: WorkflowNode[];
+  edges: Edge[];
+  createdAt: number;
+}
+
+const WORKFLOW_HISTORY_KEY = "agenthub-workflow-run-history";
+const MAX_WORKFLOW_HISTORY = 12;
 
 const API_BASE = typeof window !== "undefined"
   ? `${window.location.protocol}//${window.location.hostname}:3002`
@@ -263,6 +277,70 @@ function serializeWorkflowOutput(output: WorkflowOutput) {
   ].filter(Boolean).join("\n\n");
 }
 
+function createRunId() {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `workflow-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function formatHistoryTime(timestamp: number) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(timestamp));
+}
+
+function sanitizeNodesForHistory(nodes: WorkflowNode[]): WorkflowNode[] {
+  return nodes.map((node) => ({
+    id: node.id,
+    type: node.type,
+    position: node.position,
+    data: { ...node.data },
+  }));
+}
+
+function sanitizeEdgesForHistory(edges: Edge[]): Edge[] {
+  return edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    animated: edge.animated,
+    label: edge.label,
+    style: edge.style,
+  }));
+}
+
+function loadWorkflowHistory(): WorkflowRunHistoryItem[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(WORKFLOW_HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((item): item is WorkflowRunHistoryItem => Boolean(
+        item
+        && typeof item.id === "string"
+        && typeof item.task === "string"
+        && typeof item.createdAt === "number"
+        && item.output
+        && Array.isArray(item.nodes)
+        && Array.isArray(item.edges),
+      ))
+      .slice(0, MAX_WORKFLOW_HISTORY);
+  } catch {
+    return [];
+  }
+}
+
+function saveWorkflowHistory(items: WorkflowRunHistoryItem[]) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(WORKFLOW_HISTORY_KEY, JSON.stringify(items.slice(0, MAX_WORKFLOW_HISTORY)));
+}
+
 function OutputPanel({
   output,
   actionStatus,
@@ -370,6 +448,80 @@ function OutputPanel({
   );
 }
 
+function WorkflowHistoryPanel({
+  history,
+  onRestore,
+  onClear,
+}: {
+  history: WorkflowRunHistoryItem[];
+  onRestore: (item: WorkflowRunHistoryItem) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>运行历史</h3>
+        {history.length > 0 && (
+          <button
+            type="button"
+            onClick={onClear}
+            className="text-[11px] font-semibold transition hover:text-[var(--danger)]"
+            style={{ color: "var(--fg-tertiary)" }}
+          >
+            清空
+          </button>
+        )}
+      </div>
+      {history.length === 0 ? (
+        <p className="mt-2 text-xs leading-5" style={{ color: "var(--fg-tertiary)" }}>
+          暂无运行记录。工作流完成后会自动保存最近 {MAX_WORKFLOW_HISTORY} 次输入、画布和输出。
+        </p>
+      ) : (
+        <div className="mt-2 space-y-2">
+          {history.slice(0, 5).map((item) => {
+            const isFailed = item.output.status === "failed";
+            return (
+              <div key={item.id} className="rounded-md p-2.5" style={{ background: "var(--page-bg)", border: "1px solid var(--border)" }}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 flex-1 truncate text-[11px] font-semibold" style={{ color: "var(--fg-primary)" }}>
+                    {item.templateTitle ?? "自定义工作流"}
+                  </p>
+                  <span
+                    className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                    style={{
+                      background: isFailed ? "var(--danger-subtle)" : "var(--success-subtle)",
+                      color: isFailed ? "var(--danger)" : "var(--success)",
+                    }}
+                  >
+                    {isFailed ? "失败" : "完成"}
+                  </span>
+                </div>
+                <p className="mt-1 line-clamp-2 text-[11px] leading-4" style={{ color: "var(--fg-tertiary)" }}>{item.task}</p>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{formatHistoryTime(item.createdAt)}</span>
+                  <button
+                    type="button"
+                    onClick={() => onRestore(item)}
+                    className="h-7 rounded-md px-2.5 text-[11px] font-semibold transition hover:bg-[var(--accent-subtle)]"
+                    style={{ border: "1px solid var(--accent-border)", color: "var(--accent)", background: "var(--surface-white)" }}
+                  >
+                    恢复
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {history.length > 5 && (
+            <p className="text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
+              还有 {history.length - 5} 条较早记录已收起。
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function WorkflowsView() {
   const setActiveNav = useNavigationStore((state) => state.setActiveNav);
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
@@ -380,9 +532,58 @@ export function WorkflowsView() {
   const [selectedTemplate, setSelectedTemplate] = useState<WorkflowTemplate | null>(null);
   const [workflowOutput, setWorkflowOutput] = useState<WorkflowOutput | null>(null);
   const [outputActionStatus, setOutputActionStatus] = useState("");
+  const [workflowHistory, setWorkflowHistory] = useState<WorkflowRunHistoryItem[]>([]);
   const [runLog, setRunLog] = useState<string[]>(["选择模板或拖拽节点，形成一个可复用的多 Agent 流程。"]);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
+
+  useEffect(() => {
+    setWorkflowHistory(loadWorkflowHistory());
+  }, []);
+
+  const addWorkflowHistory = useCallback((output: WorkflowOutput) => {
+    const item: WorkflowRunHistoryItem = {
+      id: createRunId(),
+      task: task.trim(),
+      templateId: selectedTemplate?.id,
+      templateTitle: selectedTemplate?.title,
+      output,
+      nodes: sanitizeNodesForHistory(nodes),
+      edges: sanitizeEdgesForHistory(edges),
+      createdAt: Date.now(),
+    };
+
+    setWorkflowHistory((items) => {
+      const next = [item, ...items].slice(0, MAX_WORKFLOW_HISTORY);
+      saveWorkflowHistory(next);
+      return next;
+    });
+  }, [edges, nodes, selectedTemplate, task]);
+
+  const restoreWorkflowHistory = useCallback((item: WorkflowRunHistoryItem) => {
+    const template = FLOW_TEMPLATES.find((flow) => flow.id === item.templateId) ?? null;
+    setNodes(item.nodes);
+    setEdges(item.edges);
+    setTask(item.task);
+    setSelectedTemplate(template);
+    setSelectedNode(null);
+    setMode("edit");
+    setWorkflowOutput(item.output);
+    setOutputActionStatus("已恢复历史运行，可继续发到会话或追问。");
+    setRunLog([
+      `已恢复历史：${item.templateTitle ?? "自定义工作流"}`,
+      `运行时间：${formatHistoryTime(item.createdAt)}`,
+      item.output.summary,
+    ].filter(Boolean).slice(0, 8));
+  }, [setEdges, setNodes]);
+
+  const clearWorkflowHistory = useCallback(() => {
+    setWorkflowHistory([]);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(WORKFLOW_HISTORY_KEY);
+    }
+    setOutputActionStatus("运行历史已清空。");
+  }, []);
 
   const onConnect = useCallback((conn: Connection) => {
     const sourceNode = nodes.find((node) => node.id === conn.source);
@@ -555,14 +756,16 @@ export function WorkflowsView() {
                 errors?: string[];
               };
               const completedIds = new Set((final.stepResults ?? []).map((item) => item.id));
-              setNodes((currentNodes) => currentNodes.map((node) => ({ ...node, data: { ...node.data, status: completedIds.has(node.id) ? "done" : "idle" } })));
-              setWorkflowOutput({
+              const output: WorkflowOutput = {
                 status: "done",
                 title: selectedTemplate ? selectedTemplate.title : "工作流输出",
                 summary: final.summary || "工作流已完成，但后端没有返回摘要。",
                 steps: final.stepResults ?? [],
                 errors: final.errors,
-              });
+              };
+              setNodes((currentNodes) => currentNodes.map((node) => ({ ...node, data: { ...node.data, status: completedIds.has(node.id) ? "done" : "idle" } })));
+              setWorkflowOutput(output);
+              addWorkflowHistory(output);
               setRunLog((items) => ["工作流执行完成，结果已返回到当前流程。", ...items].slice(0, 8));
             }
           } catch {
@@ -571,14 +774,16 @@ export function WorkflowsView() {
         }
       }
     } catch (error) {
-      setNodes((currentNodes) => currentNodes.map((node) => ({ ...node, data: { ...node.data, status: "failed" } })));
-      setWorkflowOutput({
+      const output: WorkflowOutput = {
         status: "failed",
         title: selectedTemplate ? selectedTemplate.title : "工作流执行失败",
         summary: error instanceof Error ? error.message : "未知错误",
         steps: [],
         errors: [error instanceof Error ? error.message : "未知错误"],
-      });
+      };
+      setNodes((currentNodes) => currentNodes.map((node) => ({ ...node, data: { ...node.data, status: "failed" } })));
+      setWorkflowOutput(output);
+      addWorkflowHistory(output);
       setRunLog((items) => [`执行失败：${error instanceof Error ? error.message : "未知错误"}`, ...items].slice(0, 8));
     }
   };
@@ -788,6 +993,14 @@ export function WorkflowsView() {
                 onCopy={copyWorkflowOutput}
                 onSendToChat={() => sendWorkflowOutputToChat("handoff")}
                 onAskFollowUp={() => sendWorkflowOutputToChat("follow-up")}
+              />
+            </section>
+
+            <section className="mb-4">
+              <WorkflowHistoryPanel
+                history={workflowHistory}
+                onRestore={restoreWorkflowHistory}
+                onClear={clearWorkflowHistory}
               />
             </section>
 
