@@ -46,7 +46,16 @@ interface WorkflowTemplate {
   title: string;
   desc: string;
   task: string;
+  output: string;
   agents: string[];
+}
+
+interface WorkflowOutput {
+  status: "idle" | "running" | "done" | "failed";
+  title: string;
+  summary: string;
+  steps: Array<{ id: string; task: string; result: string; toolUsed?: string | null }>;
+  errors?: string[];
 }
 
 const API_BASE = typeof window !== "undefined"
@@ -73,6 +82,7 @@ const FLOW_TEMPLATES: WorkflowTemplate[] = [
     title: "网页生成并部署",
     desc: "PMO 拆解需求，Codex 生成代码，UX 审查后部署。",
     task: "生成一个可预览的小型网页，并准备部署到默认服务器。",
+    output: "网页产物、审查摘要、部署建议",
     agents: ["planner", "worker", "critic", "refiner"],
   },
   {
@@ -80,6 +90,7 @@ const FLOW_TEMPLATES: WorkflowTemplate[] = [
     title: "文档生成与导出",
     desc: "把资料整理为结构化文档，支持后续 Word/PDF 导出。",
     task: "根据用户资料生成一份结构化项目文档，包含摘要、正文、表格和后续建议。",
+    output: "结构化文档、章节摘要、导出建议",
     agents: ["planner", "researcher", "worker", "refiner"],
   },
   {
@@ -87,6 +98,7 @@ const FLOW_TEMPLATES: WorkflowTemplate[] = [
     title: "代码审查修复",
     desc: "读取上下文，定位问题，生成修复建议和变更说明。",
     task: "审查当前代码变更，找出风险、修复建议和需要补充的测试。",
+    output: "风险列表、修复建议、测试清单",
     agents: ["planner", "worker", "critic"],
   },
   {
@@ -94,6 +106,7 @@ const FLOW_TEMPLATES: WorkflowTemplate[] = [
     title: "图片理解转产物",
     desc: "理解上传图片或资料，转成页面、文档或 PPT 产物。",
     task: "理解用户上传的图片内容，提炼重点并生成可编辑产物。",
+    output: "图片理解摘要、产物草稿、下一步建议",
     agents: ["researcher", "planner", "worker", "refiner"],
   },
 ];
@@ -231,12 +244,75 @@ function LogItem({ item }: { item: string }) {
   );
 }
 
+function OutputPanel({ output }: { output: WorkflowOutput | null }) {
+  if (!output) {
+    return (
+      <div className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>输出结果</h3>
+          <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--surface-low)", color: "var(--fg-tertiary)" }}>等待运行</span>
+        </div>
+        <p className="mt-2 text-xs leading-5" style={{ color: "var(--fg-tertiary)" }}>
+          运行工作流后，这里会展示最终总结、每个节点的产出，以及可继续交给会话处理的结果。
+        </p>
+      </div>
+    );
+  }
+
+  const isDone = output.status === "done";
+  const isFailed = output.status === "failed";
+  const badgeColor = isDone ? "var(--success)" : isFailed ? "var(--danger)" : "var(--accent)";
+  const badgeBg = isDone ? "var(--success-subtle)" : isFailed ? "var(--danger-subtle)" : "var(--accent-subtle)";
+
+  return (
+    <div className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: `1px solid ${isFailed ? "rgba(186,26,26,.22)" : "var(--border)"}` }}>
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>输出结果</h3>
+        <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: badgeBg, color: badgeColor }}>
+          {isDone ? "已生成" : isFailed ? "失败" : "生成中"}
+        </span>
+      </div>
+      <p className="mt-2 text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{output.title}</p>
+      <p className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-5 custom-scrollbar" style={{ color: "var(--fg-secondary)" }}>
+        {output.summary}
+      </p>
+
+      {output.steps.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          {output.steps.slice(0, 4).map((step) => (
+            <div key={step.id} className="rounded-md px-2.5 py-2" style={{ background: "var(--page-bg)", border: "1px solid var(--border)" }}>
+              <div className="flex items-center gap-2">
+                <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}>
+                  {step.id}
+                </span>
+                <p className="min-w-0 flex-1 truncate text-[11px] font-semibold" style={{ color: "var(--fg-primary)" }}>{step.task}</p>
+              </div>
+              <p className="mt-1 line-clamp-2 text-[11px] leading-4" style={{ color: "var(--fg-tertiary)" }}>{step.result}</p>
+            </div>
+          ))}
+          {output.steps.length > 4 && (
+            <p className="text-[11px]" style={{ color: "var(--fg-tertiary)" }}>还有 {output.steps.length - 4} 个步骤结果已收起。</p>
+          )}
+        </div>
+      )}
+
+      {output.errors?.length ? (
+        <div className="mt-3 rounded-md px-2.5 py-2 text-[11px]" style={{ background: "var(--danger-subtle)", color: "var(--danger)" }}>
+          {output.errors.join("；")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function WorkflowsView() {
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedNode, setSelectedNode] = useState<WorkflowNode | null>(null);
   const [mode, setMode] = useState<"edit" | "run">("edit");
   const [task, setTask] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState<WorkflowTemplate | null>(null);
+  const [workflowOutput, setWorkflowOutput] = useState<WorkflowOutput | null>(null);
   const [runLog, setRunLog] = useState<string[]>(["选择模板或拖拽节点，形成一个可复用的多 Agent 流程。"]);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
@@ -302,6 +378,8 @@ export function WorkflowsView() {
     setEdges([]);
     setSelectedNode(null);
     setMode("edit");
+    setSelectedTemplate(null);
+    setWorkflowOutput(null);
     setRunLog(["画布已清空，可以重新选择模板或拖拽节点。"]);
   }, [setEdges, setNodes]);
 
@@ -311,8 +389,10 @@ export function WorkflowsView() {
     setEdges(graph.edges);
     setSelectedNode(null);
     setMode("edit");
+    setSelectedTemplate(template);
+    setWorkflowOutput(null);
     setTask(template.task);
-    setRunLog([`已载入模板：${template.title}`, template.desc]);
+    setRunLog([`已载入模板：${template.title}`, `预期输出：${template.output}`, template.desc]);
   }, [setEdges, setNodes]);
 
   const onDragStart = (event: React.DragEvent, id: string) => {
@@ -325,9 +405,26 @@ export function WorkflowsView() {
       setRunLog((items) => ["请先选择模板或添加至少一个节点。", ...items]);
       return;
     }
+    if (!task.trim()) {
+      setRunLog((items) => ["请先填写输入任务，工作流需要明确的输入才能执行。", ...items]);
+      setWorkflowOutput({
+        status: "failed",
+        title: "缺少输入",
+        summary: "请在左侧“输入任务”中描述你希望这个工作流处理什么内容，然后再运行。",
+        steps: [],
+        errors: ["缺少输入任务"],
+      });
+      return;
+    }
 
     setMode("run");
     setRunLog(["开始执行工作流，正在提交给后端编排器。"]);
+    setWorkflowOutput({
+      status: "running",
+      title: selectedTemplate ? selectedTemplate.title : "自定义工作流",
+      summary: "工作流正在执行，输出会在后端返回 final 事件后汇总到这里。",
+      steps: [],
+    });
     resetStatuses();
 
     const dag = nodes.map((node) => {
@@ -336,7 +433,7 @@ export function WorkflowsView() {
       const agentRole = "agentId" in data ? data.agentId : "worker";
       return {
         id: node.id,
-        task: `${data.label}: ${task || "执行当前流程任务"}`,
+        task: `${data.label}: ${task.trim()}`,
         dependsOn: edges.filter((edge) => edge.target === node.id).map((edge) => edge.source),
         type: nodeType,
         config: "config" in data ? data.config : undefined,
@@ -353,7 +450,7 @@ export function WorkflowsView() {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ task: task || "工作流任务", plan: dag, edges: edgeData }),
+        body: JSON.stringify({ task: task.trim(), plan: dag, edges: edgeData }),
       });
 
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -382,9 +479,20 @@ export function WorkflowsView() {
               if (clean) setRunLog((items) => [clean.slice(0, 140), ...items].slice(0, 8));
             }
             if (event.type === "final" && event.msg && typeof event.msg === "object") {
-              const final = event.msg as { stepResults?: Array<{ id: string }> };
+              const final = event.msg as {
+                summary?: string;
+                stepResults?: Array<{ id: string; task: string; result: string; toolUsed?: string | null }>;
+                errors?: string[];
+              };
               const completedIds = new Set((final.stepResults ?? []).map((item) => item.id));
               setNodes((currentNodes) => currentNodes.map((node) => ({ ...node, data: { ...node.data, status: completedIds.has(node.id) ? "done" : "idle" } })));
+              setWorkflowOutput({
+                status: "done",
+                title: selectedTemplate ? selectedTemplate.title : "工作流输出",
+                summary: final.summary || "工作流已完成，但后端没有返回摘要。",
+                steps: final.stepResults ?? [],
+                errors: final.errors,
+              });
               setRunLog((items) => ["工作流执行完成，结果已返回到当前流程。", ...items].slice(0, 8));
             }
           } catch {
@@ -394,6 +502,13 @@ export function WorkflowsView() {
       }
     } catch (error) {
       setNodes((currentNodes) => currentNodes.map((node) => ({ ...node, data: { ...node.data, status: "failed" } })));
+      setWorkflowOutput({
+        status: "failed",
+        title: selectedTemplate ? selectedTemplate.title : "工作流执行失败",
+        summary: error instanceof Error ? error.message : "未知错误",
+        steps: [],
+        errors: [error instanceof Error ? error.message : "未知错误"],
+      });
       setRunLog((items) => [`执行失败：${error instanceof Error ? error.message : "未知错误"}`, ...items].slice(0, 8));
     }
   };
@@ -410,6 +525,28 @@ export function WorkflowsView() {
             把常见多 Agent 协作沉淀为可复用流程，适合演示任务拆解、并行调度和失败降级。
           </p>
         </div>
+
+        <section className="mb-4 rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--accent-border)", boxShadow: "var(--shadow-xs)" }}>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>输入任务</h3>
+            <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}>
+              Input
+            </span>
+          </div>
+          <textarea
+            value={task}
+            onChange={(event) => setTask(event.target.value)}
+            placeholder="例如：生成一个小型烟花网站，包含 Canvas 动画、响应式布局和部署说明..."
+            className="min-h-[112px] w-full resize-none rounded-lg px-3 py-2 text-xs leading-5 outline-none transition focus:border-[var(--accent-border)]"
+            style={{ border: "1px solid var(--border)", background: "var(--page-bg)", color: "var(--fg-primary)" }}
+          />
+          <div className="mt-2 rounded-md px-2.5 py-2" style={{ background: "var(--page-bg)", border: "1px solid var(--border)" }}>
+            <p className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>预期输出</p>
+            <p className="mt-1 text-[11px] leading-4" style={{ color: "var(--fg-secondary)" }}>
+              {selectedTemplate?.output ?? "选择模板后会显示该流程的默认输出类型。"}
+            </p>
+          </div>
+        </section>
 
         <section className="mb-4">
           <div className="mb-2 flex items-center justify-between">
@@ -497,13 +634,9 @@ export function WorkflowsView() {
             <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--fg-tertiary)" }}>节点 {nodes.length} · 连线 {edges.length} · 可拖拽节点、连接依赖并运行</p>
           </div>
           <div className="flex min-w-0 items-center gap-2">
-            <input
-              value={task}
-              onChange={(event) => setTask(event.target.value)}
-              placeholder="描述这个流程要完成的任务..."
-              className="h-8 w-[320px] rounded-lg px-3 text-xs outline-none transition focus:border-[var(--accent-border)]"
-              style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}
-            />
+            <span className="hidden rounded-lg px-2.5 py-1.5 text-[11px] font-semibold md:inline-flex" style={{ background: task.trim() ? "var(--success-subtle)" : "var(--surface-low)", color: task.trim() ? "var(--success)" : "var(--fg-tertiary)" }}>
+              {task.trim() ? "输入已就绪" : "等待输入"}
+            </span>
             <button
               type="button"
               onClick={runWorkflow}
@@ -552,7 +685,11 @@ export function WorkflowsView() {
             </ReactFlow>
           </div>
 
-          <aside className="w-[300px] shrink-0 overflow-y-auto p-4" style={{ borderLeft: "1px solid var(--border)", background: "var(--page-bg)" }}>
+          <aside className="w-[340px] shrink-0 overflow-y-auto p-4" style={{ borderLeft: "1px solid var(--border)", background: "var(--page-bg)" }}>
+            <section className="mb-4">
+              <OutputPanel output={workflowOutput} />
+            </section>
+
             <section className="mb-4">
               <h3 className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>执行日志</h3>
               <div className="mt-2 space-y-2">
