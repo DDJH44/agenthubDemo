@@ -2,13 +2,19 @@
 
 import Image from "next/image";
 import { useRef, type RefObject } from "react";
+import { BotIcon, UserIcon, type BotIconHandle } from "@/components/ui";
 import { useT } from "@/hooks/useT";
+import { useAuthStore } from "@/stores/auth-store";
 import { useNavigationStore, type NavKey } from "@/stores/navigation-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { useAuthStore } from "@/stores/auth-store";
-import { BotIcon, UserIcon, type BotIconHandle } from "@/components/ui";
 
-const NAV_ITEMS: { key: NavKey; icon: string; section: string }[] = [
+interface NavItem {
+  key: NavKey;
+  icon: string;
+  section: "main" | "workspace" | "agent" | "system";
+}
+
+const NAV_ITEMS: NavItem[] = [
   { key: "dashboard", icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", section: "main" },
   { key: "ai-assistant", icon: "M12 2a4 4 0 014 4v1h2a2 2 0 012 2v9a2 2 0 01-2 2H8a2 2 0 01-2-2V9a2 2 0 012-2h2V6a4 4 0 014-4z M9 12h6 M9 16h6", section: "main" },
   { key: "chat", icon: "M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z", section: "main" },
@@ -25,7 +31,7 @@ const NAV_ITEMS: { key: NavKey; icon: string; section: string }[] = [
   { key: "help", icon: "M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9 M13.73 21a2 2 0 01-3.46 0", section: "system" },
 ];
 
-const SECTIONS = [
+const SECTIONS: Array<{ key: NavItem["section"]; label: string }> = [
   { key: "main", label: "主屏" },
   { key: "workspace", label: "工作空间" },
   { key: "agent", label: "智能体" },
@@ -44,14 +50,7 @@ function NavIconGlyph({
   size: number;
 }) {
   if (isBot) {
-    return (
-      <BotIcon
-        ref={botIconRef}
-        aria-hidden="true"
-        className="grid place-items-center"
-        size={size}
-      />
-    );
+    return <BotIcon ref={botIconRef} aria-hidden="true" className="grid place-items-center" size={size} />;
   }
 
   return (
@@ -85,27 +84,39 @@ function NavIcon({
   );
 }
 
-function NavItemButton({ item, activeNav, setActiveNav, t }: {
-  item: { key: NavKey; icon: string };
+function useBotIconHover(enabled: boolean) {
+  const botIconRef = useRef<BotIconHandle | null>(null);
+  return {
+    botIconRef,
+    start: enabled ? () => botIconRef.current?.startAnimation() : undefined,
+    stop: enabled ? () => botIconRef.current?.stopAnimation() : undefined,
+  };
+}
+
+function NavItemButton({
+  item,
+  activeNav,
+  setActiveNav,
+  t,
+}: {
+  item: NavItem;
   activeNav: NavKey;
   setActiveNav: (key: NavKey) => void;
   t: (key: string) => string;
 }) {
   const isActive = activeNav === item.key;
   const isMyAgentsItem = item.key === "my-agents";
-  const botIconRef = useRef<BotIconHandle | null>(null);
-  const startBotIcon = () => botIconRef.current?.startAnimation();
-  const stopBotIcon = () => botIconRef.current?.stopAnimation();
+  const bot = useBotIconHover(isMyAgentsItem);
 
   return (
     <button
-      key={item.key}
+      type="button"
       data-nav-key={item.key}
       onClick={() => setActiveNav(item.key)}
-      onBlur={isMyAgentsItem ? stopBotIcon : undefined}
-      onFocus={isMyAgentsItem ? startBotIcon : undefined}
-      onMouseEnter={isMyAgentsItem ? startBotIcon : undefined}
-      onMouseLeave={isMyAgentsItem ? stopBotIcon : undefined}
+      onBlur={bot.stop}
+      onFocus={bot.start}
+      onMouseEnter={bot.start}
+      onMouseLeave={bot.stop}
       className="group relative flex h-9 w-full items-center gap-2 rounded-lg px-2 text-left transition-colors"
       style={{
         background: isActive ? "var(--surface-white)" : "transparent",
@@ -117,33 +128,36 @@ function NavItemButton({ item, activeNav, setActiveNav, t }: {
       }}
     >
       {isActive && <span className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-r-full" style={{ background: "var(--accent)" }} />}
-      <NavIcon path={item.icon} active={isActive} isBot={isMyAgentsItem} botIconRef={botIconRef} />
+      <NavIcon path={item.icon} active={isActive} isBot={isMyAgentsItem} botIconRef={bot.botIconRef} />
       <span className="min-w-0 flex-1 truncate">{t(`nav.${item.key}`)}</span>
     </button>
   );
 }
 
-function CollapsedIconItem({ item, activeNav, setActiveNav, t }: {
-  item: { key: NavKey; icon: string };
+function CollapsedIconItem({
+  item,
+  activeNav,
+  setActiveNav,
+  t,
+}: {
+  item: NavItem;
   activeNav: NavKey;
   setActiveNav: (key: NavKey) => void;
   t: (key: string) => string;
 }) {
   const isActive = activeNav === item.key;
   const isMyAgentsItem = item.key === "my-agents";
-  const botIconRef = useRef<BotIconHandle | null>(null);
-  const startBotIcon = () => botIconRef.current?.startAnimation();
-  const stopBotIcon = () => botIconRef.current?.stopAnimation();
+  const bot = useBotIconHover(isMyAgentsItem);
 
   return (
     <button
-      key={item.key}
+      type="button"
       data-nav-key={item.key}
       onClick={() => setActiveNav(item.key)}
-      onBlur={isMyAgentsItem ? stopBotIcon : undefined}
-      onFocus={isMyAgentsItem ? startBotIcon : undefined}
-      onMouseEnter={isMyAgentsItem ? startBotIcon : undefined}
-      onMouseLeave={isMyAgentsItem ? stopBotIcon : undefined}
+      onBlur={bot.stop}
+      onFocus={bot.start}
+      onMouseEnter={bot.start}
+      onMouseLeave={bot.stop}
       className="relative grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors"
       style={{
         background: isActive ? "var(--surface-white)" : "transparent",
@@ -154,7 +168,7 @@ function CollapsedIconItem({ item, activeNav, setActiveNav, t }: {
       title={t(`nav.${item.key}`)}
     >
       {isActive && <span className="absolute -left-1 h-4 w-0.5 rounded-r-full" style={{ background: "var(--accent)" }} />}
-      <NavIconGlyph path={item.icon} isBot={isMyAgentsItem} botIconRef={botIconRef} size={15} />
+      <NavIconGlyph path={item.icon} isBot={isMyAgentsItem} botIconRef={bot.botIconRef} size={15} />
     </button>
   );
 }
@@ -168,6 +182,7 @@ function CollapsedNav() {
   return (
     <div className="flex h-full w-12 flex-col items-center gap-1 py-3">
       <button
+        type="button"
         onClick={toggleSidebar}
         className="mb-2 grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg"
         style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}
@@ -216,7 +231,10 @@ interface ExpandedNavProps {
 }
 
 function ExpandedNav({
-  variant, activeNav, setActiveNav, onCreateConversation,
+  variant,
+  activeNav,
+  setActiveNav,
+  onCreateConversation,
 }: ExpandedNavProps) {
   const t = useT();
   const { toggleSidebar } = useNavigationStore();
@@ -237,10 +255,11 @@ function ExpandedNav({
               AgentHub
             </h1>
             <p className="mt-0.5 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
-              AI Agents · Together
+              AI Agents - Together
             </p>
           </div>
           <button
+            type="button"
             onClick={toggleSidebar}
             className="grid h-7 w-7 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
             style={{ color: "var(--fg-tertiary)" }}
@@ -266,6 +285,7 @@ function ExpandedNav({
 
         {variant === "chat" && (
           <button
+            type="button"
             onClick={onCreateConversation}
             className="mt-2 flex h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90 active:scale-[0.99]"
             style={{ background: "var(--accent)", boxShadow: "0 8px 18px rgba(68,86,223,0.18)" }}
@@ -321,6 +341,7 @@ function ExpandedNav({
           </div>
           <div className="mt-2 grid grid-cols-2 gap-1.5">
             <button
+              type="button"
               onClick={toggleLocale}
               className="h-7 rounded-lg text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]"
               style={{ border: "1px solid var(--border)", color: "var(--fg-secondary)" }}
@@ -328,6 +349,7 @@ function ExpandedNav({
               {locale === "zh" ? "EN" : "中文"}
             </button>
             <button
+              type="button"
               onClick={logout}
               className="h-7 rounded-lg text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]"
               style={{ border: "1px solid var(--border)", color: "var(--fg-secondary)" }}
@@ -342,14 +364,17 @@ function ExpandedNav({
 }
 
 export interface SidebarNavProps {
-  variant: "dashboard" | "chat" | "default";
+  variant: SidebarVariant;
   activeNav: NavKey;
   setActiveNav: (key: NavKey) => void;
   onCreateConversation: () => void;
 }
 
 export function SidebarNav({
-  variant, activeNav, setActiveNav, onCreateConversation,
+  variant,
+  activeNav,
+  setActiveNav,
+  onCreateConversation,
 }: SidebarNavProps) {
   const { sidebarCollapsed } = useNavigationStore();
 
