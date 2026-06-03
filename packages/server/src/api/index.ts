@@ -17,7 +17,7 @@ import { workspaceFileRepo } from "../db/repositories/workspace-file";
 import { deploymentTargetRepo, type DeploymentTargetRecord } from "../db/repositories/deployment-target";
 import { config } from "../config";
 import { logger } from "../utils/logger";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { randomUUID } from "crypto";
 import { createReadStream, createWriteStream, existsSync, mkdirSync, unlinkSync, statSync, readdirSync } from "fs";
 import path from "path";
@@ -33,7 +33,7 @@ type RouteHandler = (req: RequestWithParams, res: ServerResponse) => Promise<voi
 
 const routes: Record<string, RouteHandler> = {};
 const paramRoutes: Array<{ method: string; pattern: RegExp; keys: string[]; handler: RouteHandler }> = [];
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export function registerRoute(method: string, path: string, handler: RouteHandler) {
   // Check if path has params (e.g. /api/files/:id/download)
@@ -846,6 +846,10 @@ function renderDeployTemplate(value: string, userId: string, deployId: string) {
     .replace(/\{deployId\}/g, safeTemplateToken(deployId));
 }
 
+function remoteShellQuote(value: string) {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
 /* ── GET /api/deployment-targets ── */
 registerRoute("GET", "/api/deployment-targets", async (req, res) => {
   const user = await requireAuth(req, res);
@@ -922,9 +926,19 @@ registerRoute("POST", "/api/deployment-targets/:id/test", async (req, res) => {
   try {
     const testDeployId = `test-${target.id.slice(0, 8)}`;
     const testDeployPath = renderDeployTemplate(target.deployPath, user.id, testDeployId);
-    const remoteCmd = `mkdir -p "${testDeployPath}" && echo agenthub-ready`;
-    const sshCmd = `ssh -o BatchMode=yes -o StrictHostKeyChecking=no -p ${target.port} -i "${tempKey.path}" "${target.username}@${target.host}" '${remoteCmd}'`;
-    await execAsync(sshCmd, { timeout: 15000 });
+    const remoteCmd = `mkdir -p ${remoteShellQuote(testDeployPath)} && echo agenthub-ready`;
+    await execFileAsync("ssh", [
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "StrictHostKeyChecking=no",
+      "-p",
+      String(target.port),
+      "-i",
+      tempKey.path,
+      `${target.username}@${target.host}`,
+      remoteCmd,
+    ], { timeout: 15000 });
     await deploymentTargetRepo.updateStatus(target.id, "ready", null);
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ ok: true, status: "ready" }));

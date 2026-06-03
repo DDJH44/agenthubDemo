@@ -1,11 +1,11 @@
 import { createWriteStream, existsSync, mkdirSync } from "fs";
 import { join, basename } from "path";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import { logger } from "../utils/logger";
 import { writeTemporarySshKey } from "./ssh-key-file";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export interface DeployArtifact {
   path: string;
@@ -480,8 +480,29 @@ class SelfHostedProvider implements IDeployProvider {
     return `${interpolated.replace(/[\\/]+$/, "")}/${userId}/${deployId}`;
   }
 
-  private shellOption(flag: string, value?: string): string {
-    return value ? `${flag} "${value}"` : "";
+  private remoteShellQuote(value: string): string {
+    return `'${value.replace(/'/g, "'\\''")}'`;
+  }
+
+  private sshArgs(port: number, keyPath?: string, batchMode = false): string[] {
+    return [
+      ...(batchMode ? ["-o", "BatchMode=yes"] : []),
+      "-o",
+      "StrictHostKeyChecking=no",
+      "-p",
+      String(port),
+      ...(keyPath ? ["-i", keyPath] : []),
+    ];
+  }
+
+  private scpArgs(port: number, keyPath?: string): string[] {
+    return [
+      "-o",
+      "StrictHostKeyChecking=no",
+      "-P",
+      String(port),
+      ...(keyPath ? ["-i", keyPath] : []),
+    ];
   }
 
   private resolveConfig(config: DeployConfig, deployId: string) {
@@ -570,25 +591,32 @@ class SelfHostedProvider implements IDeployProvider {
       const tempKey = target.sshKeyContent
         ? writeTemporarySshKey(join(process.cwd(), "deploy-output", ".ssh"), this.safeDeployId(deployId), target.sshKeyContent)
         : null;
-      const sshKeyOption = this.shellOption("-i", tempKey?.path || target.sshKey);
-      const tarCmd = `tar -czf "${tarball}" -C "${deployDir}" .`;
-      const scpCmd = `scp -o StrictHostKeyChecking=no -P ${target.port} ${sshKeyOption} "${tarball}" "${target.user}@${target.host}:${target.remoteTmpFile}"`;
+      const sshKeyPath = tempKey?.path || target.sshKey;
 
       try {
-        await execAsync(tarCmd, { timeout: 60000 });
+        await execFileAsync("tar", ["-czf", tarball, "-C", deployDir, "."], { timeout: 60000 });
         logs.push("产物打包完成");
 
-        await execAsync(scpCmd, { timeout: 60000 });
+        await execFileAsync("scp", [
+          ...this.scpArgs(target.port, sshKeyPath),
+          tarball,
+          `${target.user}@${target.host}:${target.remoteTmpFile}`,
+        ], { timeout: 60000 });
         logs.push("产物已上传到服务器临时目录");
 
         onProgress(70, "解压并部署到目标目录...");
         logs.push("解压部署...");
 
         const reloadCommand = target.postDeployCommand || "(sudo -n nginx -s reload 2>/dev/null || true)";
-        const remoteCmd = `mkdir -p "${target.deployPath}" && tar -xzf "${target.remoteTmpFile}" -C "${target.deployPath}" && rm "${target.remoteTmpFile}" && ${reloadCommand}`;
-        const sshCmd = `ssh -o StrictHostKeyChecking=no -p ${target.port} ${sshKeyOption} "${target.user}@${target.host}" '${remoteCmd}'`;
+        const remoteDeployPath = this.remoteShellQuote(target.deployPath);
+        const remoteTmpFile = this.remoteShellQuote(target.remoteTmpFile);
+        const remoteCmd = `mkdir -p ${remoteDeployPath} && tar -xzf ${remoteTmpFile} -C ${remoteDeployPath} && rm ${remoteTmpFile} && ${reloadCommand}`;
 
-        await execAsync(sshCmd, { timeout: 30000 });
+        await execFileAsync("ssh", [
+          ...this.sshArgs(target.port, sshKeyPath),
+          `${target.user}@${target.host}`,
+          remoteCmd,
+        ], { timeout: 30000 });
 
         onProgress(90, "远程发布命令执行完成...");
         logs.push(target.postDeployCommand ? "自定义发布后命令已执行" : "已尝试无交互重载 Nginx");
