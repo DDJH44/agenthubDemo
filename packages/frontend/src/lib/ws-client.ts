@@ -39,8 +39,17 @@ export function createAgentSocket(serverUrl?: string, token?: string) {
   const url = serverUrl ?? getDefaultWsUrl();
   const ws = new WebSocket(url);
   const handlers: WSEventHandler[] = [];
+  const sendQueue: WSClientMessage[] = [];
   let readyCallback: (() => void) | null = null;
   let isAuthenticated = false;
+
+  const flushQueue = () => {
+    if (ws.readyState !== WebSocket.OPEN || !isAuthenticated) return;
+    while (sendQueue.length > 0) {
+      const queued = sendQueue.shift();
+      if (queued) ws.send(JSON.stringify(queued));
+    }
+  };
 
   // Send auth message on connection open
   ws.addEventListener("open", () => {
@@ -56,6 +65,7 @@ export function createAgentSocket(serverUrl?: string, token?: string) {
       if (data.type === "connected") {
         isAuthenticated = true;
         readyCallback?.();
+        flushQueue();
         return;
       }
       for (const h of handlers) h(data as WSServerMessage);
@@ -81,8 +91,15 @@ export function createAgentSocket(serverUrl?: string, token?: string) {
   });
 
   const sendFn = (msg: WSClientMessage) => {
-    if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
-    else if (ws.readyState === WebSocket.CONNECTING) ws.addEventListener("open", () => ws.send(JSON.stringify(msg)), { once: true });
+    if (ws.readyState === WebSocket.OPEN && isAuthenticated) {
+      ws.send(JSON.stringify(msg));
+      return;
+    }
+    if (ws.readyState === WebSocket.CONNECTING || (ws.readyState === WebSocket.OPEN && !isAuthenticated)) {
+      sendQueue.push(msg);
+      return;
+    }
+    console.warn("[WS] Dropped message because socket is closed", msg.type);
   };
 
   setGlobalSend(sendFn);

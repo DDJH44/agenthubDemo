@@ -21,11 +21,13 @@ interface Props {
   filename?: string;
   language?: string;
   deployUrl?: string;
+  deployDescription?: string;
   deployStatus?: string;
   deployProvider?: string;
   deployError?: string;
   deployVerified?: boolean;
   deployVerificationStatus?: number;
+  deployProgress?: number;
   onEdit?: (content: string) => void;
   onDeploy?: () => void;
   onPreview?: () => void;
@@ -624,26 +626,31 @@ function DiffView({ content, original }: { content: string; original?: string })
 
 function DeployView({
   url,
+  description,
   status,
   provider,
   error,
   verified,
   verificationStatus,
+  progress,
   conversationId,
 }: {
   url?: string;
+  description?: string;
   status?: string;
   provider?: string;
   error?: string;
   verified?: boolean;
   verificationStatus?: number;
+  progress?: number;
   conversationId?: string;
 }) {
-  const done = status === "done" || status === "completed";
+  const done = status === "done" || status === "completed" || status === "success";
   const failed = status === "failed" || status === "error";
   const label = done ? "部署完成" : failed ? "部署失败" : "部署中";
   const color = done ? "var(--success)" : failed ? "var(--danger)" : "#174ea6";
   const displayLabel = done && verified ? "部署完成，已验证" : label;
+  const normalizedProgress = failed ? 100 : done ? 100 : Math.max(0, Math.min(progress ?? 35, 100));
   const addMessage = useChatStore((state) => state.addMessage);
 
   const handoffToCodex = () => {
@@ -712,6 +719,11 @@ function DeployView({
             {error}
           </p>
         )}
+        {description && !error && (
+          <p className="mt-2 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.5 }}>
+            {description}
+          </p>
+        )}
         {url && (
           <p className="mt-2 break-all text-xs" style={{ color: "var(--fg-tertiary)" }}>
             {url}
@@ -719,7 +731,7 @@ function DeployView({
         )}
         {!done && !failed && (
           <div className="mt-3 h-1.5 overflow-hidden rounded-sm" style={{ background: "var(--surface-low)" }}>
-            <div className="h-full w-2/3 animate-pulse" style={{ background: color }} />
+            <div className="h-full animate-pulse" style={{ width: `${normalizedProgress}%`, background: color }} />
           </div>
         )}
       </div>
@@ -735,11 +747,13 @@ export function ArtifactCard({
   filename,
   language,
   deployUrl,
+  deployDescription,
   deployStatus,
   deployProvider,
   deployError,
   deployVerified,
   deployVerificationStatus,
+  deployProgress,
   onEdit,
   onPreview,
 }: Props) {
@@ -757,7 +771,11 @@ export function ArtifactCard({
       case "preview_url":
         return <PreviewView url={deployUrl || content} content={content} />;
     case "deploy_url":
-      return <DeployView url={deployUrl || content} status={deployStatus} provider={deployProvider} error={deployError} verified={deployVerified} verificationStatus={deployVerificationStatus} conversationId={conversationId} />;
+      {
+        const contentUrl = /^(https?:\/\/|\/api\/|\/artifact-|\/preview\/)/i.test(content.trim()) ? content.trim() : undefined;
+        const resolvedUrl = deployUrl || contentUrl;
+        return <DeployView url={resolvedUrl} description={deployDescription || (!resolvedUrl ? content : undefined)} status={deployStatus} provider={deployProvider} error={deployError} verified={deployVerified} verificationStatus={deployVerificationStatus} progress={deployProgress} conversationId={conversationId} />;
+      }
     case "diff":
       return <DiffView content={content} />;
     default:

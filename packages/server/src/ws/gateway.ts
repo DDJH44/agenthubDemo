@@ -844,7 +844,10 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
           case "artifact:deploy": {
             const targetConvId = msg.conversationId || currentRoom;
             if (!targetConvId) { sendError(ws, "NO_CONVERSATION", "No conversation selected"); break; }
-            const deployId = msg.artifactId + "-" + Date.now();
+            const requestedDeployId = typeof msg.deployId === "string" && /^[a-zA-Z0-9_.-]+$/.test(msg.deployId)
+              ? msg.deployId
+              : "";
+            const deployId = requestedDeployId || msg.artifactId + "-" + Date.now();
             emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:progress", deployId, status: "deploying", progress: 0, providerId: msg.providerId, logs: ["初始化部署..."], timestamp: Date.now() });
             try {
               const artifacts: Array<{ path: string; content: string }> = [];

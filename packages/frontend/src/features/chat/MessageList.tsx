@@ -690,11 +690,13 @@ const MessageBubble = memo(function MessageBubble({
                 content={message.content}
                 conversationId={message.conversationId}
                 deployUrl={payload?.url as string | undefined}
+                deployDescription={message.content}
                 deployStatus={payload?.status as string | undefined}
                 deployProvider={(payload?.platformLabel || payload?.platform) as string | undefined}
                 deployError={payload?.error as string | undefined}
                 deployVerified={payload?.verified as boolean | undefined}
                 deployVerificationStatus={payload?.verificationStatus as number | undefined}
+                deployProgress={typeof payload?.progress === "number" ? payload.progress : undefined}
               />
             )}
 

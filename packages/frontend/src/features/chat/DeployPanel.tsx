@@ -6,7 +6,9 @@ import { api } from "@/lib/api-client";
 import { getGlobalSend } from "@/lib/ws-client";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
-import type { Artifact, Message, WSClientMessage } from "@agenthub/shared";
+import type { WSClientMessage } from "@agenthub/shared";
+import { collectDeployFiles, pickDeployArtifact } from "./deploy-artifacts";
+import { upsertDeployCard } from "./deploy-card";
 
 type Platform = "mock-preview" | "vercel" | "miaoda" | "self-hosted";
 
@@ -105,70 +107,6 @@ function normalizeStatus(status: string | null) {
   if (status === "failed" || status === "error") return "failed";
   if (status === "deploying" || status === "building" || status === "running") return "deploying";
   return "idle";
-}
-
-function filePathForArtifact(artifact: Artifact, index: number) {
-  const fallback = artifact.type === "html" ? "index.html" : `${artifact.type || "artifact"}-${index + 1}.txt`;
-  const value = (artifact.filename || fallback).replace(/\\/g, "/").replace(/^\/+/, "").trim();
-  return value || fallback;
-}
-
-function filePathWithSuffix(path: string, suffix: number) {
-  if (suffix <= 1) return path;
-  const slashIndex = path.lastIndexOf("/");
-  const dir = slashIndex >= 0 ? `${path.slice(0, slashIndex + 1)}` : "";
-  const name = slashIndex >= 0 ? path.slice(slashIndex + 1) : path;
-  const dotIndex = name.lastIndexOf(".");
-  const hasExtension = dotIndex > 0;
-  const stem = hasExtension ? name.slice(0, dotIndex) : name;
-  const extension = hasExtension ? name.slice(dotIndex) : "";
-  return `${dir}${stem}-${suffix}${extension}`;
-}
-
-function uniqueFilePath(path: string, seen: Map<string, number>) {
-  let suffix = (seen.get(path) ?? 0) + 1;
-  let candidate = filePathWithSuffix(path, suffix);
-
-  while (seen.has(candidate)) {
-    suffix += 1;
-    candidate = filePathWithSuffix(path, suffix);
-  }
-
-  seen.set(path, suffix);
-  seen.set(candidate, 1);
-  return candidate;
-}
-
-function collectDeployFiles(artifacts: Artifact[]) {
-  const seenPaths = new Map<string, number>();
-  return artifacts
-    .filter((artifact) => artifact.content?.trim().length > 0)
-    .map((artifact, index) => ({
-      path: uniqueFilePath(filePathForArtifact(artifact, index), seenPaths),
-      content: artifact.content,
-    }));
-}
-
-function pickDeployArtifact(artifacts: Artifact[]) {
-  return (
-    artifacts.find((artifact) => artifact.type === "html" || artifact.filename?.endsWith(".html")) ??
-    artifacts.find((artifact) => artifact.type === "code") ??
-    artifacts.find((artifact) => artifact.content?.trim())
-  );
-}
-
-function addDeployCard(conversationId: string, content: string, payload: Record<string, unknown>) {
-  const message: Message = {
-    id: crypto.randomUUID(),
-    conversationId,
-    type: "deploy_card",
-    sender: "system",
-    senderId: "deploy",
-    content,
-    payload,
-    timestamp: Date.now(),
-  };
-  useChatStore.getState().addMessage(conversationId, message);
 }
 
 function lifecycleState(stepProgress: number, currentProgress: number, status: string) {
@@ -371,6 +309,7 @@ export function DeployPanel() {
     }
 
     const projectName = `agenthub-${activeConversationId.slice(0, 8)}`;
+    const deployId = `${deployableArtifact.id}-${Date.now()}`;
     const config: Record<string, unknown> = {
       projectName,
       framework: "static",
@@ -399,12 +338,13 @@ export function DeployPanel() {
       logs: [`已提交 ${platformLabel} 部署任务。`, `收集 ${deployFiles.length} 个产物文件。`],
       error: null,
     });
-    addDeployCard(activeConversationId, `已向 ${platformLabel} 提交部署任务，当前阶段：准备中。`, {
+    upsertDeployCard(activeConversationId, deployId, {
       status: "deploying",
       platform: selectedPlatform,
       platformLabel,
       artifactId: deployableArtifact.id,
       files: deployFiles.map((file) => file.path),
+      progress: 5,
     });
 
     const send = getGlobalSend();
@@ -413,6 +353,7 @@ export function DeployPanel() {
       conversationId: activeConversationId,
       artifactId: deployableArtifact.id,
       providerId: selectedPlatform,
+      deployId,
       config,
     } as WSClientMessage);
   };

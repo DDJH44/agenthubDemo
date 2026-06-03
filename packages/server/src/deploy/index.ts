@@ -688,7 +688,7 @@ class SelfHostedProvider implements IDeployProvider {
         const reloadCommand = target.postDeployCommand || "(sudo -n nginx -s reload 2>/dev/null || true)";
         const remoteDeployPath = this.remoteShellQuote(target.deployPath);
         const remoteTmpFile = this.remoteShellQuote(target.remoteTmpFile);
-        const remoteCmd = `mkdir -p ${remoteDeployPath} && tar -xzf ${remoteTmpFile} -C ${remoteDeployPath} && rm ${remoteTmpFile} && ${reloadCommand}`;
+        const remoteCmd = `mkdir -p ${remoteDeployPath} && find ${remoteDeployPath} -mindepth 1 -maxdepth 1 -exec rm -rf {} + && tar -xzf ${remoteTmpFile} -C ${remoteDeployPath} && rm ${remoteTmpFile} && ${reloadCommand}`;
 
         await execFileAsync("ssh", [
           ...this.sshArgs(target.port, sshKeyPath),

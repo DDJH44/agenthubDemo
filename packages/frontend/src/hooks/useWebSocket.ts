@@ -9,6 +9,7 @@ import { useFileStore } from "@/stores/file-store";
 import { useConversationGroupStore } from "@/stores/conversation-group-store";
 import { useMcpStore } from "@/stores/mcp-store";
 import { useTaskTreeStore } from "@/stores/task-tree-store";
+import { upsertDeployCard } from "@/features/chat/deploy-card";
 
 const _clientIdToServerId = new Map<string, string>();
 
@@ -149,9 +150,12 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
     const token = useAuthStore.getState().token;
     if (!token) return; // Don't connect without a token
 
+    let forwardEvent = (_msg: WSServerMessage) => {};
+
     function connect() {
       const socket = createAgentSocket(serverUrl, token!);
       socketRef.current = socket;
+      socket.onEvent((msg) => forwardEvent(msg));
 
       // Wait for auth to complete before sending messages
       socket.onReady(() => {
@@ -177,9 +181,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
       });
     }
 
-    connect();
-
-    socketRef.current?.onEvent((msg: WSServerMessage) => {
+    forwardEvent = (msg: WSServerMessage) => {
       switch (msg.type) {
         case "error": {
           const errMsg = (msg as { code: string; message: string }).message || "Unknown error";
@@ -643,29 +645,27 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         case "deploy:failed": {
           const status = msg.type === "deploy:progress" ? "deploying" : msg.type === "deploy:completed" ? "success" : "failed";
           const url = "url" in msg ? msg.url : undefined;
-          const finalLog = msg.type === "deploy:completed"
-            ? msg.verified
-              ? `部署完成，已验证可访问：${msg.url}`
-              : `部署完成：${msg.url}`
-            : msg.type === "deploy:failed"
-              ? msg.error
-              : "";
           const conversationId = eventConversationId(msg);
+          const progress = msg.type === "deploy:progress" ? msg.progress : 100;
+          const logs = msg.type === "deploy:progress"
+            ? msg.logs
+            : [msg.type === "deploy:completed" ? `部署完成：${msg.url}` : msg.error];
+
           if (!conversationId || isActiveConversation(conversationId)) {
             useWorkspaceStore.getState().setDeployStatus(status, url, {
-              progress: msg.type === "deploy:progress" ? msg.progress : 100,
+              progress,
               providerId: msg.providerId,
-              logs: msg.type === "deploy:progress" ? msg.logs : [msg.type === "deploy:completed" ? `部署完成：${msg.url}` : msg.error],
+              logs,
               error: msg.type === "deploy:failed" ? msg.error : null,
             });
           }
 
-          if (msg.type === "deploy:completed" && msg.verified && (!conversationId || isActiveConversation(conversationId))) {
-            useWorkspaceStore.getState().setDeployStatus("success", url, {
-              progress: 100,
-              providerId: msg.providerId,
-              logs: [finalLog],
-              error: null,
+          if (conversationId && msg.type === "deploy:progress") {
+            upsertDeployCard(conversationId, msg.deployId, {
+              status: "deploying",
+              platform: msg.providerId,
+              platformLabel: msg.providerId,
+              progress,
             });
           }
 
@@ -689,49 +689,33 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
               },
             };
             useWorkspaceStore.getState().addArtifact(artifact);
-            useChatStore.getState().addMessage(conversationId, {
-              id: `deploy-card-${msg.deployId}-completed`,
-              conversationId,
-              type: "deploy_card",
-              sender: "worker",
-              senderId: "open-code",
-              content: `部署完成。${msg.providerId} 已返回访问链接。`,
-              payload: {
-                status: "done",
-                platform: msg.providerId,
-                platformLabel: msg.providerId,
-                url: msg.url,
-                deployId: msg.deployId,
-                artifactId: artifact.id,
-                verified: msg.verified,
-                verificationStatus: msg.verificationStatus,
-              },
-              timestamp: Date.now(),
+            upsertDeployCard(conversationId, msg.deployId, {
+              status: "done",
+              platform: msg.providerId,
+              platformLabel: msg.providerId,
+              url: msg.url,
+              artifactId: artifact.id,
+              verified: msg.verified,
+              verificationStatus: msg.verificationStatus,
+              progress: 100,
             });
           }
 
           if (conversationId && msg.type === "deploy:failed") {
-            useChatStore.getState().addMessage(conversationId, {
-              id: `deploy-card-${msg.deployId}-failed`,
-              conversationId,
-              type: "deploy_card",
-              sender: "worker",
-              senderId: "open-code",
-              content: `部署失败。${msg.providerId} 返回错误，可交给 Codex 修复后重试。`,
-              payload: {
-                status: "failed",
-                platform: msg.providerId,
-                platformLabel: msg.providerId,
-                error: msg.error,
-                deployId: msg.deployId,
-              },
-              timestamp: Date.now(),
+            upsertDeployCard(conversationId, msg.deployId, {
+              status: "failed",
+              platform: msg.providerId,
+              platformLabel: msg.providerId,
+              error: msg.error,
+              progress: 100,
             });
           }
           break;
         }
       }
-    });
+    };
+
+    connect();
 
     // Listen for conversation selection events
     const handleConversationSelect = (event: Event) => {
@@ -801,8 +785,8 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
     socketRef.current?.send({ type: "artifact:update", conversationId, artifactId, content } as WSClientMessage);
   }, []);
 
-  const deployArtifact = useCallback((conversationId: string, artifactId: string, providerId: string, config?: Record<string, unknown>) => {
-    socketRef.current?.send({ type: "artifact:deploy", conversationId, artifactId, providerId, config } as WSClientMessage);
+  const deployArtifact = useCallback((conversationId: string, artifactId: string, providerId: string, config?: Record<string, unknown>, deployId?: string) => {
+    socketRef.current?.send({ type: "artifact:deploy", conversationId, artifactId, providerId, deployId, config } as WSClientMessage);
   }, []);
 
   const setConversationMode = useCallback((conversationId: string, mode: "single" | "group") => {

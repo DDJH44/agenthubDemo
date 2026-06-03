@@ -53,7 +53,7 @@ export type WSClientMessage =
   | { type: "agent:assign"; conversationId: string; agentId: string; content: string }
   | { type: "agent:cancel"; conversationId: string; agentId: string }
   | { type: "artifact:update"; conversationId: string; artifactId: string; content: string }
-  | { type: "artifact:deploy"; conversationId: string; artifactId: string; providerId: string; config?: Record<string, unknown> }
+  | { type: "artifact:deploy"; conversationId: string; artifactId: string; providerId: string; deployId?: string; config?: Record<string, unknown> }
   | { type: "conversation:mode"; conversationId: string; mode: "single" | "group" };
 
 export type WSServerMessage =
