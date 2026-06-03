@@ -24,6 +24,8 @@ export interface DeployConfig {
   sshUser?: string;
   sshKey?: string;
   deployPath?: string;
+  selfHostedPublicUrl?: string;
+  selfHostedPostDeployCommand?: string;
 }
 
 export interface DeployProgressCallback {
@@ -449,6 +451,53 @@ class SelfHostedProvider implements IDeployProvider {
   readonly id = "self-hosted";
   readonly name = "自托管服务器";
 
+  private parsePort(value: number | string | undefined): number {
+    const parsed = Number(value ?? process.env.SELF_HOSTED_SSH_PORT ?? 22);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 22;
+  }
+
+  private interpolate(value: string, deployId: string): string {
+    return value.replace(/\{deployId\}/g, deployId);
+  }
+
+  private safeDeployId(deployId: string): string {
+    return deployId.replace(/[^a-zA-Z0-9_.-]/g, "-");
+  }
+
+  private shellOption(flag: string, value?: string): string {
+    return value ? `${flag} "${value}"` : "";
+  }
+
+  private resolveConfig(config: DeployConfig, deployId: string) {
+    const sshHost = config.sshHost || process.env.SELF_HOSTED_SSH_HOST;
+    const sshUser = config.sshUser || process.env.SELF_HOSTED_SSH_USER;
+
+    if (!sshHost || !sshUser) {
+      throw new Error("自有服务器部署需要配置 SELF_HOSTED_SSH_HOST 和 SELF_HOSTED_SSH_USER");
+    }
+
+    const safeDeployId = this.safeDeployId(deployId);
+    const deployPath = this.interpolate(
+      config.deployPath || process.env.SELF_HOSTED_DEPLOY_PATH || "/var/www/app",
+      safeDeployId
+    );
+    const publicUrl = this.interpolate(
+      config.selfHostedPublicUrl || process.env.SELF_HOSTED_PUBLIC_URL || `http://${sshHost}`,
+      safeDeployId
+    );
+
+    return {
+      host: sshHost,
+      user: sshUser,
+      port: this.parsePort(config.sshPort),
+      sshKey: config.sshKey || process.env.SELF_HOSTED_SSH_KEY,
+      deployPath,
+      publicUrl,
+      postDeployCommand: config.selfHostedPostDeployCommand || process.env.SELF_HOSTED_POST_DEPLOY_COMMAND,
+      remoteTmpFile: `/tmp/deploy-agenthub-${safeDeployId}.tar.gz`,
+    };
+  }
+
   async deploy(
     deployId: string,
     artifacts: DeployArtifact[],
@@ -458,25 +507,18 @@ class SelfHostedProvider implements IDeployProvider {
     const logs: string[] = [];
 
     try {
-      const { sshHost, sshPort, sshUser, sshKey, deployPath } = config;
-      if (!sshHost || !sshUser) {
-        throw new Error("自托管部署需要配置 SSH 主机和用户名");
-      }
+      const target = this.resolveConfig(config, deployId);
 
-      const host = sshHost;
-      const port = sshPort || 22;
-      const user = sshUser;
-      const remotePath = deployPath || "/var/www/app";
-
-      onProgress(10, `连接 ${user}@${host}:${port}...`);
-      logs.push(`连接 ${user}@${host}:${port}...`);
+      onProgress(10, `连接 ${target.user}@${target.host}:${target.port}...`);
+      logs.push(`目标服务器: ${target.user}@${target.host}:${target.port}`);
+      logs.push(`部署目录: ${target.deployPath}`);
 
       const deployDir = join(process.cwd(), "deploy-output", deployId);
       if (!existsSync(deployDir)) {
         mkdirSync(deployDir, { recursive: true });
       }
 
-      const totalFiles = artifacts.length;
+      const totalFiles = Math.max(artifacts.length, 1);
       for (let i = 0; i < artifacts.length; i++) {
         const artifact = artifacts[i];
         const progress = 15 + Math.round((i / totalFiles) * 25);
@@ -501,34 +543,36 @@ class SelfHostedProvider implements IDeployProvider {
       onProgress(45, "同步文件到服务器...");
       logs.push("同步文件到服务器...");
 
-      const tarball = join(deployDir, "deploy.tar.gz");
-      const rsyncCmd = `tar -czf "${tarball}" -C "${deployDir}" . 2>/dev/null && scp -o StrictHostKeyChecking=no -P ${port} ${sshKey ? `-i "${sshKey}"` : ""} "${tarball}" "${user}@${host}:/tmp/deploy-agentub-${deployId}.tar.gz"`;
+      const tarball = join(process.cwd(), "deploy-output", `${this.safeDeployId(deployId)}.tar.gz`);
+      const sshKeyOption = this.shellOption("-i", target.sshKey);
+      const tarCmd = `tar -czf "${tarball}" -C "${deployDir}" .`;
+      const scpCmd = `scp -o StrictHostKeyChecking=no -P ${target.port} ${sshKeyOption} "${tarball}" "${target.user}@${target.host}:${target.remoteTmpFile}"`;
 
       try {
-        await execAsync(rsyncCmd, { timeout: 60000 });
+        await execAsync(tarCmd, { timeout: 60000 });
+        logs.push("产物打包完成");
+
+        await execAsync(scpCmd, { timeout: 60000 });
+        logs.push("产物已上传到服务器临时目录");
 
         onProgress(70, "解压并部署到目标目录...");
         logs.push("解压部署...");
 
-        const remoteCmd = `mkdir -p "${remotePath}" && tar -xzf "/tmp/deploy-agentub-${deployId}.tar.gz" -C "${remotePath}" && rm "/tmp/deploy-agentub-${deployId}.tar.gz"`;
-        const sshCmd = `ssh -o StrictHostKeyChecking=no -p ${port} ${sshKey ? `-i "${sshKey}"` : ""} "${user}@${host}" '${remoteCmd}'`;
+        const reloadCommand = target.postDeployCommand || "(sudo -n nginx -s reload 2>/dev/null || true)";
+        const remoteCmd = `mkdir -p "${target.deployPath}" && tar -xzf "${target.remoteTmpFile}" -C "${target.deployPath}" && rm "${target.remoteTmpFile}" && ${reloadCommand}`;
+        const sshCmd = `ssh -o StrictHostKeyChecking=no -p ${target.port} ${sshKeyOption} "${target.user}@${target.host}" '${remoteCmd}'`;
 
         await execAsync(sshCmd, { timeout: 30000 });
 
-        onProgress(90, "重启服务...");
-        logs.push("重启服务...");
-
-        const nginxReload = `ssh -o StrictHostKeyChecking=no -p ${port} ${sshKey ? `-i "${sshKey}"` : ""} "${user}@${host}" 'sudo nginx -s reload 2>/dev/null || echo nginx-not-available'`;
-        await execAsync(nginxReload, { timeout: 10000 }).catch(() => {
-          logs.push("Nginx 不可用，跳过重载");
-        });
+        onProgress(90, "远程发布命令执行完成...");
+        logs.push(target.postDeployCommand ? "自定义发布后命令已执行" : "已尝试无交互重载 Nginx");
       } catch (execErr) {
         const msg = execErr instanceof Error ? execErr.message : String(execErr);
         logs.push(`SSH 命令警告: ${msg}`);
         throw new Error(`SSH 连接失败: ${msg}`);
       }
 
-      const url = `http://${host}`;
+      const url = target.publicUrl;
       onProgress(100, `部署成功: ${url}`);
       logs.push(`部署成功: ${url}`);
 

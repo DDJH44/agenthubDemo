@@ -7,7 +7,7 @@ import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import type { Artifact, Message, WSClientMessage } from "@agenthub/shared";
 
-type Platform = "mock-preview" | "vercel" | "miaoda";
+type Platform = "mock-preview" | "vercel" | "miaoda" | "self-hosted";
 
 interface PlatformOption {
   key: Platform;
@@ -42,6 +42,14 @@ const PLATFORMS: PlatformOption[] = [
     hint: "需要 MIAODA_DEPLOY_WEBHOOK 或手动填写 Webhook",
     tags: ["第三方平台", "Webhook"],
     icon: "M12 2l7 4v6c0 5-3 8-7 10-4-2-7-5-7-10V6l7-4z",
+  },
+  {
+    key: "self-hosted",
+    label: "自有服务器",
+    desc: "通过服务端 SSH 配置上传静态产物，并回写服务器访问地址。",
+    hint: "需要服务端配置 SELF_HOSTED_SSH_HOST / SELF_HOSTED_SSH_USER",
+    tags: ["SSH 发布", "自有主机"],
+    icon: "M4 6h16v4H4z M4 14h16v4H4z M8 8h.01 M8 16h.01",
   },
 ];
 
@@ -316,7 +324,7 @@ export function DeployPanel() {
           </span>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-3">
+        <div className="grid gap-2 sm:grid-cols-2">
           {PLATFORMS.map((platform) => {
             const selected = selectedPlatform === platform.key;
             return (
@@ -370,6 +378,33 @@ export function DeployPanel() {
               <span className="mb-1 block text-[10px] font-semibold" style={{ color: "var(--fg-secondary)" }}>备用应用链接</span>
               <input value={miaodaAppUrl} onChange={(event) => setMiaodaAppUrl(event.target.value)} placeholder="Webhook 未返回 URL 时使用" className="h-8 w-full rounded-lg px-2 text-xs outline-none" style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--border)" }} />
             </label>
+          </div>
+        </section>
+      )}
+
+      {selectedPlatform === "self-hosted" && (
+        <section className="rounded-xl p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>自有服务器配置</p>
+              <p className="mt-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>SSH 信息由后端环境变量托管</p>
+            </div>
+            <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--success)", background: "var(--success-subtle)", border: "1px solid var(--success-border)" }}>
+              Server side
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "主机", value: "SELF_HOSTED_SSH_HOST" },
+              { label: "用户", value: "SELF_HOSTED_SSH_USER" },
+              { label: "目录", value: "SELF_HOSTED_DEPLOY_PATH" },
+              { label: "访问", value: "SELF_HOSTED_PUBLIC_URL" },
+            ].map((item) => (
+              <div key={item.value} className="min-w-0 rounded-lg px-2.5 py-2" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+                <p className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{item.label}</p>
+                <p className="mt-0.5 truncate text-[11px] font-bold" style={{ color: "var(--fg-primary)" }}>{item.value}</p>
+              </div>
+            ))}
           </div>
         </section>
       )}
