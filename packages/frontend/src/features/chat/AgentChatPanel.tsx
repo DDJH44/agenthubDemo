@@ -49,6 +49,10 @@ const EMPTY_ACTIONS = [
   { title: "部署到预览环境", desc: "让 Open Code 生成部署状态卡片和访问链接" },
 ];
 
+function isNearScrollBottom(element: HTMLElement, threshold = 72) {
+  return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold;
+}
+
 function createConversationDetail(convId: string) {
   const store = useChatStore.getState();
   const currentConv = store.conversations.find((conversation) => conversation.id === convId);
@@ -103,11 +107,26 @@ export function AgentChatPanel({
   });
   const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [showPreviewPanel, setShowPreviewPanel] = useState(false);
+  const [isFollowingOutput, setIsFollowingOutput] = useState(true);
+  const [hasDetachedUpdates, setHasDetachedUpdates] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const followOutputRef = useRef(true);
+  const lastAutoScrollKeyRef = useRef("");
+  const lastAutoScrollConvRef = useRef<string | null | undefined>(undefined);
   const convId = activeConversationId ?? activeConversationIdProp;
   const currentMode = convId ? (conversationMode[convId] ?? "single") : "single";
   const contextCount = convId ? (contextReferences[convId]?.length ?? 0) : 0;
   const workflowReference = workflowReferenceState.conversationId === convId ? workflowReferenceState.workflow : null;
+  const latestMessage = messages[messages.length - 1];
+  const autoScrollKey = [
+    convId ?? "none",
+    messages.length,
+    latestMessage?.id ?? "",
+    latestMessage?.content.length ?? 0,
+    streamBuffer.length,
+    steps.length,
+    taskSummary.length,
+  ].join(":");
 
   useEffect(() => {
     if (!convId) return;
@@ -115,9 +134,44 @@ export function AgentChatPanel({
     return () => cancelAnimationFrame(frame);
   }, [convId]);
 
+  const scrollToLatest = useCallback((behavior: ScrollBehavior = "smooth") => {
+    const element = scrollRef.current;
+    if (!element) return;
+    followOutputRef.current = true;
+    setIsFollowingOutput(true);
+    setHasDetachedUpdates(false);
+    element.scrollTo({ top: element.scrollHeight, behavior });
+  }, []);
+
+  const handleMessageScroll = useCallback(() => {
+    const element = scrollRef.current;
+    if (!element) return;
+    const nearBottom = isNearScrollBottom(element);
+    followOutputRef.current = nearBottom;
+    setIsFollowingOutput(nearBottom);
+    if (nearBottom) setHasDetachedUpdates(false);
+  }, []);
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "auto" });
-  }, [messages.length, streamBuffer, steps.length, taskSummary]);
+    if (lastAutoScrollKeyRef.current === autoScrollKey) return;
+    const conversationChanged = lastAutoScrollConvRef.current !== convId;
+    lastAutoScrollKeyRef.current = autoScrollKey;
+    lastAutoScrollConvRef.current = convId;
+    if (conversationChanged) followOutputRef.current = true;
+
+    const frame = requestAnimationFrame(() => {
+      const element = scrollRef.current;
+      if (!element) return;
+      if (conversationChanged || followOutputRef.current) {
+        element.scrollTo({ top: element.scrollHeight, behavior: "auto" });
+        setIsFollowingOutput(true);
+        setHasDetachedUpdates(false);
+        return;
+      }
+      setHasDetachedUpdates(true);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [autoScrollKey, convId]);
 
   useEffect(() => {
     const handleComposeDraft = (event: Event) => {
@@ -158,7 +212,8 @@ export function AgentChatPanel({
     onSend(trimmed, workflowRef ? { workflowRef } : undefined);
     setText("");
     setWorkflowReferenceState({ conversationId: convId, workflow: null });
-  }, [convId, isStreaming, onSend, text, workflowReference]);
+    window.requestAnimationFrame(() => scrollToLatest("auto"));
+  }, [convId, isStreaming, onSend, scrollToLatest, text, workflowReference]);
 
   const handleAssignAgent = useCallback((agentId: string, content: string) => {
     if (convId && onAssignAgent) onAssignAgent(convId, agentId, content);
@@ -224,43 +279,60 @@ export function AgentChatPanel({
       <div className="flex min-h-0 flex-1" style={{ background: "var(--surface-white)" }}>
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden" style={{ background: "var(--surface-white)" }}>
-            <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar" style={{ background: "var(--surface-white)" }}>
-              {!hasContent ? (
-                <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-                  <BrandMascot variant="wave" size={126} className="mb-4" priority />
-                  <h2 className="text-lg font-bold" style={{ color: "var(--fg-primary)" }}>从一个任务开始</h2>
-                  <p className="mt-2 max-w-md text-sm" style={{ color: "var(--fg-tertiary)", lineHeight: 1.7 }}>
-                    描述目标，PMO 主 Agent 会拆解任务并分配给 Codex、Claude Code、Open Code 或自建 Agent。
-                  </p>
-                  <div className="mt-6 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
-                    {EMPTY_ACTIONS.map((action) => (
-                      <button
-                        key={action.title}
-                        type="button"
-                        onClick={() => setText(action.desc)}
-                        className="rounded-lg p-3 text-left transition-all hover:-translate-y-0.5 hover:bg-[var(--surface-white)]"
-                        style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}
-                      >
-                        <p className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{action.title}</p>
-                        <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.5 }}>{action.desc}</p>
-                      </button>
-                    ))}
+            <div className="relative min-h-0 flex-1 overflow-hidden" style={{ background: "var(--surface-white)" }}>
+              <div ref={scrollRef} onScroll={handleMessageScroll} className="h-full overflow-y-auto overflow-x-hidden custom-scrollbar" style={{ background: "var(--surface-white)" }}>
+                {!hasContent ? (
+                  <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                    <BrandMascot variant="wave" size={126} className="mb-4" priority />
+                    <h2 className="text-lg font-bold" style={{ color: "var(--fg-primary)" }}>从一个任务开始</h2>
+                    <p className="mt-2 max-w-md text-sm" style={{ color: "var(--fg-tertiary)", lineHeight: 1.7 }}>
+                      描述目标，PMO 主 Agent 会拆解任务并分配给 Codex、Claude Code、Open Code 或自建 Agent。
+                    </p>
+                    <div className="mt-6 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
+                      {EMPTY_ACTIONS.map((action) => (
+                        <button
+                          key={action.title}
+                          type="button"
+                          onClick={() => setText(action.desc)}
+                          className="rounded-lg p-3 text-left transition-all hover:-translate-y-0.5 hover:bg-[var(--surface-white)]"
+                          style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}
+                        >
+                          <p className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{action.title}</p>
+                          <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.5 }}>{action.desc}</p>
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <div className="flex flex-col pb-4">
-                  <AnalyzeAndAssignFlow />
-                  <MessageList
-                    messages={messages}
-                    isStreaming={isStreaming}
-                    streamBuffer={streamBuffer}
-                    taskSummary={taskSummary}
-                    onUndo={handleUndoMessage}
-                    onStop={handleStopStreaming}
-                  />
-                  <AgentStepList />
-                  <TaskSteps steps={steps} planSteps={planSteps} />
-                </div>
+                ) : (
+                  <div className="flex flex-col pb-4">
+                    <AnalyzeAndAssignFlow />
+                    <MessageList
+                      messages={messages}
+                      isStreaming={isStreaming}
+                      streamBuffer={streamBuffer}
+                      taskSummary={taskSummary}
+                      onUndo={handleUndoMessage}
+                      onStop={handleStopStreaming}
+                    />
+                    <AgentStepList />
+                    <TaskSteps steps={steps} planSteps={planSteps} />
+                  </div>
+                )}
+              </div>
+
+              {hasContent && (!isFollowingOutput || hasDetachedUpdates) && (
+                <button
+                  type="button"
+                  onClick={() => scrollToLatest()}
+                  className="absolute bottom-3 right-4 inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition hover:-translate-y-0.5"
+                  style={{ color: "var(--accent)", background: "var(--surface-white)", border: "1px solid var(--accent-border)", boxShadow: "0 12px 28px rgba(69, 82, 126, 0.16)" }}
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M12 5v14" />
+                    <path d="M19 12l-7 7-7-7" />
+                  </svg>
+                  {hasDetachedUpdates ? "查看新内容" : "回到底部"}
+                </button>
               )}
             </div>
 
