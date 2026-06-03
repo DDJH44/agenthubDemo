@@ -20,11 +20,12 @@ import { config } from "../config";
 import { logger } from "../utils/logger";
 import { execFile } from "child_process";
 import { randomUUID } from "crypto";
-import { createReadStream, createWriteStream, existsSync, mkdirSync, unlinkSync, statSync, readdirSync } from "fs";
+import { createReadStream, createWriteStream, existsSync, mkdirSync, unlinkSync, statSync, readdirSync, readFileSync, writeFileSync, rmSync } from "fs";
 import path from "path";
 import { promisify } from "util";
 import { decryptSecret, encryptSecret, generateSshKeyPair } from "../deploy/credentials";
 import { writeTemporarySshKey } from "../deploy/ssh-key-file";
+import { parseFileContent } from "../knowledge/chunker";
 
 interface RequestWithParams extends IncomingMessage {
   params?: Record<string, string>;
@@ -1153,6 +1154,97 @@ registerRoute("DELETE", "/api/user-agents/:id", async (req, res) => {
   res.end(JSON.stringify({ ok: true }));
 });
 
+function ensureDirectory(dir: string) {
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+}
+
+function getWorkspaceFileDir(): string {
+  const dir = path.join(config.files.uploadDir, "workspace-files");
+  ensureDirectory(dir);
+  return dir;
+}
+
+function sanitizeDisplayName(name: string): string {
+  const safe = path.basename(name).replace(/[^a-zA-Z0-9._\-一-鿿\s]/g, "_").trim();
+  return safe || "untitled.txt";
+}
+
+function getFileExtension(name: string, explicit?: string): string {
+  const raw = (explicit || path.extname(name).replace(".", "") || "txt").toLowerCase();
+  if (raw === "markdown") return "md";
+  if (raw === "javascript") return "js";
+  if (raw === "typescript") return "ts";
+  return raw;
+}
+
+function guessMimeType(name: string, explicit?: string): string {
+  if (explicit) return explicit;
+  const ext = getFileExtension(name);
+  const mimeMap: Record<string, string> = {
+    txt: "text/plain",
+    md: "text/markdown",
+    markdown: "text/markdown",
+    json: "application/json",
+    csv: "text/csv",
+    html: "text/html",
+    css: "text/css",
+    js: "text/javascript",
+    jsx: "text/javascript",
+    ts: "text/typescript",
+    tsx: "text/typescript",
+    xml: "application/xml",
+    yml: "text/yaml",
+    yaml: "text/yaml",
+    log: "text/plain",
+  };
+  return mimeMap[ext] ?? "text/plain";
+}
+
+function isTextWorkspaceFile(file: { name: string; mimeType?: string | null; size?: number | null }): boolean {
+  if ((file.size ?? 0) > 2 * 1024 * 1024) return false;
+  const mime = file.mimeType ?? "";
+  if (mime.startsWith("text/")) return true;
+  return ["json", "html", "css", "js", "jsx", "ts", "tsx", "xml", "yml", "yaml", "md", "markdown", "csv", "log"].includes(getFileExtension(file.name));
+}
+
+function readWorkspaceFileText(file: { name: string; isFolder: boolean; mimeType?: string | null; path?: string | null; size?: number | null }): string | null {
+  if (file.isFolder || !file.path || !existsSync(file.path) || !isTextWorkspaceFile(file)) return null;
+  return parseFileContent(readFileSync(file.path), getFileExtension(file.name));
+}
+
+function writeKnowledgeTempFile(documentId: string, content: string) {
+  ensureDirectory(config.files.uploadDir);
+  const tmpPath = path.join(config.files.uploadDir, `${documentId}_content.txt`);
+  writeFileSync(tmpPath, Buffer.from(content, "utf-8"));
+}
+
+async function fallbackKnowledgeSearch(knowledgeBaseId: string, query: string, limit: number) {
+  const chunks = await prisma.chunk.findMany({
+    where: {
+      document: { knowledgeBaseId },
+      OR: [
+        { content: { contains: query } },
+        { sectionTitle: { contains: query } },
+      ],
+    },
+    include: { document: { select: { title: true } } },
+    orderBy: { chunkIndex: "asc" },
+    take: Math.min(Math.max(limit, 1), 20),
+  });
+
+  return chunks.map((chunk) => ({
+    chunkId: chunk.id,
+    documentId: chunk.documentId,
+    documentTitle: chunk.document.title,
+    content: chunk.content,
+    sectionTitle: chunk.sectionTitle ?? undefined,
+    chunkType: chunk.chunkType,
+    score: 0.5,
+    prevChunkId: chunk.prevChunkId ?? undefined,
+    nextChunkId: chunk.nextChunkId ?? undefined,
+  }));
+}
+
 // ═══ Knowledge Base ═══
 
 /* ── GET /api/knowledge-bases ── */
@@ -1206,11 +1298,7 @@ registerRoute("POST", "/api/knowledge-bases/:id/documents", async (req, res) => 
   const body = await readJsonBody(req) as { title?: string; content?: string; sourceType?: string };
   if (!body.title || !body.content) { res.writeHead(400); res.end(JSON.stringify({ error: "title and content required" })); return; }
   const doc = await documentRepo.create({ knowledgeBaseId: kbId, title: body.title, sourceType: body.sourceType ?? "manual", fileType: "txt", fileSize: Buffer.byteLength(body.content, "utf-8"), uploadedBy: user.id });
-  // 写入临时文件供管线读取
-  const uploadDir = config.files.uploadDir;
-  if (!existsSync(uploadDir)) mkdirSync(uploadDir, { recursive: true });
-  const tmpPath = path.join(uploadDir, `${doc.id}_content.txt`);
-  createWriteStream(tmpPath).end(Buffer.from(body.content, "utf-8"));
+  writeKnowledgeTempFile(doc.id, body.content);
   const { ingestDocument } = await import("../knowledge/pipeline");
   ingestDocument(doc.id).catch(() => {});
   res.writeHead(201, { "Content-Type": "application/json" });
@@ -1226,14 +1314,16 @@ registerRoute("POST", "/api/knowledge-bases/:id/upload", async (req, res) => {
   // 使用 JSON body 接收文本内容
   const body = await readJsonBody(req) as { title?: string; content?: string; sourceType?: string; fileType?: string };
   if (!body.title || !body.content) { res.writeHead(400); res.end(JSON.stringify({ error: "title and content required" })); return; }
+  const fileType = getFileExtension(body.title, body.fileType);
   const doc = await documentRepo.create({
     knowledgeBaseId: kbId,
     title: body.title,
     sourceType: body.sourceType ?? "upload",
-    fileType: body.fileType ?? "txt",
+    fileType,
     fileSize: Buffer.byteLength(body.content, "utf-8"),
     uploadedBy: user.id,
   });
+  writeKnowledgeTempFile(doc.id, body.content);
   const { ingestDocument } = await import("../knowledge/pipeline");
   ingestDocument(doc.id).catch(() => {});
   res.writeHead(202, { "Content-Type": "application/json" });
@@ -1279,8 +1369,9 @@ registerRoute("POST", "/api/knowledge-bases/:id/search", async (req, res) => {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify({ results }));
   } catch (err) {
-    res.writeHead(500, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ error: err instanceof Error ? err.message : "Search failed" }));
+    const results = await fallbackKnowledgeSearch(kbId, body.query, body.rerankTopK ?? body.topK ?? 8);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ results, warning: err instanceof Error ? err.message : "Search used fallback" }));
   }
 });
 
@@ -1310,18 +1401,57 @@ registerRoute("GET", "/api/workspace-files/search", async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
   const url = new URL(req.url!, `http://${req.headers.host}`);
-  const q = url.searchParams.get("q") ?? "";
-  const files = q ? await workspaceFileRepo.search("default", q) : [];
+  const q = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+  const files = q ? (await workspaceFileRepo.getTree("default")).filter((file) => {
+    if (file.name.toLowerCase().includes(q)) return true;
+    const content = readWorkspaceFileText(file);
+    return content?.toLowerCase().includes(q) ?? false;
+  }).slice(0, 50) : [];
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ files }));
+});
+
+registerRoute("GET", "/api/workspace-files/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const fileId = (req as RequestWithParams).params?.id;
+  if (!fileId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
+  const file = await workspaceFileRepo.getById(fileId);
+  if (!file || file.workspaceId !== "default") { res.writeHead(404); res.end(JSON.stringify({ error: "file not found" })); return; }
+  const content = readWorkspaceFileText(file);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ file: { ...file, content, canPreview: content !== null } }));
 });
 
 registerRoute("POST", "/api/workspace-files", async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
-  const body = await readJsonBody(req) as { name?: string; parentId?: string | null; isFolder?: boolean };
+  const body = await readJsonBody(req) as { name?: string; parentId?: string | null; isFolder?: boolean; content?: string; mimeType?: string };
   if (!body.name) { res.writeHead(400); res.end(JSON.stringify({ error: "name required" })); return; }
-  const file = await workspaceFileRepo.create({ workspaceId: "default", parentId: body.parentId ?? null, name: body.name, isFolder: body.isFolder ?? false, uploadedBy: user.id });
+  const name = sanitizeDisplayName(body.name);
+  let filePath: string | undefined;
+  let size = 0;
+  const isFolder = body.isFolder ?? false;
+  const mimeType = isFolder ? "inode/directory" : guessMimeType(name, body.mimeType);
+
+  if (!isFolder) {
+    const content = body.content ?? "";
+    const storedName = `${randomUUID()}-${name.replace(/\s+/g, "_")}`;
+    filePath = path.join(getWorkspaceFileDir(), storedName);
+    writeFileSync(filePath, Buffer.from(content, "utf-8"));
+    size = Buffer.byteLength(content, "utf-8");
+  }
+
+  const file = await workspaceFileRepo.create({
+    workspaceId: "default",
+    parentId: body.parentId ?? null,
+    name,
+    isFolder,
+    size,
+    mimeType,
+    path: filePath,
+    uploadedBy: user.id,
+  });
   res.writeHead(201, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ file }));
 });
@@ -1331,18 +1461,79 @@ registerRoute("PATCH", "/api/workspace-files/:id", async (req, res) => {
   if (!user) return;
   const fileId = (req as RequestWithParams).params?.id;
   if (!fileId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
-  const body = await readJsonBody(req) as { name?: string; parentId?: string | null };
-  if (body.name) await workspaceFileRepo.rename(fileId, body.name);
-  if (body.parentId !== undefined) await workspaceFileRepo.move(fileId, body.parentId);
+  const existing = await workspaceFileRepo.getById(fileId);
+  if (!existing || existing.workspaceId !== "default") { res.writeHead(404); res.end(JSON.stringify({ error: "file not found" })); return; }
+  const body = await readJsonBody(req) as { name?: string; parentId?: string | null; content?: string };
+  const updates: { name?: string; parentId?: string | null; size?: number; mimeType?: string; path?: string | null } = {};
+  if (body.name) updates.name = sanitizeDisplayName(body.name);
+  if (body.parentId !== undefined) updates.parentId = body.parentId;
+  if (typeof body.content === "string" && !existing.isFolder) {
+    const targetPath = existing.path ?? path.join(getWorkspaceFileDir(), `${randomUUID()}-${existing.name.replace(/\s+/g, "_")}`);
+    writeFileSync(targetPath, Buffer.from(body.content, "utf-8"));
+    updates.path = targetPath;
+    updates.size = Buffer.byteLength(body.content, "utf-8");
+    updates.mimeType = guessMimeType(updates.name ?? existing.name);
+  }
+  const file = Object.keys(updates).length > 0 ? await workspaceFileRepo.update(fileId, updates) : existing;
   res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ ok: true }));
+  res.end(JSON.stringify({ ok: true, file }));
+});
+
+registerRoute("POST", "/api/workspace-files/:id/knowledge", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const fileId = (req as RequestWithParams).params?.id;
+  if (!fileId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
+  const body = await readJsonBody(req) as { knowledgeBaseId?: string };
+  if (!body.knowledgeBaseId) { res.writeHead(400); res.end(JSON.stringify({ error: "knowledgeBaseId required" })); return; }
+
+  const file = await workspaceFileRepo.getById(fileId);
+  if (!file || file.workspaceId !== "default" || file.isFolder) { res.writeHead(404); res.end(JSON.stringify({ error: "file not found" })); return; }
+  const content = readWorkspaceFileText(file);
+  if (!content?.trim()) { res.writeHead(400); res.end(JSON.stringify({ error: "file content is empty or not previewable" })); return; }
+
+  const base = await knowledgeBaseRepo.getById(body.knowledgeBaseId);
+  if (!base || base.workspaceId !== "default") { res.writeHead(404); res.end(JSON.stringify({ error: "knowledge base not found" })); return; }
+
+  const doc = await documentRepo.create({
+    knowledgeBaseId: body.knowledgeBaseId,
+    title: file.name,
+    sourceType: "workspace-file",
+    fileType: getFileExtension(file.name),
+    fileSize: file.size,
+    uploadedBy: user.id,
+  });
+  writeKnowledgeTempFile(doc.id, content);
+  const { ingestDocument } = await import("../knowledge/pipeline");
+  ingestDocument(doc.id).catch(() => {});
+  res.writeHead(202, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ document: doc, status: "processing" }));
 });
 
 registerRoute("DELETE", "/api/workspace-files/:id", async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
   const fileId = (req as RequestWithParams).params?.id;
-  if (fileId) await workspaceFileRepo.delete(fileId);
+  if (fileId) {
+    const files = await workspaceFileRepo.getTree("default");
+    const descendants = new Set<string>([fileId]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const file of files) {
+        if (file.parentId && descendants.has(file.parentId) && !descendants.has(file.id)) {
+          descendants.add(file.id);
+          changed = true;
+        }
+      }
+    }
+    for (const file of files) {
+      if (descendants.has(file.id) && file.path && existsSync(file.path)) {
+        rmSync(file.path, { force: true });
+      }
+    }
+    await workspaceFileRepo.delete(fileId);
+  }
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ ok: true }));
 });

@@ -31,6 +31,10 @@ export const workspaceFileRepo = {
     return prisma.workspaceFile.create({ data });
   },
 
+  async update(id: string, data: { name?: string; parentId?: string | null; size?: number; mimeType?: string; path?: string | null }) {
+    return prisma.workspaceFile.update({ where: { id }, data });
+  },
+
   async rename(id: string, name: string) {
     return prisma.workspaceFile.update({ where: { id }, data: { name } });
   },

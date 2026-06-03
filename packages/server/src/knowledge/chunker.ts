@@ -1,4 +1,6 @@
-// 语义 Chunk 引擎 — 按文档结构切分，不做固定长度硬切
+import { TextDecoder } from "util";
+
+// 语义 Chunk 引擎：按文档结构切分，不做固定长度硬切
 
 interface ChunkResult {
   chunkIndex: number;
@@ -153,14 +155,44 @@ export function chunkDocument(
 }
 
 export function parseFileContent(buffer: Buffer, fileType: string): string {
-  if (fileType === "txt" || fileType === "md" || fileType === "markdown") {
-    return buffer.toString("utf-8");
-  }
-  // PDF/HTML 等需要解析库，先做基本文本提取
-  const text = buffer.toString("utf-8");
-  // 移除 HTML tags
+  const text = decodeTextBuffer(buffer);
+
   if (fileType === "html") {
     return text.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
   }
+
   return text;
+}
+
+function decodeTextBuffer(buffer: Buffer): string {
+  if (buffer.length === 0) return "";
+
+  if (buffer.length >= 2 && buffer[0] === 0xff && buffer[1] === 0xfe) {
+    return cleanupDecodedText(new TextDecoder("utf-16le").decode(buffer.subarray(2)));
+  }
+
+  if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
+    const swapped = Buffer.alloc(buffer.length - 2);
+    for (let i = 2; i + 1 < buffer.length; i += 2) {
+      swapped[i - 2] = buffer[i + 1];
+      swapped[i - 1] = buffer[i];
+    }
+    return cleanupDecodedText(new TextDecoder("utf-16le").decode(swapped));
+  }
+
+  try {
+    return cleanupDecodedText(new TextDecoder("utf-8", { fatal: true }).decode(buffer));
+  } catch {
+    // Windows/legacy Chinese text files are often GBK/GB18030. This fallback
+    // prevents knowledge-base snippets from becoming mojibake after upload.
+    try {
+      return cleanupDecodedText(new TextDecoder("gb18030").decode(buffer));
+    } catch {
+      return cleanupDecodedText(buffer.toString("utf-8"));
+    }
+  }
+}
+
+function cleanupDecodedText(text: string): string {
+  return text.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
 }
