@@ -109,11 +109,38 @@ function filePathForArtifact(artifact: Artifact, index: number) {
   return value || fallback;
 }
 
+function filePathWithSuffix(path: string, suffix: number) {
+  if (suffix <= 1) return path;
+  const slashIndex = path.lastIndexOf("/");
+  const dir = slashIndex >= 0 ? `${path.slice(0, slashIndex + 1)}` : "";
+  const name = slashIndex >= 0 ? path.slice(slashIndex + 1) : path;
+  const dotIndex = name.lastIndexOf(".");
+  const hasExtension = dotIndex > 0;
+  const stem = hasExtension ? name.slice(0, dotIndex) : name;
+  const extension = hasExtension ? name.slice(dotIndex) : "";
+  return `${dir}${stem}-${suffix}${extension}`;
+}
+
+function uniqueFilePath(path: string, seen: Map<string, number>) {
+  let suffix = (seen.get(path) ?? 0) + 1;
+  let candidate = filePathWithSuffix(path, suffix);
+
+  while (seen.has(candidate)) {
+    suffix += 1;
+    candidate = filePathWithSuffix(path, suffix);
+  }
+
+  seen.set(path, suffix);
+  seen.set(candidate, 1);
+  return candidate;
+}
+
 function collectDeployFiles(artifacts: Artifact[]) {
+  const seenPaths = new Map<string, number>();
   return artifacts
     .filter((artifact) => artifact.content?.trim().length > 0)
     .map((artifact, index) => ({
-      path: filePathForArtifact(artifact, index),
+      path: uniqueFilePath(filePathForArtifact(artifact, index), seenPaths),
       content: artifact.content,
     }));
 }
