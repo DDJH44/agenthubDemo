@@ -1,4 +1,5 @@
 import { parseSlidesArtifact } from "../slide-parser";
+import { getPptxFilename } from "../pptx-export";
 
 describe("slide parser", () => {
   it("parses structured slide JSON", () => {
@@ -60,5 +61,11 @@ describe("slide parser", () => {
     expect(slides).toHaveLength(1);
     expect(slides[0].title).toBe("Slide 1");
     expect(slides[0].blocks[0]).toMatchObject({ type: "text" });
+  });
+
+  it("normalizes generated slide filenames to pptx", () => {
+    expect(getPptxFilename("acceptance-demo.slides.md")).toBe("acceptance-demo.pptx");
+    expect(getPptxFilename("review-deck.json")).toBe("review-deck.pptx");
+    expect(getPptxFilename("final.pptx")).toBe("final.pptx");
   });
 });

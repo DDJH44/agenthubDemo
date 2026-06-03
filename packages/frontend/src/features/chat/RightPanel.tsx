@@ -8,6 +8,9 @@ import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { DeployPanel as DeployWorkflowPanel } from "./DeployPanel";
+import { downloadSlidesAsPptx, getPptxFilename } from "./pptx-export";
+import { parseSlidesArtifact } from "./slide-parser";
+import { SlidesRenderer } from "./SlidesRenderer";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((module) => module.default), { ssr: false });
 const MonacoDiffEditor = dynamic(() => import("@monaco-editor/react").then((module) => module.DiffEditor), { ssr: false });
@@ -181,6 +184,7 @@ function latestArtifacts(artifacts: Artifact[]) {
 function previewTypeForArtifact(artifact: Pick<Artifact, "type" | "filename">) {
   if (artifact.type === "html" || artifact.filename?.endsWith(".html")) return "html";
   if (artifact.type === "markdown" || artifact.type === "document" || artifact.filename?.endsWith(".md")) return "document";
+  if (artifact.type === "slides" || /\.(ppt|pptx)$/i.test(artifact.filename ?? "")) return "slides";
   if (artifact.type === "preview_url" || artifact.type === "deploy_url") return "url";
   return "code";
 }
@@ -1047,45 +1051,63 @@ function DiffPanel({ messages, artifacts }: { messages: Message[]; artifacts: Ar
   );
 }
 
-interface Slide {
-  title: string;
-  body: string;
-  notes?: string;
-}
-
-function parseSlides(content: string): Slide[] {
-  const sections = content.split(/(?=^##\s)/m).map((part) => part.trim()).filter(Boolean);
-  return sections.map((section, index) => {
-    const lines = section.split("\n");
-    const titleLine = lines[0]?.startsWith("## ") ? lines.shift() : undefined;
-    const notes = lines.filter((line) => line.startsWith("> ")).map((line) => line.slice(2)).join("\n");
-    const body = lines.filter((line) => !line.startsWith("> ")).join("\n").trim();
-    return { title: titleLine?.replace(/^##\s+/, "") || `第 ${index + 1} 页`, body, notes: notes || undefined };
-  });
-}
-
 function SlidesPanel({ artifacts }: { artifacts: Artifact[] }) {
-  const slidesArtifacts = artifacts.filter((artifact) => artifact.type === "slides" || artifact.filename?.includes("slides"));
+  const currentPreview = useChatStore((state) => state.currentPreview);
+  const previewArtifact: Artifact | null = currentPreview?.type === "slides"
+    ? {
+        id: currentPreview.artifactId,
+        jobId: "local-preview",
+        type: "slides",
+        content: currentPreview.content,
+        filename: currentPreview.filename,
+        createdAt: 0,
+      }
+    : null;
+  const slidesArtifacts = [
+    ...(previewArtifact ? [previewArtifact] : []),
+    ...artifacts.filter((artifact) => artifact.type === "slides" || /\.(ppt|pptx)$/i.test(artifact.filename ?? "") || /\.slides\.(md|json)$/i.test(artifact.filename ?? "")),
+  ].filter((artifact, index, list) => list.findIndex((item) => item.id === artifact.id) === index);
   const [artifactId, setArtifactId] = useState<string | null>(null);
-  const [page, setPage] = useState(0);
+  const [exporting, setExporting] = useState(false);
   const artifact = slidesArtifacts.find((item) => item.id === (artifactId ?? slidesArtifacts[0]?.id));
-  const slides = artifact?.content ? parseSlides(artifact.content) : [];
-  const current = slides[Math.min(page, Math.max(0, slides.length - 1))];
+  const slides = artifact ? parseSlidesArtifact(artifact) : [];
+  const pptxFilename = getPptxFilename(artifact?.filename);
 
-  if (!artifact || slides.length === 0 || !current) {
-    return <EmptyState title="暂无 PPT" desc="Agent 生成 slides 产物后，可以在这里逐页浏览。" mascot="wave" />;
+  const handleDownload = async () => {
+    if (!artifact || slides.length === 0 || exporting) return;
+    setExporting(true);
+    try {
+      await downloadSlidesAsPptx(slides, pptxFilename);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  if (!artifact || slides.length === 0) {
+    return <EmptyState title="暂无 PPTX" desc="Agent 生成 PPTX 产物后，可以在这里点击预览、翻页浏览和下载文件。" mascot="wave" />;
   }
 
   return (
     <div className="flex h-full min-h-[560px] flex-col">
-      <SectionHeader title="PPT 浏览" desc="使用 Markdown slides 渲染，适合验收演示和复盘。" />
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <SectionHeader title="PPTX 预览" desc="点击消息中的 PPTX 文件卡后，会在这里打开逐页预览。" />
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={exporting || slides.length === 0}
+          className="shrink-0 rounded-md px-2.5 py-1.5 text-[10px] font-semibold transition-colors disabled:opacity-45"
+          style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}
+        >
+          {exporting ? "生成中" : "下载 PPTX"}
+        </button>
+      </div>
       {slidesArtifacts.length > 1 && (
         <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
           {slidesArtifacts.map((item) => (
             <button
               key={item.id}
               type="button"
-              onClick={() => { setArtifactId(item.id); setPage(0); }}
+              onClick={() => setArtifactId(item.id)}
               className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold"
               style={{
                 color: item.id === artifact.id ? "#174ea6" : "var(--fg-secondary)",
@@ -1093,34 +1115,13 @@ function SlidesPanel({ artifacts }: { artifacts: Artifact[] }) {
                 border: `1px solid ${item.id === artifact.id ? "rgba(23, 78, 166, 0.18)" : "var(--border)"}`,
               }}
             >
-              {item.filename || "slides"}
+              {getPptxFilename(item.filename)}
             </button>
           ))}
         </div>
       )}
-      <div className="flex flex-1 flex-col overflow-hidden rounded-lg" style={{ background: "#fff", border: "1px solid var(--border)" }}>
-        <div className="px-6 py-4" style={{ borderBottom: "1px solid var(--border)", background: "#f6f8fb" }}>
-          <p className="text-[10px] font-semibold" style={{ color: "#174ea6" }}>SLIDE {page + 1} / {slides.length}</p>
-          <h2 className="mt-1 text-xl font-bold" style={{ color: "#202124" }}>{current.title}</h2>
-        </div>
-        <div className="flex-1 overflow-auto px-6 py-5" style={{ color: "#202124", lineHeight: 1.8 }}>
-          <div dangerouslySetInnerHTML={{ __html: markdownToHtml(current.body) }} />
-          {current.notes && (
-            <div className="mt-5 rounded-lg p-3" style={{ background: "#fff8e1", border: "1px solid #f5d276" }}>
-              <p className="text-xs font-semibold" style={{ color: "#8a5a00" }}>演讲备注</p>
-              <pre className="mt-1 whitespace-pre-wrap text-xs" style={{ color: "#6f4a00", fontFamily: "var(--font-sans)" }}>{current.notes}</pre>
-            </div>
-          )}
-        </div>
-        <div className="flex items-center justify-between px-4 py-3" style={{ borderTop: "1px solid var(--border)", background: "var(--surface-low)" }}>
-          <button type="button" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))} className="rounded-md px-3 py-1 text-xs font-semibold" style={{ color: page === 0 ? "var(--fg-disabled)" : "#174ea6", background: "#fff", border: "1px solid var(--border)" }}>
-            上一页
-          </button>
-          <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{artifact.filename || "slides.md"}</span>
-          <button type="button" disabled={page >= slides.length - 1} onClick={() => setPage((value) => Math.min(slides.length - 1, value + 1))} className="rounded-md px-3 py-1 text-xs font-semibold" style={{ color: page >= slides.length - 1 ? "var(--fg-disabled)" : "#174ea6", background: "#fff", border: "1px solid var(--border)" }}>
-            下一页
-          </button>
-        </div>
+      <div className="min-h-0 flex-1 overflow-hidden rounded-lg" style={{ background: "#fff", border: "1px solid var(--border)" }}>
+        <SlidesRenderer artifact={{ ...artifact, filename: pptxFilename }} />
       </div>
     </div>
   );

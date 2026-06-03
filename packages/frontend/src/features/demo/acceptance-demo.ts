@@ -112,7 +112,7 @@ const demoSlides = `## 课题验收主线
 
 - HTML 页面进入预览和代码编辑
 - Markdown 文档可引用段落
-- PPT 在 Slides Tab 中浏览
+- PPTX 在 PPT Tab 中点击预览
 - Diff Tab 展示冲突与版本变更
 
 ## 部署与降级
@@ -256,7 +256,7 @@ const artifacts: Artifact[] = [
     id: "demo-artifact-slides",
     jobId: "acceptance-demo-job",
     type: "slides",
-    filename: "acceptance-demo.slides.md",
+    filename: "acceptance-demo.pptx",
     content: demoSlides,
     version: 1,
     createdBy: "PMO 主 Agent",
@@ -279,7 +279,7 @@ const artifacts: Artifact[] = [
 const resources: ResourceItem[] = [
   { id: "demo-resource-doc", name: "课题要求摘录.md", type: "doc", size: "6 KB", createdAt: at(1000 * 60 * 9) },
   { id: "demo-resource-html", name: "landing-page.html", type: "code", size: "9 KB", createdAt: at(1000 * 60 * 8) },
-  { id: "demo-resource-ppt", name: "acceptance-demo.slides.md", type: "doc", size: "4 KB", createdAt: at(1000 * 60 * 6) },
+  { id: "demo-resource-ppt", name: "acceptance-demo.pptx", type: "doc", size: "4 KB", createdAt: at(1000 * 60 * 6) },
   { id: "demo-resource-diff", name: "landing-page.diff", type: "code", size: "2 KB", createdAt: at(1000 * 60 * 4) },
 ];
 
@@ -357,7 +357,7 @@ function buildGroupMessages(): Message[] {
       sender: "planner",
       senderId: "pmo",
       content: demoSlides,
-      payload: { artifactType: "slides", artifactId: "demo-artifact-slides", filename: "acceptance-demo.slides.md", language: "md" },
+      payload: { artifactType: "slides", artifactId: "demo-artifact-slides", filename: "acceptance-demo.pptx", language: "md" },
       timestamp: at(1000 * 60 * 4),
     }),
     makeMessage({

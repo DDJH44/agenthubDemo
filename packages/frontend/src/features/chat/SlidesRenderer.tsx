@@ -218,7 +218,7 @@ export function SlidesRenderer({ artifact }: { artifact: Artifact }) {
 
 export function SlidesTab({ artifacts }: { artifacts: Artifact[] }) {
   const slidesArtifacts = artifacts.filter(
-    (artifact) => artifact.type === "slides" || artifact.filename?.endsWith(".md") || artifact.filename?.endsWith(".json")
+    (artifact) => artifact.type === "slides" || /\.(ppt|pptx)$/i.test(artifact.filename ?? "") || /\.slides\.(md|json)$/i.test(artifact.filename ?? "")
   );
 
   if (slidesArtifacts.length === 0) {

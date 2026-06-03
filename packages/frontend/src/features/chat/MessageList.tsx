@@ -601,6 +601,11 @@ const MessageBubble = memo(function MessageBubble({
       content,
       filename,
     });
+    const tab = type === "slides" ? "slides" : "preview";
+    window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+    }, 0);
   };
   const trimmedDisplayContent = displayContent.trim();
   const hasFencedCode = /```[\s\S]*?```/.test(displayContent);
@@ -703,7 +708,7 @@ const MessageBubble = memo(function MessageBubble({
                 language={payload?.language as string | undefined}
                 deployUrl={payload?.deployUrl as string | undefined}
                 deployStatus={payload?.deployStatus as string | undefined}
-                onPreview={artifactType === "slides" ? undefined : () => previewArtifact(artifactType, message.content, artifactFilename)}
+                onPreview={() => previewArtifact(artifactType, message.content, artifactFilename)}
               />
             )}
 

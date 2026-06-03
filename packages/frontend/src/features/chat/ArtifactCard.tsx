@@ -5,7 +5,8 @@ import dynamic from "next/dynamic";
 import type { Artifact } from "@agenthub/shared";
 import { renderMarkdown } from "@/lib/markdown-utils";
 import { useChatStore } from "@/stores/chat-store";
-import { SlidesRenderer } from "./SlidesRenderer";
+import { downloadSlidesAsPptx, getPptxFilename } from "./pptx-export";
+import { parseSlidesArtifact } from "./slide-parser";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((module) => module.default), { ssr: false });
 const MonacoDiffEditor = dynamic(() => import("@monaco-editor/react").then((module) => module.DiffEditor), { ssr: false });
@@ -447,33 +448,75 @@ function SlidesView({
   artifactId?: string;
   onPreview?: () => void;
 }) {
-  const artifact: Artifact = {
+  const [exporting, setExporting] = useState(false);
+  const artifact = useMemo<Artifact>(() => ({
     id: artifactId || filename || "inline-slides",
     jobId: "inline-message",
     type: "slides",
     content,
     filename,
     createdAt: 0,
+  }), [artifactId, content, filename]);
+  const slides = useMemo(() => parseSlidesArtifact(artifact), [artifact]);
+  const pptxFilename = getPptxFilename(filename);
+  const slideTitles = slides.slice(0, 3).map((slide) => slide.title);
+
+  const handleDownload = async () => {
+    if (slides.length === 0 || exporting) return;
+    setExporting(true);
+    try {
+      await downloadSlidesAsPptx(slides, pptxFilename);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
     <CardShell
-      title={filename || "slides.md"}
-      meta="PPT"
+      title={pptxFilename}
+      meta={`PPTX · ${slides.length || 1} 页`}
       actions={
         <>
           <CopyButton text={content} />
           {onPreview && (
             <button type="button" onClick={onPreview} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]" style={{ color: "#174ea6" }}>
-              打开预览
+              预览
             </button>
           )}
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={slides.length === 0 || exporting}
+            className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)] disabled:opacity-45"
+            style={{ color: "#174ea6" }}
+          >
+            {exporting ? "生成中" : "下载 PPTX"}
+          </button>
         </>
       }
     >
-      <div className="h-[420px]">
-        <SlidesRenderer artifact={artifact} />
-      </div>
+      <button
+        type="button"
+        onClick={onPreview}
+        className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-[var(--surface-low)]"
+        style={{ color: "inherit" }}
+      >
+        <span
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[11px] font-black"
+          style={{ color: "#fff", background: "linear-gradient(135deg, #5B5CF6, #7C3AED)", boxShadow: "0 10px 22px rgba(91, 92, 246, 0.20)" }}
+        >
+          PPTX
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{pptxFilename}</span>
+          <span className="mt-1 block text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.5 }}>
+            {slideTitles.length > 0 ? slideTitles.join(" / ") : "点击预览后在右侧工作台浏览"}
+          </span>
+        </span>
+        <span className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+          点击预览
+        </span>
+      </button>
     </CardShell>
   );
 }

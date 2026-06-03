@@ -124,6 +124,21 @@ export function AgentChatPanel({
     return () => window.removeEventListener("chat:compose", handleComposeDraft);
   }, []);
 
+  useEffect(() => {
+    const handleOpenRightPanel = (event: Event) => {
+      const tab = (event as CustomEvent<{ tab?: string }>).detail?.tab;
+      setShowPreviewPanel(true);
+      if (tab) {
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+        }, 0);
+      }
+    };
+
+    window.addEventListener("right-panel:open", handleOpenRightPanel);
+    return () => window.removeEventListener("right-panel:open", handleOpenRightPanel);
+  }, []);
+
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed || isStreaming) return;
