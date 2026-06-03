@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { parseMentions } from "@agenthub/shared";
+import {
+  getWorkflowNodeLabels,
+  getWorkflowReferencePrompt,
+  loadSavedWorkflows,
+  SAVED_WORKFLOWS_EVENT,
+  SAVED_WORKFLOWS_KEY,
+  type SavedWorkflowSnapshot,
+} from "@/features/workflows/saved-workflows";
 
 interface Props {
   onAttach: () => void;
@@ -47,7 +55,10 @@ export function QuickReplyBar({
   contextCount = 0,
 }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const workflowMenuRef = useRef<HTMLDivElement>(null);
   const isGroup = conversationMode === "group";
+  const [savedWorkflows, setSavedWorkflows] = useState<SavedWorkflowSnapshot[]>([]);
+  const [isWorkflowMenuOpen, setIsWorkflowMenuOpen] = useState(false);
 
   const fitTextarea = useCallback(() => {
     const el = textareaRef.current;
@@ -68,6 +79,28 @@ export function QuickReplyBar({
   useEffect(() => {
     fitTextarea();
   }, [fitTextarea, value]);
+
+  useEffect(() => {
+    const refreshSavedWorkflows = () => setSavedWorkflows(loadSavedWorkflows());
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key === SAVED_WORKFLOWS_KEY) refreshSavedWorkflows();
+    };
+    const handlePointerDown = (event: MouseEvent) => {
+      const menu = workflowMenuRef.current;
+      if (!menu || !(event.target instanceof Node) || menu.contains(event.target)) return;
+      setIsWorkflowMenuOpen(false);
+    };
+
+    refreshSavedWorkflows();
+    window.addEventListener(SAVED_WORKFLOWS_EVENT, refreshSavedWorkflows);
+    window.addEventListener("storage", handleStorage);
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      window.removeEventListener(SAVED_WORKFLOWS_EVENT, refreshSavedWorkflows);
+      window.removeEventListener("storage", handleStorage);
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, []);
 
   const submit = useCallback(() => {
     const trimmed = value.trim();
@@ -99,9 +132,27 @@ export function QuickReplyBar({
     }, 0);
   };
 
+  const insertWorkflowReference = (workflow: SavedWorkflowSnapshot) => {
+    const prompt = getWorkflowReferencePrompt(workflow);
+    const nextValue = value.trim()
+      ? `${value.trimEnd()}\n\n${prompt}`
+      : prompt;
+    onChange(nextValue);
+    setIsWorkflowMenuOpen(false);
+    window.requestAnimationFrame(() => {
+      fitTextarea();
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      const pos = el.value.length;
+      el.setSelectionRange(pos, pos);
+    });
+  };
+
   return (
     <div className="px-3 py-2" style={{ background: "var(--surface-white)" }}>
-      <div className="overflow-hidden rounded-xl" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
+      <div ref={workflowMenuRef} className="relative">
+        <div className="overflow-hidden rounded-xl" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
         <div className="flex min-h-9 items-center justify-between gap-3 px-2.5 pt-2">
           <div className="flex min-w-0 items-center gap-1 rounded-lg p-0.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
             <span className="inline-flex h-6 items-center rounded-md px-2 text-[11px] font-bold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
@@ -143,6 +194,22 @@ export function QuickReplyBar({
             title="提及 Agent"
           >
             <Icon path="M16 8a6 6 0 10-2 4.47V14a2 2 0 104 0v-2a6 6 0 10-6 6" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsWorkflowMenuOpen((open) => !open)}
+            disabled={disabled}
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)] disabled:opacity-40"
+            style={{
+              color: isWorkflowMenuOpen ? "var(--accent)" : "var(--fg-tertiary)",
+              background: isWorkflowMenuOpen ? "var(--accent-subtle)" : "var(--surface-white)",
+              border: `1px solid ${isWorkflowMenuOpen ? "var(--accent-border)" : "var(--border)"}`,
+            }}
+            title="引用工作流"
+            aria-expanded={isWorkflowMenuOpen}
+          >
+            <Icon path="M6 3v5M18 16v5M6 8a3 3 0 100 6 3 3 0 000-6zM18 10a3 3 0 100 6 3 3 0 000-6zM9 11.5h6" />
           </button>
 
           <textarea
@@ -209,6 +276,51 @@ export function QuickReplyBar({
               <span className="shrink-0 text-[10px]" style={{ color: value.length > 1800 ? "var(--warning)" : "var(--fg-tertiary)" }}>
                 {value.length}
               </span>
+            )}
+          </div>
+        )}
+        </div>
+
+        {isWorkflowMenuOpen && (
+          <div
+            className="absolute bottom-[calc(100%+8px)] left-2 z-50 w-80 max-w-[calc(100vw-40px)] rounded-xl p-2"
+            style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "0 18px 48px rgba(69, 82, 126, 0.18)" }}
+          >
+            <div className="flex items-center justify-between gap-2 px-2 py-1.5">
+              <p className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>引用工作流</p>
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
+                {savedWorkflows.length}
+              </span>
+            </div>
+            {savedWorkflows.length === 0 ? (
+              <div className="rounded-lg px-3 py-3 text-xs leading-5" style={{ background: "var(--page-bg)", color: "var(--fg-tertiary)", border: "1px dashed var(--border)" }}>
+                暂无可引用工作流。先到工作流页选择模板、命名并保存，就能在这里直接调用。
+              </div>
+            ) : (
+              <div className="max-h-72 space-y-1 overflow-y-auto custom-scrollbar pr-0.5">
+                {savedWorkflows.slice(0, 8).map((workflow) => {
+                  const labels = getWorkflowNodeLabels(workflow, 4);
+                  return (
+                    <button
+                      key={workflow.id}
+                      type="button"
+                      onClick={() => insertWorkflowReference(workflow)}
+                      className="w-full rounded-lg px-3 py-2 text-left transition hover:bg-[var(--accent-subtle)]"
+                      style={{ border: "1px solid transparent" }}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="min-w-0 flex-1 truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{workflow.name}</span>
+                        <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
+                          {workflow.nodes.length} 节点
+                        </span>
+                      </div>
+                      <p className="mt-1 truncate text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
+                        {labels.length ? labels.join(" -> ") : workflow.task || "未设置默认输入"}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
             )}
           </div>
         )}

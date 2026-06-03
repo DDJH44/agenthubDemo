@@ -22,6 +22,13 @@ import "@xyflow/react/dist/style.css";
 import type { Artifact, Message } from "@agenthub/shared";
 import { useChatStore } from "@/stores/chat-store";
 import { useNavigationStore } from "@/stores/navigation-store";
+import {
+  getWorkflowNodeLabels,
+  loadSavedWorkflows,
+  removeSavedWorkflow,
+  upsertSavedWorkflow,
+  type SavedWorkflowSnapshot,
+} from "@/features/workflows/saved-workflows";
 
 type NodeStatus = "idle" | "running" | "done" | "failed";
 
@@ -323,6 +330,26 @@ function sanitizeEdgesForHistory(edges: Edge[]): Edge[] {
     target: edge.target,
     animated: edge.animated,
     label: edge.label,
+    style: edge.style,
+  }));
+}
+
+function sanitizeNodesForSaved(nodes: WorkflowNode[]): SavedWorkflowSnapshot["nodes"] {
+  return nodes.map((node) => ({
+    id: node.id,
+    type: node.type,
+    position: node.position,
+    data: { ...node.data },
+  }));
+}
+
+function sanitizeEdgesForSaved(edges: Edge[]): SavedWorkflowSnapshot["edges"] {
+  return edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    animated: edge.animated,
+    label: typeof edge.label === "string" ? edge.label : undefined,
     style: edge.style,
   }));
 }
@@ -850,6 +877,70 @@ function WorkflowHistoryPanel({
   );
 }
 
+function SavedWorkflowPanel({
+  activeWorkflowId,
+  workflows,
+  onDelete,
+  onRestore,
+}: {
+  activeWorkflowId: string | null;
+  workflows: SavedWorkflowSnapshot[];
+  onDelete: (id: string) => void;
+  onRestore: (workflow: SavedWorkflowSnapshot) => void;
+}) {
+  return (
+    <section className="mb-4 rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h3 className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>已保存工作流</h3>
+        <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--surface-low)", color: "var(--fg-tertiary)" }}>
+          {workflows.length}
+        </span>
+      </div>
+      {workflows.length === 0 ? (
+        <p className="text-xs leading-5" style={{ color: "var(--fg-tertiary)" }}>
+          保存后可在会话输入框里直接引用，适合反复使用的任务流程。
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {workflows.slice(0, 5).map((workflow) => {
+            const labels = getWorkflowNodeLabels(workflow, 3);
+            const isActive = activeWorkflowId === workflow.id;
+            return (
+              <div key={workflow.id} className="rounded-lg p-2.5" style={{ background: isActive ? "var(--accent-subtle)" : "var(--page-bg)", border: `1px solid ${isActive ? "var(--accent-border)" : "var(--border)"}` }}>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="min-w-0 flex-1 truncate text-[11px] font-semibold" style={{ color: "var(--fg-primary)" }}>{workflow.name}</p>
+                  <span className="shrink-0 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{formatHistoryTime(workflow.updatedAt)}</span>
+                </div>
+                <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+                  {labels.length ? labels.join(" -> ") : "暂无节点"}
+                </p>
+                <div className="mt-2 flex items-center justify-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onRestore(workflow)}
+                    className="h-7 rounded-md px-2.5 text-[11px] font-semibold transition hover:bg-[var(--surface-white)]"
+                    style={{ border: "1px solid var(--accent-border)", color: "var(--accent)", background: "var(--surface-white)" }}
+                  >
+                    载入
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onDelete(workflow.id)}
+                    className="h-7 rounded-md px-2.5 text-[11px] font-semibold transition hover:bg-[var(--danger-subtle)]"
+                    style={{ border: "1px solid var(--border)", color: "var(--fg-tertiary)", background: "var(--surface-white)" }}
+                  >
+                    删除
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function WorkflowsView() {
   const setActiveNav = useNavigationStore((state) => state.setActiveNav);
   const [nodes, setNodes, onNodesChange] = useNodesState<WorkflowNode>([]);
@@ -861,12 +952,17 @@ export function WorkflowsView() {
   const [workflowOutput, setWorkflowOutput] = useState<WorkflowOutput | null>(null);
   const [outputActionStatus, setOutputActionStatus] = useState("");
   const [workflowHistory, setWorkflowHistory] = useState<WorkflowRunHistoryItem[]>([]);
+  const [savedWorkflows, setSavedWorkflows] = useState<SavedWorkflowSnapshot[]>([]);
+  const [workflowName, setWorkflowName] = useState("");
+  const [editingWorkflowId, setEditingWorkflowId] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState("");
   const [runLog, setRunLog] = useState<string[]>(["选择模板或拖拽节点，形成一个可复用的多 Agent 流程。"]);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   const nextId = useRef(0);
 
   useEffect(() => {
     setWorkflowHistory(loadWorkflowHistory());
+    setSavedWorkflows(loadSavedWorkflows());
   }, []);
 
   const addWorkflowHistory = useCallback((output: WorkflowOutput) => {
@@ -894,6 +990,9 @@ export function WorkflowsView() {
     setEdges(item.edges);
     setTask(item.task);
     setSelectedTemplate(template);
+    setWorkflowName(item.templateTitle ?? "");
+    setEditingWorkflowId(null);
+    setSaveStatus("已恢复历史运行，可另存为新的可引用工作流。");
     setSelectedNode(null);
     setMode("edit");
     setWorkflowOutput(item.output);
@@ -912,6 +1011,72 @@ export function WorkflowsView() {
     }
     setOutputActionStatus("运行历史已清空。");
   }, []);
+
+  const saveCurrentWorkflow = useCallback(() => {
+    if (nodes.length === 0) {
+      setSaveStatus("请先选择模板或添加节点，再保存工作流。");
+      return;
+    }
+    const name = workflowName.trim() || selectedTemplate?.title || "未命名工作流";
+    const now = Date.now();
+    const existing = editingWorkflowId ? savedWorkflows.find((workflow) => workflow.id === editingWorkflowId) : undefined;
+    const snapshot: SavedWorkflowSnapshot = {
+      id: editingWorkflowId ?? createRunId(),
+      name,
+      task: task.trim(),
+      templateId: selectedTemplate?.id,
+      templateTitle: selectedTemplate?.title,
+      outputHint: selectedTemplate?.output,
+      nodes: sanitizeNodesForSaved(nodes),
+      edges: sanitizeEdgesForSaved(edges),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    setSavedWorkflows(upsertSavedWorkflow(snapshot));
+    setWorkflowName(name);
+    setEditingWorkflowId(snapshot.id);
+    setSaveStatus(`已保存「${name}」，现在可在会话输入框引用。`);
+  }, [edges, editingWorkflowId, nodes, savedWorkflows, selectedTemplate, task, workflowName]);
+
+  const restoreSavedWorkflow = useCallback((workflow: SavedWorkflowSnapshot) => {
+    const template = FLOW_TEMPLATES.find((flow) => flow.id === workflow.templateId) ?? null;
+    setNodes(workflow.nodes.map((node) => ({
+      id: node.id,
+      type: node.type,
+      position: node.position,
+      data: { ...node.data, status: "idle" as NodeStatus },
+    } as WorkflowNode)));
+    setEdges(workflow.edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      target: edge.target,
+      animated: edge.animated,
+      label: edge.label,
+      style: edge.style as Edge["style"],
+    })));
+    setTask(workflow.task);
+    setSelectedTemplate(template);
+    setWorkflowName(workflow.name);
+    setEditingWorkflowId(workflow.id);
+    setWorkflowOutput(null);
+    setOutputActionStatus("");
+    setSelectedNode(null);
+    setMode("edit");
+    setSaveStatus(`已载入「${workflow.name}」，修改后可继续保存。`);
+    setRunLog([
+      `已载入已保存工作流：${workflow.name}`,
+      workflow.task ? `默认输入：${workflow.task}` : "可在左侧补充输入任务。",
+    ]);
+  }, [setEdges, setNodes]);
+
+  const deleteSavedWorkflow = useCallback((id: string) => {
+    const next = removeSavedWorkflow(id);
+    setSavedWorkflows(next);
+    if (editingWorkflowId === id) {
+      setEditingWorkflowId(null);
+      setSaveStatus("当前工作流已从保存列表移除。");
+    }
+  }, [editingWorkflowId]);
 
   const navigateToChat = useCallback(() => {
     setActiveNav("chat");
@@ -985,6 +1150,9 @@ export function WorkflowsView() {
     setSelectedTemplate(null);
     setWorkflowOutput(null);
     setOutputActionStatus("");
+    setWorkflowName("");
+    setEditingWorkflowId(null);
+    setSaveStatus("");
     setRunLog(["画布已清空，可以重新选择模板或拖拽节点。"]);
   }, [setEdges, setNodes]);
 
@@ -998,6 +1166,9 @@ export function WorkflowsView() {
     setWorkflowOutput(null);
     setOutputActionStatus("");
     setTask(template.task);
+    setWorkflowName(template.title);
+    setEditingWorkflowId(null);
+    setSaveStatus("模板已载入，可改名后保存为可引用工作流。");
     setRunLog([`已载入模板：${template.title}`, `预期输出：${template.output}`, template.desc]);
   }, [setEdges, setNodes]);
 
@@ -1228,6 +1399,43 @@ export function WorkflowsView() {
             把常见多 Agent 协作沉淀为可复用流程，适合演示任务拆解、并行调度和失败降级。
           </p>
         </div>
+
+        <section className="mb-4 rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--accent-border)", boxShadow: "var(--shadow-xs)" }}>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>保存为引用工作流</h3>
+            {editingWorkflowId && (
+              <span className="rounded px-1.5 py-0.5 text-[10px] font-semibold" style={{ background: "var(--success-subtle)", color: "var(--success)" }}>
+                已保存
+              </span>
+            )}
+          </div>
+          <input
+            value={workflowName}
+            onChange={(event) => setWorkflowName(event.target.value)}
+            placeholder="例如：网页生成部署流程"
+            className="h-9 w-full rounded-lg px-3 text-xs outline-none transition focus:border-[var(--accent-border)]"
+            style={{ border: "1px solid var(--border)", background: "var(--page-bg)", color: "var(--fg-primary)" }}
+          />
+          <button
+            type="button"
+            onClick={saveCurrentWorkflow}
+            disabled={nodes.length === 0}
+            className="mt-2 h-8 w-full rounded-lg text-xs font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ background: "var(--accent)" }}
+          >
+            保存工作流
+          </button>
+          {saveStatus && (
+            <p className="mt-2 text-[11px] leading-4" style={{ color: "var(--fg-tertiary)" }}>{saveStatus}</p>
+          )}
+        </section>
+
+        <SavedWorkflowPanel
+          activeWorkflowId={editingWorkflowId}
+          workflows={savedWorkflows}
+          onRestore={restoreSavedWorkflow}
+          onDelete={deleteSavedWorkflow}
+        />
 
         <section className="mb-4 rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--accent-border)", boxShadow: "var(--shadow-xs)" }}>
           <div className="mb-2 flex items-center justify-between gap-2">
