@@ -836,6 +836,16 @@ function parsePort(value: unknown) {
   return Number.isFinite(port) && port > 0 && port <= 65535 ? Math.round(port) : 22;
 }
 
+function safeTemplateToken(value: string) {
+  return value.replace(/[^a-zA-Z0-9_.-]/g, "-");
+}
+
+function renderDeployTemplate(value: string, userId: string, deployId: string) {
+  return value
+    .replace(/\{userId\}/g, safeTemplateToken(userId))
+    .replace(/\{deployId\}/g, safeTemplateToken(deployId));
+}
+
 /* ── GET /api/deployment-targets ── */
 registerRoute("GET", "/api/deployment-targets", async (req, res) => {
   const user = await requireAuth(req, res);
@@ -910,7 +920,9 @@ registerRoute("POST", "/api/deployment-targets/:id/test", async (req, res) => {
 
   const tempKey = writeTemporarySshKey(path.join(process.cwd(), "deploy-output", ".ssh"), target.id, decryptSecret(target.privateKeyEncrypted));
   try {
-    const remoteCmd = `mkdir -p "${target.deployPath}" && echo agenthub-ready`;
+    const testDeployId = `test-${target.id.slice(0, 8)}`;
+    const testDeployPath = renderDeployTemplate(target.deployPath, user.id, testDeployId);
+    const remoteCmd = `mkdir -p "${testDeployPath}" && echo agenthub-ready`;
     const sshCmd = `ssh -o BatchMode=yes -o StrictHostKeyChecking=no -p ${target.port} -i "${tempKey.path}" "${target.username}@${target.host}" '${remoteCmd}'`;
     await execAsync(sshCmd, { timeout: 15000 });
     await deploymentTargetRepo.updateStatus(target.id, "ready", null);
