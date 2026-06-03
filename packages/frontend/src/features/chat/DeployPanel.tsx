@@ -31,6 +31,10 @@ interface DeploymentTarget {
   publicKey: string;
   status: string;
   configured?: boolean;
+  requiredEnv?: string[];
+  optionalEnv?: string[];
+  missingEnv?: string[];
+  envTemplate?: string;
   lastError?: string | null;
 }
 
@@ -289,6 +293,16 @@ export function DeployPanel() {
       setStatusMessage("公钥已复制，可以粘贴到服务器 authorized_keys。");
     } catch {
       setStatusMessage("浏览器暂不允许自动复制，请手动选中公钥复制。");
+    }
+  };
+
+  const copyDefaultServerEnv = async () => {
+    if (!defaultDeploymentTarget?.envTemplate) return;
+    try {
+      await navigator.clipboard.writeText(defaultDeploymentTarget.envTemplate);
+      setStatusMessage("默认服务器环境变量模板已复制，可粘贴到 .env.local。");
+    } catch {
+      setStatusMessage("浏览器暂不允许自动复制，请手动选中模板复制。");
     }
   };
 
@@ -577,25 +591,74 @@ export function DeployPanel() {
           </div>
 
           <div className="space-y-2">
-            <button
-              type="button"
-              onClick={() => setSelectedDeploymentTargetId("platform-default")}
-              className="w-full rounded-lg p-2.5 text-left"
+            <div
+              className="rounded-lg p-2.5"
               style={{
                 background: selectedDeploymentTargetId === "platform-default" ? "var(--accent-subtle)" : "var(--surface-low)",
                 border: `1px solid ${selectedDeploymentTargetId === "platform-default" ? "var(--accent-border)" : "var(--border)"}`,
               }}
             >
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>AgentHub 默认服务器</p>
-                <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: defaultDeploymentTarget?.configured === false ? "var(--danger)" : "var(--success)", background: defaultDeploymentTarget?.configured === false ? "var(--danger-subtle)" : "var(--success-subtle)" }}>
-                  {defaultDeploymentTarget?.configured === false ? "未配置" : "管理员托管"}
-                </span>
+              <div className="flex items-start gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedDeploymentTargetId("platform-default")}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>AgentHub 默认服务器</p>
+                    <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: defaultDeploymentTarget?.configured === false ? "var(--danger)" : "var(--success)", background: defaultDeploymentTarget?.configured === false ? "var(--danger-subtle)" : "var(--success-subtle)" }}>
+                      {defaultDeploymentTarget?.configured === false ? "未配置" : "已配置"}
+                    </span>
+                  </div>
+                  <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+                    {defaultDeploymentTarget?.publicUrl || "管理员配置后可直接部署"}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={copyDefaultServerEnv}
+                  disabled={!defaultDeploymentTarget?.envTemplate}
+                  className="rounded-lg px-2 py-1 text-[10px] font-semibold"
+                  style={{ color: "var(--accent)", background: "var(--surface-white)", border: "1px solid var(--border)", opacity: defaultDeploymentTarget?.envTemplate ? 1 : 0.55 }}
+                >
+                  复制配置
+                </button>
               </div>
-              <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
-                {defaultDeploymentTarget?.publicUrl || "管理员配置后可直接部署"}
-              </p>
-            </button>
+
+              {selectedDeploymentTargetId === "platform-default" && defaultDeploymentTarget && (
+                <div className="mt-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { label: "SSH 用户", value: defaultDeploymentTarget.username || "未配置" },
+                      { label: "端口", value: defaultDeploymentTarget.port },
+                      { label: "部署目录", value: defaultDeploymentTarget.deployPath || "未配置" },
+                      { label: "访问地址", value: defaultDeploymentTarget.publicUrl || "未配置" },
+                    ].map((item) => (
+                      <div key={item.label} className="min-w-0 rounded-lg px-2 py-1.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                        <p className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>{item.label}</p>
+                        <p className="mt-0.5 truncate text-[11px] font-bold" style={{ color: "var(--fg-primary)" }}>{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {(defaultDeploymentTarget.missingEnv?.length ?? 0) > 0 && (
+                    <div className="rounded-lg px-2 py-1.5" style={{ color: "var(--danger)", background: "var(--danger-subtle)", border: "1px solid var(--danger-border)" }}>
+                      <p className="text-[10px] font-bold">缺少环境变量</p>
+                      <p className="mt-1 text-[10px]">{defaultDeploymentTarget.missingEnv?.join(" / ")}</p>
+                    </div>
+                  )}
+
+                  {defaultDeploymentTarget.envTemplate && (
+                    <textarea
+                      readOnly
+                      value={defaultDeploymentTarget.envTemplate}
+                      className="min-h-28 w-full resize-none rounded-lg p-2 font-mono text-[10px] outline-none"
+                      style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
 
             {deploymentTargets.map((target) => (
               <div

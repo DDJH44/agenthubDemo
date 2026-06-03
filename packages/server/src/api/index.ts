@@ -806,8 +806,34 @@ function publicDeploymentTarget(target: DeploymentTargetRecord) {
 function platformDeploymentTarget() {
   const host = process.env.SELF_HOSTED_SSH_HOST;
   const user = process.env.SELF_HOSTED_SSH_USER;
+  const sshKey = process.env.SELF_HOSTED_SSH_KEY;
   const basePath = process.env.SELF_HOSTED_DEPLOY_PATH || "/var/www/agenthub-sites";
   const baseUrl = process.env.SELF_HOSTED_PUBLIC_URL || (host ? `http://${host}` : "");
+  const deployPath = basePath.includes("{userId}") || basePath.includes("{deployId}") ? basePath : `${basePath.replace(/[\\/]+$/, "")}/{userId}/{deployId}`;
+  const publicUrl = baseUrl ? (baseUrl.includes("{userId}") || baseUrl.includes("{deployId}") ? baseUrl : `${baseUrl.replace(/\/+$/, "")}/{userId}/{deployId}`) : "";
+  const requiredEnv = ["SELF_HOSTED_SSH_HOST", "SELF_HOSTED_SSH_USER", "SELF_HOSTED_SSH_KEY", "SELF_HOSTED_PUBLIC_URL"];
+  const optionalEnv = ["SELF_HOSTED_SSH_PORT", "SELF_HOSTED_DEPLOY_PATH", "SELF_HOSTED_POST_DEPLOY_COMMAND"];
+  const envValues: Record<string, string | undefined> = {
+    SELF_HOSTED_SSH_HOST: host,
+    SELF_HOSTED_SSH_PORT: process.env.SELF_HOSTED_SSH_PORT || "22",
+    SELF_HOSTED_SSH_USER: user,
+    SELF_HOSTED_SSH_KEY: sshKey,
+    SELF_HOSTED_DEPLOY_PATH: deployPath,
+    SELF_HOSTED_PUBLIC_URL: publicUrl,
+    SELF_HOSTED_POST_DEPLOY_COMMAND: process.env.SELF_HOSTED_POST_DEPLOY_COMMAND,
+  };
+  const missingEnv = requiredEnv.filter((key) => !envValues[key]);
+  const envTemplate = [
+    "# AgentHub default deployment target",
+    `SELF_HOSTED_SSH_HOST=${host || "8.160.170.169"}`,
+    `SELF_HOSTED_SSH_PORT=${envValues.SELF_HOSTED_SSH_PORT}`,
+    `SELF_HOSTED_SSH_USER=${user || "admin"}`,
+    `SELF_HOSTED_SSH_KEY=${sshKey || "C:\\Users\\Lenovo\\.ssh\\id_rsa"}`,
+    `SELF_HOSTED_DEPLOY_PATH=${deployPath}`,
+    `SELF_HOSTED_PUBLIC_URL=${publicUrl || "http://8.160.170.169/{userId}/{deployId}"}`,
+    "# SELF_HOSTED_POST_DEPLOY_COMMAND=sudo -n nginx -s reload",
+  ].join("\n");
+
   return {
     id: "platform-default",
     name: "AgentHub 默认服务器",
@@ -815,15 +841,19 @@ function platformDeploymentTarget() {
     host: host || "",
     port: Number(process.env.SELF_HOSTED_SSH_PORT || 22),
     username: user || "",
-    deployPath: basePath.includes("{userId}") || basePath.includes("{deployId}") ? basePath : `${basePath.replace(/[\\/]+$/, "")}/{userId}/{deployId}`,
-    publicUrl: baseUrl ? (baseUrl.includes("{userId}") || baseUrl.includes("{deployId}") ? baseUrl : `${baseUrl.replace(/\/+$/, "")}/{userId}/{deployId}`) : "",
+    deployPath,
+    publicUrl,
     authType: "server-env",
     publicKey: "",
     postDeployCommand: process.env.SELF_HOSTED_POST_DEPLOY_COMMAND || null,
-    status: host && user ? "ready" : "unconfigured",
-    configured: Boolean(host && user),
+    status: missingEnv.length === 0 ? "ready" : "unconfigured",
+    configured: missingEnv.length === 0,
+    requiredEnv,
+    optionalEnv,
+    missingEnv,
+    envTemplate,
     lastTestedAt: null,
-    lastError: host && user ? null : "管理员尚未配置 SELF_HOSTED_SSH_HOST / SELF_HOSTED_SSH_USER",
+    lastError: missingEnv.length === 0 ? null : `管理员尚未配置 ${missingEnv.join(" / ")}`,
   };
 }
 
