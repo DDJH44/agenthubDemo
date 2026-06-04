@@ -1050,6 +1050,74 @@ registerRoute("DELETE", "/api/deployment-targets/:id", async (req, res) => {
 });
 
 /* ── GET /api/user-agents ── */
+function parseAgentConfig(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function apiKeyHint(apiKey: string) {
+  if (apiKey.length <= 8) return "configured";
+  return `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}`;
+}
+
+function normalizeUserAgentConfig(input: unknown, existingRaw?: string) {
+  const existing = parseAgentConfig(existingRaw);
+  const incoming = input && typeof input === "object" && !Array.isArray(input)
+    ? input as Record<string, unknown>
+    : {};
+  const next = { ...existing };
+
+  for (const key of ["provider", "baseURL", "baseUrl", "model", "systemPrompt", "avatar", "avatarBg", "tools"]) {
+    if (incoming[key] !== undefined) next[key] = incoming[key];
+  }
+
+  if (typeof incoming.clearApiKey === "boolean" && incoming.clearApiKey) {
+    delete next.apiKey;
+    delete next.apiKeyEncrypted;
+    delete next.apiKeyHint;
+    delete next.hasApiKey;
+  }
+
+  if (typeof incoming.apiKey === "string" && incoming.apiKey.trim()) {
+    const apiKey = incoming.apiKey.trim();
+    next.apiKeyEncrypted = encryptSecret(apiKey);
+    next.apiKeyHint = apiKeyHint(apiKey);
+    next.hasApiKey = true;
+    delete next.apiKey;
+  }
+
+  return next;
+}
+
+function sanitizeUserAgentConfig(rawConfig: string) {
+  const config = parseAgentConfig(rawConfig);
+  const hasEncryptedKey = typeof config.apiKeyEncrypted === "string" && Boolean(config.apiKeyEncrypted);
+  const hasPlainKey = typeof config.apiKey === "string" && Boolean(config.apiKey);
+  const hint = typeof config.apiKeyHint === "string"
+    ? config.apiKeyHint
+    : hasPlainKey
+    ? apiKeyHint(String(config.apiKey))
+    : undefined;
+
+  delete config.apiKey;
+  delete config.apiKeyEncrypted;
+  config.hasApiKey = hasEncryptedKey || hasPlainKey;
+  if (hint) config.apiKeyHint = hint;
+  return config;
+}
+
+function sanitizeUserAgentRecord<T extends { config: string }>(agent: T): T {
+  return {
+    ...agent,
+    config: JSON.stringify(sanitizeUserAgentConfig(agent.config)),
+  };
+}
+
 registerRoute("GET", "/api/user-agents", async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
@@ -1072,7 +1140,7 @@ registerRoute("GET", "/api/user-agents", async (req, res) => {
   }
 
   res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ agents }));
+  res.end(JSON.stringify({ agents: agents.map(sanitizeUserAgentRecord) }));
 });
 
 /* ── POST /api/user-agents ── */
@@ -1093,12 +1161,12 @@ registerRoute("POST", "/api/user-agents", async (req, res) => {
     userId: user.id,
     name,
     type,
-    config: agentConfig ? JSON.stringify(agentConfig) : "{}",
+    config: JSON.stringify(normalizeUserAgentConfig(agentConfig)),
     permissions: permissions ? JSON.stringify(permissions) : "[]",
   });
 
   res.writeHead(201, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ agent }));
+  res.end(JSON.stringify({ agent: sanitizeUserAgentRecord(agent) }));
 });
 
 /* ── PUT /api/user-agents/:id ── */
@@ -1123,13 +1191,13 @@ registerRoute("PUT", "/api/user-agents/:id", async (req, res) => {
   const updates: Record<string, string> = {};
   if (body.name) updates.name = String(body.name);
   if (body.type) updates.type = String(body.type);
-  if (body.config) updates.config = JSON.stringify(body.config);
+  if (body.config) updates.config = JSON.stringify(normalizeUserAgentConfig(body.config, existing.config));
   if (body.permissions) updates.permissions = JSON.stringify(body.permissions);
   if (body.status) updates.status = String(body.status);
 
   const agent = await userAgentConfigRepo.update(agentId, updates);
   res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ agent }));
+  res.end(JSON.stringify({ agent: sanitizeUserAgentRecord(agent) }));
 });
 
 /* ── DELETE /api/user-agents/:id ── */

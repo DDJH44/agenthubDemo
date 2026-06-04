@@ -59,11 +59,14 @@ function toServerPayload(agent: UserAgent) {
     name: agent.name,
     type: agent.role,
     config: {
+      provider: agent.provider ?? "inherit",
+      baseURL: agent.baseURL,
       model: agent.model,
       systemPrompt: agent.systemPrompt,
       avatar: agent.avatar,
       avatarBg: agent.avatarBg,
       tools: agent.tools,
+      ...(agent.apiKey?.trim() ? { apiKey: agent.apiKey.trim() } : {}),
     },
     permissions: agent.tools,
   };
@@ -73,6 +76,11 @@ function toServerPayload(agent: UserAgent) {
 function mapServerAgent(raw: ServerAgentRecord): UserAgent {
   const config = parseJsonObject(raw.config) as {
     model?: string;
+    provider?: string;
+    baseURL?: string;
+    baseUrl?: string;
+    hasApiKey?: boolean;
+    apiKeyHint?: string;
     systemPrompt?: string;
     avatar?: string;
     avatarBg?: string;
@@ -91,6 +99,10 @@ function mapServerAgent(raw: ServerAgentRecord): UserAgent {
     avatarBg: config.avatarBg || AVATAR_COLORS[raw.name.charCodeAt(0) % AVATAR_COLORS.length],
     role,
     model: (config.model || "gpt-4o-mini") as UserAgent["model"],
+    provider: (config.provider || "inherit") as UserAgent["provider"],
+    baseURL: config.baseURL || config.baseUrl || "",
+    hasApiKey: Boolean(config.hasApiKey),
+    apiKeyHint: config.apiKeyHint || "",
     systemPrompt: config.systemPrompt || `我是 ${raw.name}`,
     tools: tools as UserAgent["tools"],
     createdAt: raw.createdAt ? new Date(raw.createdAt).getTime() : Date.now(),

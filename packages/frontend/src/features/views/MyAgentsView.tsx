@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { AgentRole, ModelId, ToolType, UserAgent } from "@agenthub/shared";
+import type { AgentLLMProvider, AgentRole, ModelId, ToolType, UserAgent } from "@agenthub/shared";
 import { useNavigationStore } from "@/stores/navigation-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
 import { AgentCard } from "./AgentCard";
@@ -25,6 +25,14 @@ const MODEL_OPTIONS: Array<{ value: ModelId; label: string }> = [
   { value: "claude-3.5-sonnet", label: "Claude 3.5 Sonnet" },
   { value: "qwen-max", label: "Qwen Max" },
   { value: "deepseek-chat", label: "DeepSeek Chat" },
+];
+
+const LLM_PROVIDER_OPTIONS: Array<{ value: AgentLLMProvider; label: string; baseURL: string; model: string }> = [
+  { value: "inherit", label: "继承系统配置", baseURL: "", model: "gpt-4o-mini" },
+  { value: "volc-ark", label: "火山方舟 / 豆包", baseURL: "https://ark.cn-beijing.volces.com/api/v3", model: "ep-20260508214225-g6x7g" },
+  { value: "openai", label: "OpenAI", baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini" },
+  { value: "deepseek", label: "DeepSeek", baseURL: "https://api.deepseek.com/v1", model: "deepseek-chat" },
+  { value: "custom", label: "OpenAI 兼容接口", baseURL: "", model: "" },
 ];
 
 const TOOL_OPTIONS: Array<{ value: ToolType; label: string }> = [
@@ -73,6 +81,11 @@ interface AgentFormState {
   avatarBg: string;
   role: AgentRole;
   model: ModelId;
+  provider: AgentLLMProvider;
+  baseURL: string;
+  apiKey: string;
+  hasApiKey?: boolean;
+  apiKeyHint?: string;
   systemPrompt: string;
   tools: ToolType[];
 }
@@ -84,6 +97,11 @@ function emptyForm(): AgentFormState {
     avatarBg: AVATAR_COLORS[0],
     role: "custom",
     model: "gpt-4o-mini",
+    provider: "inherit",
+    baseURL: "",
+    apiKey: "",
+    hasApiKey: false,
+    apiKeyHint: "",
     systemPrompt: "",
     tools: [],
   };
@@ -96,6 +114,11 @@ function fromAgent(agent: UserAgent): AgentFormState {
     avatarBg: agent.avatarBg,
     role: agent.role,
     model: agent.model,
+    provider: agent.provider ?? "inherit",
+    baseURL: agent.baseURL ?? "",
+    apiKey: "",
+    hasApiKey: agent.hasApiKey,
+    apiKeyHint: agent.apiKeyHint,
     systemPrompt: agent.systemPrompt,
     tools: agent.tools,
   };
@@ -170,6 +193,16 @@ function AgentForm({
     setField("tools", value.tools.includes(tool) ? value.tools.filter((item) => item !== tool) : [...value.tools, tool]);
   };
 
+  const selectProvider = (provider: AgentLLMProvider) => {
+    const preset = LLM_PROVIDER_OPTIONS.find((item) => item.value === provider);
+    onChange({
+      ...value,
+      provider,
+      baseURL: preset?.baseURL ?? value.baseURL,
+      model: (preset?.model || value.model) as ModelId,
+    });
+  };
+
   return (
     <div className="rounded-lg p-5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
       <div className="mb-4 flex items-center justify-between">
@@ -229,15 +262,73 @@ function AgentForm({
 
         <label className="block">
           <span className="mb-1 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>模型</span>
-          <select
+          <input
             value={value.model}
             onChange={(event) => setField("model", event.target.value as ModelId)}
+            list="agent-model-options"
+            placeholder="ep-xxx / gpt-4o-mini / deepseek-chat"
             className="h-10 w-full rounded-md px-3 text-sm outline-none"
             style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}
-          >
+          />
+          <datalist id="agent-model-options">
             {MODEL_OPTIONS.map((model) => <option key={model.value} value={model.value}>{model.label}</option>)}
-          </select>
+          </datalist>
         </label>
+      </div>
+
+      <div className="mt-4 rounded-lg p-3" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>LLM 接入</p>
+            <p className="mt-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
+              继承系统配置，或为这个 Agent 单独接入 OpenAI 兼容 API。
+            </p>
+          </div>
+          {value.hasApiKey && (
+            <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--success)", background: "var(--success-subtle)" }}>
+              已保存 {value.apiKeyHint || ""}
+            </span>
+          )}
+        </div>
+
+        <div className="grid gap-3 lg:grid-cols-3">
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>供应商</span>
+            <select
+              value={value.provider}
+              onChange={(event) => selectProvider(event.target.value as AgentLLMProvider)}
+              className="h-10 w-full rounded-md px-3 text-sm outline-none"
+              style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+            >
+              {LLM_PROVIDER_OPTIONS.map((provider) => <option key={provider.value} value={provider.value}>{provider.label}</option>)}
+            </select>
+          </label>
+
+          <label className="block lg:col-span-2">
+            <span className="mb-1 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>Base URL</span>
+            <input
+              value={value.baseURL}
+              onChange={(event) => setField("baseURL", event.target.value)}
+              disabled={value.provider === "inherit"}
+              placeholder="https://ark.cn-beijing.volces.com/api/v3"
+              className="h-10 w-full rounded-md px-3 text-sm outline-none disabled:opacity-60"
+              style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+            />
+          </label>
+
+          <label className="block lg:col-span-3">
+            <span className="mb-1 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>API Key</span>
+            <input
+              type="password"
+              value={value.apiKey}
+              onChange={(event) => setField("apiKey", event.target.value)}
+              disabled={value.provider === "inherit"}
+              placeholder={value.hasApiKey ? "留空表示继续使用已保存密钥" : "只保存在服务端，不会明文回显"}
+              className="h-10 w-full rounded-md px-3 text-sm outline-none disabled:opacity-60"
+              style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+            />
+          </label>
+        </div>
       </div>
 
       <div className="mt-4">
@@ -340,6 +431,11 @@ export function MyAgentsView() {
       avatarBg: form.avatarBg,
       role: form.role,
       model: form.model,
+      provider: form.provider,
+      baseURL: form.provider === "inherit" ? "" : form.baseURL.trim(),
+      apiKey: form.provider === "inherit" ? "" : form.apiKey.trim(),
+      hasApiKey: form.hasApiKey,
+      apiKeyHint: form.apiKeyHint,
       systemPrompt: form.systemPrompt.trim(),
       tools: form.tools,
     };
@@ -418,7 +514,7 @@ export function MyAgentsView() {
                 <button
                   key={template.name}
                   type="button"
-                  onClick={() => startCreate({ name: template.name, avatar: template.avatar, avatarBg: template.color, role: template.role, model: template.model, systemPrompt: template.prompt, tools: template.tools })}
+                  onClick={() => startCreate({ ...emptyForm(), name: template.name, avatar: template.avatar, avatarBg: template.color, role: template.role, model: template.model, systemPrompt: template.prompt, tools: template.tools })}
                   className="flex w-full items-center gap-3 rounded-md p-2 text-left transition-colors hover:bg-[var(--surface-low)]"
                   style={{ border: "1px solid var(--border)" }}
                 >
@@ -454,7 +550,7 @@ export function MyAgentsView() {
               <p className="mx-auto mt-2 max-w-md text-sm" style={{ color: "var(--fg-tertiary)", lineHeight: 1.7 }}>
                 从模板创建一个 UX Reviewer，或用描述式创建生成自己的 Agent。
               </p>
-              <button type="button" onClick={() => startCreate({ name: TEMPLATES[0].name, avatar: TEMPLATES[0].avatar, avatarBg: TEMPLATES[0].color, role: TEMPLATES[0].role, model: TEMPLATES[0].model, systemPrompt: TEMPLATES[0].prompt, tools: TEMPLATES[0].tools })} className="mt-4 h-9 rounded-md px-4 text-xs font-semibold text-white" style={{ background: "#174ea6" }}>
+              <button type="button" onClick={() => startCreate({ ...emptyForm(), name: TEMPLATES[0].name, avatar: TEMPLATES[0].avatar, avatarBg: TEMPLATES[0].color, role: TEMPLATES[0].role, model: TEMPLATES[0].model, systemPrompt: TEMPLATES[0].prompt, tools: TEMPLATES[0].tools })} className="mt-4 h-9 rounded-md px-4 text-xs font-semibold text-white" style={{ background: "#174ea6" }}>
                 创建 UX Reviewer
               </button>
             </div>

@@ -1,4 +1,4 @@
-import { buildAgentRuntimePrompt, chooseRuntimeModel } from "../runtime-profile";
+import { buildAgentRuntimePrompt, chooseRuntimeAdapterOverrides, chooseRuntimeModel } from "../runtime-profile";
 
 describe("agent runtime profiles", () => {
   it("chooses a non-coordinator model preference first", () => {
@@ -12,6 +12,28 @@ describe("agent runtime profiles", () => {
     expect(chooseRuntimeModel([
       { id: "fe", name: "Frontend Agent", type: "frontend", model: "gpt-4o-mini", tools: ["code_execution"], configured: true },
     ], { fallbackModel: "ep-20260508214225-g6x7g" })).toBeUndefined();
+  });
+
+  it("prefers private llm config from a selected custom agent", () => {
+    expect(chooseRuntimeAdapterOverrides([
+      { id: "planner", name: "planner", type: "planner", model: "gpt-4o-mini", tools: [], configured: true },
+      {
+        id: "fe",
+        name: "Frontend Agent",
+        type: "frontend",
+        provider: "volc-ark",
+        baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+        apiKey: "ark-test-key",
+        model: "ep-custom",
+        tools: ["code_execution"],
+        configured: true,
+      },
+    ])).toEqual({
+      type: "generic-openai",
+      apiKey: "ark-test-key",
+      baseURL: "https://ark.cn-beijing.volces.com/api/v3",
+      model: "ep-custom",
+    });
   });
 
   it("builds a runtime prompt from configured agents", () => {

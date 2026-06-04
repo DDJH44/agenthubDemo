@@ -2,9 +2,11 @@ import type { AgentRole } from "./agent";
 
 export type { AgentRole };
 
-export type ModelId = "gpt-4o-mini" | "gpt-4o" | "claude-3.5-sonnet" | "qwen-max" | "deepseek-chat";
+export type ModelId = "gpt-4o-mini" | "gpt-4o" | "claude-3.5-sonnet" | "qwen-max" | "deepseek-chat" | (string & {});
 
 export type ToolType = "code_execution" | "web_search" | "file_read" | "file_write" | "shell" | "diff_apply" | "browser";
+
+export type AgentLLMProvider = "inherit" | "openai" | "openai-compatible" | "volc-ark" | "deepseek" | "custom";
 
 export interface UserAgent {
   id: string;
@@ -13,6 +15,11 @@ export interface UserAgent {
   avatarBg: string;
   role: AgentRole;
   model: ModelId;
+  provider?: AgentLLMProvider;
+  baseURL?: string;
+  apiKey?: string;
+  hasApiKey?: boolean;
+  apiKeyHint?: string;
   systemPrompt: string;
   tools: ToolType[];
   createdAt: number;

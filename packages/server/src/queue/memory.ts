@@ -6,7 +6,7 @@ import { jobRepo } from "../db/repositories/job";
 import { messageRepo } from "../db/repositories/message";
 import { logger } from "../utils/logger";
 import { resolveVisibleAgentForRole } from "../agents/conversation-routing";
-import { buildAgentRuntimePrompt, chooseRuntimeModel, resolveAgentRuntimeProfiles } from "../agents/runtime-profile";
+import { buildAgentRuntimePrompt, chooseRuntimeAdapterOverrides, resolveAgentRuntimeProfiles } from "../agents/runtime-profile";
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
 const DEFAULT_TIMEOUT = 300_000;
@@ -240,8 +240,9 @@ export class MemoryQueue implements IJobQueue {
       logger.warn(`Failed to load agent runtime profiles: ${err}`, 'MemoryQueue');
     }
     const runtimePrompt = buildAgentRuntimePrompt(runtimeProfiles);
-    const runtimeModel = chooseRuntimeModel(runtimeProfiles);
-    const adapter = createAdapterFromEnv(runtimeModel ? { model: runtimeModel } : undefined);
+    const runtimeAdapterOverrides = chooseRuntimeAdapterOverrides(runtimeProfiles);
+    const runtimeModel = runtimeAdapterOverrides?.model;
+    const adapter = createAdapterFromEnv(runtimeAdapterOverrides);
     const orchestrator = createOrchestrator(adapter);
 
     if (runtimeProfiles.some((profile) => profile.configured)) {

@@ -1,10 +1,15 @@
 import { userAgentConfigRepo } from "../db/repositories/user-agent-config";
 import { normalizeAgentKey, isCoordinatorAgent } from "./conversation-routing";
+import type { AdapterConfig } from "@agenthub/adapter";
+import { decryptSecret } from "../deploy/credentials";
 
 export interface AgentRuntimeProfile {
   id: string;
   name: string;
   type: string;
+  provider?: string;
+  baseURL?: string;
+  apiKey?: string;
   model?: string;
   systemPrompt?: string;
   tools: string[];
@@ -16,6 +21,11 @@ interface RuntimeModelOptions {
 }
 
 interface RawAgentConfig {
+  provider?: unknown;
+  baseURL?: unknown;
+  baseUrl?: unknown;
+  apiKey?: unknown;
+  apiKeyEncrypted?: unknown;
   model?: unknown;
   systemPrompt?: unknown;
   tools?: unknown;
@@ -53,6 +63,18 @@ function profileFromFallback(agentName: string): AgentRuntimeProfile {
   };
 }
 
+function readApiKey(config: RawAgentConfig) {
+  if (typeof config.apiKey === "string" && config.apiKey.trim()) return config.apiKey.trim();
+  if (typeof config.apiKeyEncrypted === "string" && config.apiKeyEncrypted.trim()) {
+    try {
+      return decryptSecret(config.apiKeyEncrypted);
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 function profileFromRecord(record: {
   id: string;
   name: string;
@@ -68,6 +90,13 @@ function profileFromRecord(record: {
     id: record.id,
     name: record.name,
     type: record.type,
+    provider: typeof config.provider === "string" ? config.provider : undefined,
+    baseURL: typeof config.baseURL === "string"
+      ? config.baseURL.trim()
+      : typeof config.baseUrl === "string"
+      ? config.baseUrl.trim()
+      : undefined,
+    apiKey: readApiKey(config),
     model: typeof config.model === "string" ? config.model : undefined,
     systemPrompt: typeof config.systemPrompt === "string" ? config.systemPrompt.trim() : undefined,
     tools: [...new Set([...configTools, ...permissionTools])],
@@ -101,6 +130,38 @@ function isUsableRuntimeModel(model: string | undefined, options: RuntimeModelOp
 export function chooseRuntimeModel(profiles: AgentRuntimeProfile[], options: RuntimeModelOptions = {}) {
   return profiles.find((profile) => !isCoordinatorAgent(profile.name) && isUsableRuntimeModel(profile.model, options))?.model
     ?? profiles.find((profile) => isUsableRuntimeModel(profile.model, options))?.model;
+}
+
+function isInheritedProvider(provider: string | undefined) {
+  return !provider || provider === "inherit";
+}
+
+function adapterTypeFromProvider(provider: string | undefined): AdapterConfig["type"] | undefined {
+  if (isInheritedProvider(provider)) return undefined;
+  if (provider === "openai") return "openai";
+  return "generic-openai";
+}
+
+function hasOwnLLMConfig(profile: AgentRuntimeProfile) {
+  return !isInheritedProvider(profile.provider) || Boolean(profile.apiKey || profile.baseURL);
+}
+
+export function chooseRuntimeAdapterOverrides(profiles: AgentRuntimeProfile[]): Partial<AdapterConfig> | undefined {
+  const preferred = profiles.find((profile) => !isCoordinatorAgent(profile.name) && hasOwnLLMConfig(profile))
+    ?? profiles.find(hasOwnLLMConfig);
+
+  if (preferred) {
+    const override: Partial<AdapterConfig> = {};
+    const type = adapterTypeFromProvider(preferred.provider);
+    if (type) override.type = type;
+    if (preferred.apiKey) override.apiKey = preferred.apiKey;
+    if (preferred.baseURL) override.baseURL = preferred.baseURL;
+    if (preferred.model?.trim()) override.model = preferred.model.trim();
+    return override;
+  }
+
+  const runtimeModel = chooseRuntimeModel(profiles);
+  return runtimeModel ? { model: runtimeModel } : undefined;
 }
 
 export function buildAgentRuntimePrompt(profiles: AgentRuntimeProfile[]) {

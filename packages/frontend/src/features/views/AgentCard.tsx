@@ -27,6 +27,15 @@ const TOOL_LABELS: Record<string, string> = {
   browser: "浏览器",
 };
 
+const PROVIDER_LABELS: Record<string, string> = {
+  inherit: "继承系统",
+  openai: "OpenAI",
+  "openai-compatible": "兼容 API",
+  "volc-ark": "火山方舟",
+  deepseek: "DeepSeek",
+  custom: "私有 API",
+};
+
 interface AgentCardProps {
   agent: UserAgent;
   onEdit?: (agent: UserAgent) => void;
@@ -61,6 +70,16 @@ export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
                 {connectionMeta.shortLabel}
               </span>
             </div>
+          </div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            <span className="rounded-sm px-1.5 py-0.5 text-[10px]" style={{ color: agent.provider && agent.provider !== "inherit" ? "var(--accent)" : "var(--fg-tertiary)", background: agent.provider && agent.provider !== "inherit" ? "var(--accent-subtle)" : "var(--surface-low)" }}>
+              {PROVIDER_LABELS[agent.provider ?? "inherit"] ?? agent.provider}
+            </span>
+            {agent.hasApiKey && (
+              <span className="rounded-sm px-1.5 py-0.5 text-[10px]" style={{ color: "var(--success)", background: "var(--success-subtle)" }}>
+                Key {agent.apiKeyHint || "已保存"}
+              </span>
+            )}
           </div>
           <p className="mt-2 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>
             {agent.systemPrompt || "暂无系统提示词"}
