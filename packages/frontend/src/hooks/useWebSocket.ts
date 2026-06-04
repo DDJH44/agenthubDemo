@@ -10,8 +10,13 @@ import { useConversationGroupStore } from "@/stores/conversation-group-store";
 import { useMcpStore } from "@/stores/mcp-store";
 import { useTaskTreeStore } from "@/stores/task-tree-store";
 import { upsertDeployCard } from "@/features/chat/deploy-card";
+import { createAgentSocket } from "@/lib/ws-client";
+import type { WSServerMessage, Conversation, WSClientMessage, Artifact, Message, WorkflowReferencePayload } from "@agenthub/shared";
 
 const _clientIdToServerId = new Map<string, string>();
+const _pendingClientConversationIds = new Set<string>();
+type MessageSendClientMessage = Extract<WSClientMessage, { type: "message:send" }>;
+const _pendingMessagesByClientConversation = new Map<string, MessageSendClientMessage[]>();
 
 function persistClientIdMap() {
   try {
@@ -31,8 +36,43 @@ function restoreClientIdMap() {
 }
 
 restoreClientIdMap();
-import { createAgentSocket } from "@/lib/ws-client";
-import type { WSServerMessage, Conversation, WSClientMessage, Artifact, Message, WorkflowReferencePayload } from "@agenthub/shared";
+
+type AgentSocket = ReturnType<typeof createAgentSocket>;
+
+function resolveServerConversationId(conversationId: string | null | undefined) {
+  if (!conversationId) return null;
+  const mapped = _clientIdToServerId.get(conversationId);
+  if (mapped) return mapped;
+  if (_pendingClientConversationIds.has(conversationId)) return null;
+  return conversationId;
+}
+
+function syncConversationChannel(
+  socket: AgentSocket | null | undefined,
+  conversationId: string | null | undefined,
+  options: { history?: boolean; taskTree?: boolean } = {}
+) {
+  const serverConversationId = resolveServerConversationId(conversationId);
+  if (!socket || !serverConversationId) return null;
+  socket.send({ type: "conversation:subscribe", conversationId: serverConversationId } as WSClientMessage);
+  if (options.history ?? true) {
+    socket.send({ type: "conversation:history", conversationId: serverConversationId, take: 100 } as WSClientMessage);
+  }
+  if (options.taskTree) useTaskTreeStore.getState().switchConversation(serverConversationId);
+  return serverConversationId;
+}
+
+function syncActiveConversationChannel(
+  socket: AgentSocket | null | undefined,
+  options: { history?: boolean; taskTree?: boolean } = {}
+) {
+  return syncConversationChannel(socket, useChatStore.getState().activeConversationId, options);
+}
+
+function queuePendingConversationMessage(message: MessageSendClientMessage) {
+  const pending = _pendingMessagesByClientConversation.get(message.conversationId) ?? [];
+  _pendingMessagesByClientConversation.set(message.conversationId, [...pending, message]);
+}
 
 function parseParticipants(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw as string[];
@@ -226,6 +266,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         useChatStore.getState().setError(null);
         reconnectAttempts.current = 0;
         socket.send({ type: "conversation:list" } as WSClientMessage);
+        syncActiveConversationChannel(socket, { history: true, taskTree: true });
       });
 
       socket.ws.addEventListener("close", (event) => {
@@ -478,9 +519,18 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         case "conversation:created": {
           const conv = wsConvToStoreConv(msg.conversation as Parameters<typeof wsConvToStoreConv>[0]);
           const clientId = msg.clientId;
-          if (clientId) { _clientIdToServerId.set(clientId, conv.id); persistClientIdMap(); }
+          const pendingClientMessages = clientId
+            ? (_pendingMessagesByClientConversation.get(clientId) ?? [])
+            : [];
+          if (clientId) {
+            _clientIdToServerId.set(clientId, conv.id);
+            _pendingClientConversationIds.delete(clientId);
+            _pendingMessagesByClientConversation.delete(clientId);
+            persistClientIdMap();
+          }
           const store = useChatStore.getState();
           const isClientActive = clientId && store.activeConversationId === clientId;
+          const shouldActivateCreatedConversation = Boolean(isClientActive || !store.activeConversationId);
           const oldMessages = clientId ? store.messages[clientId] : undefined;
 
           useChatStore.setState((s) => {
@@ -493,7 +543,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
               if (oldMessages?.length) nextMessages[conv.id] = oldMessages;
             }
             if (!nextMessages[conv.id]) nextMessages[conv.id] = [];
-            const nextActiveId = isClientActive ? conv.id : (s.activeConversationId || conv.id);
+            const nextActiveId = shouldActivateCreatedConversation ? conv.id : (s.activeConversationId || conv.id);
             return {
               conversations: nextConvs,
               activeConversationId: nextActiveId,
@@ -503,12 +553,16 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           });
           useChatStore.getState().persistCurrentState();
 
-          useWorkspaceStore.getState().switchConversation(isClientActive ? conv.id : null);
-          useTaskTreeStore.getState().switchConversation(isClientActive ? conv.id : null);
+          useWorkspaceStore.getState().switchConversation(shouldActivateCreatedConversation ? conv.id : null);
+          useTaskTreeStore.getState().switchConversation(shouldActivateCreatedConversation ? conv.id : null);
 
           // ID 迁移后订阅服务端会话房间，确保收到流式事件
-          if (isClientActive) {
-            socketRef.current?.send({ type: "conversation:subscribe", conversationId: conv.id } as WSClientMessage);
+          if (shouldActivateCreatedConversation) {
+            syncConversationChannel(socketRef.current, conv.id, { history: true, taskTree: true });
+          }
+
+          for (const pendingMessage of pendingClientMessages) {
+            socketRef.current?.send({ ...pendingMessage, conversationId: conv.id } as WSClientMessage);
           }
 
           const pendingMsg = useChatStore.getState().pendingMessage;
@@ -537,6 +591,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
             }
           }
           store.setConversations(merged);
+          syncActiveConversationChannel(socketRef.current, { history: true, taskTree: true });
           break;
         }
         case "conversation:search:results": {
@@ -814,9 +869,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
       const customEvent = event as CustomEvent;
       const conversationId = customEvent.detail?.conversationId;
       if (conversationId) {
-        socketRef.current?.send({ type: "conversation:subscribe", conversationId } as WSClientMessage);
-        socketRef.current?.send({ type: "conversation:history", conversationId } as WSClientMessage);
-        useTaskTreeStore.getState().switchConversation(conversationId);
+        syncConversationChannel(socketRef.current, conversationId, { history: true, taskTree: true });
       }
     };
     window.addEventListener('conversation:select', handleConversationSelect);
@@ -828,9 +881,27 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
     };
   }, [serverUrl, enabled]);
 
-  const sendMessage = useCallback((conversationId: string, text: string, options?: { workflowRef?: WorkflowReferencePayload }) => {
-    socketRef.current?.send({ type: "message:send", conversationId, text, workflowRef: options?.workflowRef } as WSClientMessage);
+  const send = useCallback((msg: WSClientMessage) => {
+    if (msg.type === "conversation:create" && msg.clientId) {
+      _pendingClientConversationIds.add(msg.clientId);
+    }
+
+    if (msg.type === "message:send") {
+      const serverConversationId = syncConversationChannel(socketRef.current, msg.conversationId, { history: false });
+      if (!serverConversationId) {
+        queuePendingConversationMessage(msg);
+        return;
+      }
+      socketRef.current?.send({ ...msg, conversationId: serverConversationId } as WSClientMessage);
+      return;
+    }
+
+    socketRef.current?.send(msg);
   }, []);
+
+  const sendMessage = useCallback((conversationId: string, text: string, options?: { workflowRef?: WorkflowReferencePayload }) => {
+    send({ type: "message:send", conversationId, text, workflowRef: options?.workflowRef } as WSClientMessage);
+  }, [send]);
 
   const pinConversation = useCallback((id: string) => {
     socketRef.current?.send({ type: "conversation:pin", conversationId: id } as WSClientMessage);
@@ -887,7 +958,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
 
   return {
     sendMessage,
-    send: (msg: WSClientMessage) => { socketRef.current?.send(msg); },
+    send,
     pinConversation,
     unpinConversation,
     archiveConversation,
