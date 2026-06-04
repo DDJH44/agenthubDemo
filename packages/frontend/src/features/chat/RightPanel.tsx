@@ -274,6 +274,73 @@ function latestArtifacts(artifacts: Artifact[]) {
   return Array.from(grouped.values()).sort((a, b) => b.createdAt - a.createdAt);
 }
 
+function artifactTopicId(artifact: Artifact) {
+  const metadataTopic = typeof artifact.metadata?.sourceJobId === "string" ? artifact.metadata.sourceJobId : undefined;
+  return metadataTopic || artifact.jobId || artifact.id;
+}
+
+function messageJobId(message: Message) {
+  const payload = messagePayload(message);
+  return typeof payload.jobId === "string" ? payload.jobId : undefined;
+}
+
+interface ArtifactTopic {
+  id: string;
+  title: string;
+  artifacts: Artifact[];
+  latestAt: number;
+}
+
+function topicTitle(topicId: string, artifacts: Artifact[], messages: Message[]) {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    const payload = messagePayload(message);
+    if (payload.jobId !== topicId) continue;
+    if (typeof payload.task === "string" && payload.task.trim()) return payload.task.trim();
+    if (typeof payload.title === "string" && payload.title.trim()) return payload.title.trim();
+  }
+
+  const latest = artifacts.slice().sort((a, b) => b.createdAt - a.createdAt)[0];
+  const metadataTitle = typeof latest?.metadata?.topicTitle === "string" ? latest.metadata.topicTitle : undefined;
+  return metadataTitle || latest?.filename || `任务 ${topicId.slice(0, 8)}`;
+}
+
+function buildArtifactTopics(artifacts: Artifact[], messages: Message[]): ArtifactTopic[] {
+  const grouped = new Map<string, Artifact[]>();
+  for (const artifact of artifacts) {
+    if (!artifact.content?.trim()) continue;
+    const topicId = artifactTopicId(artifact);
+    grouped.set(topicId, [...(grouped.get(topicId) ?? []), artifact]);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([id, topicArtifacts]) => ({
+      id,
+      title: topicTitle(id, topicArtifacts, messages),
+      artifacts: topicArtifacts,
+      latestAt: topicArtifacts.reduce((latest, artifact) => Math.max(latest, artifact.createdAt), 0),
+    }))
+    .sort((a, b) => b.latestAt - a.latestAt);
+}
+
+function artifactsForTopic(artifacts: Artifact[], topicId: string | null) {
+  if (!topicId) return artifacts;
+  return artifacts.filter((artifact) => artifactTopicId(artifact) === topicId);
+}
+
+function messagesForTopic(messages: Message[], topicId: string | null, artifacts: Artifact[]) {
+  if (!topicId) return messages;
+  const artifactIds = new Set(artifacts.map((artifact) => artifact.id));
+  return messages.filter((message) => {
+    const payload = messagePayload(message);
+    if (messageJobId(message) === topicId) return true;
+    if (typeof payload.artifactId === "string" && artifactIds.has(payload.artifactId)) return true;
+    if (typeof payload.originalArtifactId === "string" && artifactIds.has(payload.originalArtifactId)) return true;
+    if (typeof payload.modifiedArtifactId === "string" && artifactIds.has(payload.modifiedArtifactId)) return true;
+    return false;
+  });
+}
+
 function previewTypeForArtifact(artifact: Pick<Artifact, "type" | "filename">) {
   if (artifact.type === "html" || artifact.filename?.endsWith(".html")) return "html";
   if (artifact.type === "markdown" || artifact.type === "document" || artifact.filename?.endsWith(".md")) return "document";
@@ -1658,19 +1725,27 @@ export function RightPanel() {
   const [activeTab, setActiveTab] = useState<PanelTab>("tasks");
   const { messages, activeConversationId, resources, isStreaming, contextReferences } = useChatStore();
   const workspace = useWorkspaceStore();
+  const activeArtifactTopicId = workspace.activeArtifactTopicId;
+  const setActiveArtifactTopic = workspace.setActiveArtifactTopic;
   const convMessages = activeConversationId ? (messages[activeConversationId] ?? []) : [];
+  const artifactTopics = buildArtifactTopics(workspace.artifacts, convMessages);
+  const selectedTopicExists = Boolean(activeArtifactTopicId && artifactTopics.some((topic) => topic.id === activeArtifactTopicId));
+  const activeTopicId = selectedTopicExists ? activeArtifactTopicId : artifactTopics[0]?.id ?? null;
+  const topicArtifacts = artifactsForTopic(workspace.artifacts, activeTopicId);
+  const topicMessages = messagesForTopic(convMessages, activeTopicId, topicArtifacts);
+  const activeTopic = artifactTopics.find((topic) => topic.id === activeTopicId) ?? null;
   const contextCount = activeConversationId ? (contextReferences[activeConversationId]?.length ?? 0) : 0;
-  const latestArtifact = workspace.artifacts.reduce<Artifact | null>((latest, artifact) => {
+  const latestArtifact = topicArtifacts.reduce<Artifact | null>((latest, artifact) => {
     if (!latest || artifact.createdAt > latest.createdAt) return artifact;
     return latest;
   }, null);
-  const versionCount = workspace.artifacts.reduce((total, artifact) => total + Math.max(1, artifact.version ?? 1), 0);
+  const versionCount = topicArtifacts.reduce((total, artifact) => total + Math.max(1, artifact.version ?? 1), 0);
   const deployState = getDeployPanelState(workspace.deployStatus);
   const deployMeta = DEPLOY_STATE_META[deployState];
   const latestLabel = latestArtifact?.filename || latestArtifact?.type || "等待 Agent 生成产物";
   const activeTabMeta = TABS.find((tab) => tab.key === activeTab) ?? TABS[0];
   const summaryItems = [
-    { label: "产物", value: workspace.artifacts.length, icon: "M4 5h16v14H4zM8 9h8M8 13h5" },
+    { label: "产物", value: topicArtifacts.length, icon: "M4 5h16v14H4zM8 9h8M8 13h5" },
     { label: "版本", value: versionCount, icon: "M3 12a9 9 0 109-9M3 3v6h6M12 7v5l3 3" },
     { label: "上下文", value: contextCount, icon: "M4 4h16v5H4zM4 15h7v5h-5z" },
   ];
@@ -1683,6 +1758,12 @@ export function RightPanel() {
     window.addEventListener("right-panel:tab", handleTabChange);
     return () => window.removeEventListener("right-panel:tab", handleTabChange);
   }, []);
+
+  useEffect(() => {
+    if (activeArtifactTopicId !== activeTopicId) {
+      setActiveArtifactTopic(activeTopicId);
+    }
+  }, [activeArtifactTopicId, activeTopicId, setActiveArtifactTopic]);
 
   return (
     <aside
@@ -1739,6 +1820,43 @@ export function RightPanel() {
           ))}
         </div>
 
+        {artifactTopics.length > 0 && (
+          <div className="mb-3">
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold" style={{ color: "var(--fg-tertiary)" }}>当前话题</span>
+              <span className="truncate text-[10px]" style={{ color: "var(--fg-disabled)" }}>
+                {activeTopic ? `${activeTopic.artifacts.length} 个产物` : "全部产物"}
+              </span>
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
+              {artifactTopics.map((topic) => {
+                const active = topic.id === activeTopicId;
+                return (
+                  <button
+                    key={topic.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveArtifactTopic(topic.id);
+                      useChatStore.getState().setCurrentPreview(null);
+                    }}
+                    className="min-w-[138px] max-w-[220px] shrink-0 rounded-lg px-2.5 py-2 text-left transition-colors"
+                    style={{
+                      color: active ? "var(--accent)" : "var(--fg-secondary)",
+                      background: active ? "var(--accent-subtle)" : "var(--surface-low)",
+                      border: `1px solid ${active ? "var(--accent-border)" : "var(--border)"}`,
+                    }}
+                  >
+                    <span className="block truncate text-[11px] font-bold">{topic.title}</span>
+                    <span className="mt-0.5 block truncate text-[10px]" style={{ color: active ? "var(--accent)" : "var(--fg-tertiary)" }}>
+                      {topic.artifacts.length} 个文件 · {formatTime(topic.latestAt)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-1 overflow-x-auto rounded-xl p-1 custom-scrollbar" style={{ background: "var(--surface-low)" }}>
           {TABS.map((tab) => {
             const active = activeTab === tab.key;
@@ -1778,13 +1896,13 @@ export function RightPanel() {
           </span>
         </div>
         {activeTab === "tasks" && <TaskPanel messages={convMessages} />}
-        {activeTab === "code" && <CodePanel artifacts={workspace.artifacts} messages={convMessages} />}
-        {activeTab === "preview" && <PreviewPanel artifacts={workspace.artifacts} />}
-        {activeTab === "diff" && <DiffPanel messages={convMessages} artifacts={workspace.artifacts} />}
-        {activeTab === "slides" && <SlidesPanel artifacts={workspace.artifacts} />}
-        {activeTab === "history" && <HistoryPanel artifacts={workspace.artifacts} stepResults={workspace.stepResults} />}
+        {activeTab === "code" && <CodePanel artifacts={topicArtifacts} messages={topicMessages} />}
+        {activeTab === "preview" && <PreviewPanel artifacts={topicArtifacts} />}
+        {activeTab === "diff" && <DiffPanel messages={topicMessages} artifacts={topicArtifacts} />}
+        {activeTab === "slides" && <SlidesPanel artifacts={topicArtifacts} />}
+        {activeTab === "history" && <HistoryPanel artifacts={topicArtifacts} stepResults={workspace.stepResults} />}
         {activeTab === "deploy" && <DeployWorkflowPanel />}
-        {activeTab === "context" && <ContextPanel artifacts={workspace.artifacts} messages={convMessages} resources={resources} />}
+        {activeTab === "context" && <ContextPanel artifacts={topicArtifacts} messages={topicMessages} resources={resources} />}
       </div>
 
       <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2.5" style={{ background: "rgba(255, 255, 255, 0.88)", borderTop: "1px solid var(--border)" }}>

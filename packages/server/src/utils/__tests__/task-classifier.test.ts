@@ -21,6 +21,8 @@ describe("task classifier", () => {
       expect(isArtifactGenerationTask("生成番茄钟")).toBe(true);
       expect(isArtifactGenerationTask("帮我做一个番茄钟应用")).toBe(true);
       expect(isArtifactGenerationTask("create a pomodoro timer")).toBe(true);
+      expect(isArtifactGenerationTask("做一个有后端的图书管理系统 轻量化")).toBe(true);
+      expect(isArtifactGenerationTask("创建一个图书馆借阅 CRUD 后台")).toBe(true);
     });
 
     it("does not route pure analysis or casual chat to artifact generation", () => {

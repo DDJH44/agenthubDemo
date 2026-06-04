@@ -100,6 +100,7 @@ function artifactFromMessage(message: Message): Artifact | null {
   const metadata: Record<string, unknown> = { sourceMessageId: message.id };
 
   if (typeof payload.language === "string") metadata.language = payload.language;
+  if (typeof payload.topicTitle === "string") metadata.topicTitle = payload.topicTitle;
   if (payload.workflowRef) metadata.workflowRef = payload.workflowRef;
 
   return {
@@ -757,9 +758,11 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           }
 
           if (conversationId && msg.type === "deploy:completed") {
+            const sourceArtifact = useWorkspaceStore.getState().artifacts
+              .find((artifact) => msg.deployId.startsWith(`${artifact.id}-`));
             const artifact: Artifact = {
               id: `deploy-result-${msg.deployId}`,
-              jobId: msg.deployId,
+              jobId: sourceArtifact?.jobId ?? msg.deployId,
               type: "deploy_url",
               filename: `${msg.providerId}-deployment.url`,
               content: msg.url,
@@ -769,6 +772,8 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
               metadata: {
                 providerId: msg.providerId,
                 deployId: msg.deployId,
+                sourceArtifactId: sourceArtifact?.id,
+                sourceJobId: sourceArtifact?.jobId,
                 status: "success",
                 verified: msg.verified,
                 verificationStatus: msg.verificationStatus,

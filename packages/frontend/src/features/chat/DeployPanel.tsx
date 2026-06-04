@@ -125,6 +125,20 @@ function formatFileSize(content: string) {
   return `${kb} KB`;
 }
 
+function artifactTopicId(artifact: { id: string; jobId: string; metadata?: Record<string, unknown> }) {
+  const sourceJobId = typeof artifact.metadata?.sourceJobId === "string" ? artifact.metadata.sourceJobId : undefined;
+  return sourceJobId || artifact.jobId || artifact.id;
+}
+
+function effectiveArtifactTopicId(artifacts: Array<{ id: string; jobId: string; createdAt: number; metadata?: Record<string, unknown> }>, selectedTopicId: string | null) {
+  if (selectedTopicId && artifacts.some((artifact) => artifactTopicId(artifact) === selectedTopicId)) return selectedTopicId;
+  return artifacts
+    .slice()
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .map((artifact) => artifactTopicId(artifact))
+    .find(Boolean) ?? null;
+}
+
 export function DeployPanel() {
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>("mock-preview");
   const [miaodaWebhookUrl, setMiaodaWebhookUrl] = useState("");
@@ -153,6 +167,7 @@ export function DeployPanel() {
   const addTaskAssignment = useChatStore((state) => state.addTaskAssignment);
   const {
     artifacts,
+    activeArtifactTopicId,
     deployStatus,
     deployUrl,
     deployProgress,
@@ -162,8 +177,12 @@ export function DeployPanel() {
     setDeployStatus,
   } = useWorkspaceStore();
 
-  const deployFiles = useMemo(() => collectDeployFiles(artifacts), [artifacts]);
-  const deployableArtifact = useMemo(() => pickDeployArtifact(artifacts), [artifacts]);
+  const topicArtifacts = useMemo(() => {
+    const topicId = effectiveArtifactTopicId(artifacts, activeArtifactTopicId);
+    return topicId ? artifacts.filter((artifact) => artifactTopicId(artifact) === topicId) : artifacts;
+  }, [activeArtifactTopicId, artifacts]);
+  const deployFiles = useMemo(() => collectDeployFiles(topicArtifacts), [topicArtifacts]);
+  const deployableArtifact = useMemo(() => pickDeployArtifact(topicArtifacts), [topicArtifacts]);
   const normalizedStatus = normalizeStatus(deployStatus);
   const statusMeta = STATUS_META[normalizedStatus];
   const statusMascot = STATUS_MASCOT[normalizedStatus] ?? "shield";

@@ -18,7 +18,8 @@ const DELIVERABLE_KEYWORDS = [
   "网站", "网页", "页面", "站点", "h5", "html", "css", "javascript", "typescript",
   "react", "vue", "app", "应用", "小程序", "demo", "原型", "组件", "界面",
   "前端", "代码", "游戏", "动画", "可视化", "看板", "dashboard", "表单",
-  "登录", "注册", "烟花", "firework", "fireworks", "canvas",
+  "登录", "注册", "烟花", "系统", "管理系统", "后台", "后端", "api", "crud", "数据库",
+  "firework", "fireworks", "canvas",
 ];
 
 const COMPLEX_INDICATORS = [
@@ -28,6 +29,7 @@ const COMPLEX_INDICATORS = [
 
 const ARTIFACT_REQUEST_HINTS = [
   /网站|网页|页面|站点|小程序|demo|原型|组件|界面|前端|代码|游戏|小游戏|动画|可视化|看板|表单/i,
+  /管理系统|后台系统|图书馆|图书管理|借阅|库存管理|后端|api|crud|数据库|增删改查/i,
   /番茄钟|番茄工作法|计时器|倒计时|pomodoro|timer|stopwatch|clock/i,
   /todo|待办|抽奖|轮盘|播放器|画板|白板|计算器|日历|记账|天气|音乐|相册|作品集/i,
 ];

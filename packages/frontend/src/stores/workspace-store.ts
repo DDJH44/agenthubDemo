@@ -14,10 +14,12 @@ interface WorkspaceData {
   deployProvider: string | null;
   deployLogs: string[];
   deployError: string | null;
+  activeArtifactTopicId: string | null;
 }
 
 interface WorkspaceStore extends WorkspaceData {
   activeConvId: string | null;
+  setActiveArtifactTopic: (topicId: string | null) => void;
   setPlan: (plan: PlanNode[]) => void;
   updateNodeStatus: (nodeId: string, status: string) => void;
   addStepResult: (result: StepResult) => void;
@@ -49,6 +51,7 @@ const EMPTY: WorkspaceData = {
   deployProvider: null,
   deployLogs: [],
   deployError: null,
+  activeArtifactTopicId: null,
 };
 
 function loadConvWorkspace(convId: string): WorkspaceData {
@@ -68,6 +71,7 @@ function loadConvWorkspace(convId: string): WorkspaceData {
       deployProvider: data.deployProvider ?? null,
       deployLogs: data.deployLogs ?? [],
       deployError: data.deployError ?? null,
+      activeArtifactTopicId: data.activeArtifactTopicId ?? null,
     };
   } catch { return EMPTY; }
 }
@@ -86,6 +90,7 @@ function saveConvWorkspace(convId: string, data: WorkspaceData) {
       deployProvider: data.deployProvider ?? null,
       deployLogs: (data.deployLogs ?? []).slice(-30),
       deployError: data.deployError ?? null,
+      activeArtifactTopicId: data.activeArtifactTopicId ?? null,
     };
     localStorage.setItem(WS_KEY_PREFIX + convId, JSON.stringify(toSave));
   } catch { /* quota exceeded */ }
@@ -119,6 +124,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         dagNodes: state.dagNodes, deployStatus: state.deployStatus, deployUrl: state.deployUrl,
         deployProgress: state.deployProgress, deployProvider: state.deployProvider,
         deployLogs: state.deployLogs, deployError: state.deployError,
+        activeArtifactTopicId: state.activeArtifactTopicId,
       });
     }
     if (convId) {
@@ -128,6 +134,13 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
       set({ activeConvId: null, ...EMPTY });
     }
   },
+
+  setActiveArtifactTopic: (topicId) => set((s) => {
+    if (s.activeArtifactTopicId === topicId) return {};
+    const next = { activeArtifactTopicId: topicId };
+    if (s.activeConvId) saveConvWorkspace(s.activeConvId, { ...s, ...next });
+    return next;
+  }),
 
   setPlan: (plan) => set((s) => {
     const dagNodes = plan.map((p) => {

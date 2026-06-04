@@ -60,6 +60,54 @@ function extractPrimaryCodeArtifact(result: string, stepId: string) {
   return { type, filename: filename ?? `output-${stepId}.${extension || "txt"}`, content };
 }
 
+function filenameWithSuffix(filename: string, suffix: number) {
+  if (suffix <= 1) return filename;
+  const dot = filename.lastIndexOf(".");
+  if (dot <= 0) return `${filename}-${suffix}`;
+  return `${filename.slice(0, dot)}-${suffix}${filename.slice(dot)}`;
+}
+
+function uniqueFilename(filename: string, seen: Map<string, number>) {
+  const next = (seen.get(filename) ?? 0) + 1;
+  seen.set(filename, next);
+  return filenameWithSuffix(filename, next);
+}
+
+function codeArtifactFromFence(language: string, filename: string | undefined, content: string, fallbackName: string) {
+  const normalized = language.toLowerCase();
+  if (normalized === "html" || /<!doctype html|<html/i.test(content)) {
+    return { type: "html" as const, filename: filename ?? fallbackName.replace(/\.[^.]+$/, ".html"), content: extractHtmlSegment(content) ?? content.trim() };
+  }
+
+  const extension = LANGUAGE_EXTENSION_MAP[normalized] ?? normalized ?? "txt";
+  const type = normalized === "json" ? "json" as const : "code" as const;
+  return { type, filename: filename ?? fallbackName.replace(/\.[^.]+$/, `.${extension || "txt"}`), content: content.trim() };
+}
+
+function extractCodeArtifacts(result: string, stepId: string) {
+  const artifacts: Array<{ type: Artifact["type"]; filename: string; content: string }> = [];
+  const seenFilenames = new Map<string, number>();
+  const codeBlockRegex = /```([^\r\n`]*)[ \t]*(?:\r?\n)([\s\S]*?)```/g;
+  let match: RegExpExecArray | null;
+  let index = 0;
+
+  while ((match = codeBlockRegex.exec(result)) !== null) {
+    const { language, filename } = parseFenceHeader(match[1] || "");
+    const content = match[2]?.trim() ?? "";
+    if (content.length < 10) continue;
+    const extension = (LANGUAGE_EXTENSION_MAP[language] ?? language) || "txt";
+    const fallbackName = index === 0 ? `index.${extension || "txt"}` : `file-${stepId}-${index}.${extension || "txt"}`;
+    const artifact = codeArtifactFromFence(language, filename, content, fallbackName);
+    artifacts.push({ ...artifact, filename: uniqueFilename(artifact.filename, seenFilenames) });
+    index++;
+  }
+
+  if (artifacts.length > 0) return artifacts;
+
+  const primary = extractPrimaryCodeArtifact(result, stepId);
+  return [{ ...primary, filename: uniqueFilename(primary.filename, seenFilenames) }];
+}
+
 function artifactLanguage(artifact: Artifact) {
   if (artifact.type === "html") return "html";
   if (artifact.type === "json") return "json";
@@ -180,7 +228,9 @@ export class MemoryQueue implements IJobQueue {
       });
     };
 
+    let timedOut = false;
     const timeoutHandle = setTimeout(() => {
+      timedOut = true;
       controller.abort();
     }, timeout);
 
@@ -314,7 +364,7 @@ export class MemoryQueue implements IJobQueue {
               type: artifact.type,
               content: artifact.content,
               filename: artifact.filename,
-              metadata: artifact.metadata,
+              metadata: { ...(artifact.metadata ?? {}), topicTitle: payload.task },
             });
             const persistedArtifact: Artifact = {
               ...artifact,
@@ -344,6 +394,7 @@ export class MemoryQueue implements IJobQueue {
                 filename: persistedArtifact.filename,
                 language: artifactLanguage(persistedArtifact),
                 jobId,
+                topicTitle: payload.task,
                 workflowRef: payload.workflowRef,
               },
             });
@@ -363,6 +414,7 @@ export class MemoryQueue implements IJobQueue {
                   filename: persistedArtifact.filename,
                   language: artifactLanguage(persistedArtifact),
                   jobId,
+                  topicTitle: payload.task,
                   workflowRef: payload.workflowRef,
                 },
                 mentions: [],
@@ -373,17 +425,22 @@ export class MemoryQueue implements IJobQueue {
 
           for (const sr of stepResults) {
             if (sr.toolUsed === "code" || sr.toolUsed === "search") {
-              const codeArtifact = sr.toolUsed === "code" ? extractPrimaryCodeArtifact(sr.result, sr.id) : null;
-              const artifactType = codeArtifact?.type ?? "markdown";
-              const filename = codeArtifact?.filename ?? `research-${sr.id}.md`;
-              await publishArtifactMessage({
-                id: `artifact-${jobId}-${sr.id}`,
-                jobId,
-                type: artifactType,
-                filename,
-                content: codeArtifact?.content ?? sr.result,
-                createdAt: Date.now(),
-              });
+              const codeArtifacts = sr.toolUsed === "code"
+                ? extractCodeArtifacts(sr.result, sr.id)
+                : [{ type: "markdown" as const, filename: `research-${sr.id}.md`, content: sr.result }];
+              let artifactIndex = 0;
+              for (const codeArtifact of codeArtifacts) {
+                await publishArtifactMessage({
+                  id: `artifact-${jobId}-${sr.id}-${artifactIndex}`,
+                  jobId,
+                  type: codeArtifact.type,
+                  filename: codeArtifact.filename,
+                  content: codeArtifact.content,
+                  metadata: { stepId: sr.id, stepTask: sr.task },
+                  createdAt: Date.now(),
+                });
+                artifactIndex++;
+              }
             }
           }
 
@@ -465,10 +522,11 @@ export class MemoryQueue implements IJobQueue {
     } catch (err) {
       const isAbort = err instanceof Error && (err.name === "AbortError" || err.name === "CanceledError");
       if (isAbort) {
-        logger.info(`Job ${jobId} cancelled`, 'MemoryQueue');
+        const errorMessage = timedOut ? `Job timed out after ${Math.round(timeout / 1000)}s` : "Job cancelled by user";
+        logger.info(`Job ${jobId} ${timedOut ? "timed out" : "cancelled"}`, 'MemoryQueue');
         this.statuses.set(jobId, "failed");
-        jobRepo.updateStatus(jobId, "failed", { error: "Job cancelled by user" }).catch(() => {});
-        emit({ type: "job:failed", error: "Job cancelled" });
+        jobRepo.updateStatus(jobId, "failed", { error: errorMessage }).catch(() => {});
+        emit({ type: "job:failed", error: timedOut ? "任务执行超时，已自动中止。可以缩小范围或改用产物型快速生成。" : "Job cancelled" });
       } else {
         logger.error(`Job ${jobId} failed`, err as Error, 'Queue');
         jobRepo.updateStatus(jobId, "failed", { error: String(err) }).catch(() => {});
