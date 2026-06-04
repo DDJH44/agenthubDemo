@@ -12,7 +12,6 @@ import { useWorkspaceStore } from "../../packages/frontend/src/stores/workspace-
 import { useNavigationStore, type NavKey } from "../../packages/frontend/src/stores/navigation-store";
 import { useUserAgentStore } from "../../packages/frontend/src/stores/user-agent-store";
 import { useAuthStore } from "../../packages/frontend/src/stores/auth-store";
-import { startAcceptanceDemo } from "../../packages/frontend/src/features/demo/acceptance-demo";
 import { SidebarNav } from "../../packages/frontend/src/features/views/SidebarNav";
 import { CommandPalette } from "../../packages/frontend/src/features/views/CommandPalette";
 
@@ -159,11 +158,9 @@ type SendMessageOptions = {
 function ChatEmptyState({
   onCreate,
   onPrompt,
-  onStartDemo,
 }: {
   onCreate: () => void;
   onPrompt: (text: string) => void;
-  onStartDemo: () => void;
 }) {
   return (
     <div
@@ -255,14 +252,6 @@ function ChatEmptyState({
                 </div>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={onStartDemo}
-              className="mt-4 h-8 w-full rounded-lg text-xs font-semibold transition-colors hover:bg-[var(--surface-white)]"
-              style={{ color: "var(--accent)", border: "1px solid var(--accent-border)" }}
-            >
-              打开演示会话
-            </button>
           </div>
         </div>
 
@@ -412,12 +401,6 @@ export default function Page() {
   const handleAssignAgent = useCallback((conversationId: string, agentId: string, content: string) => {
     ws.assignAgent(conversationId, agentId, content);
   }, [ws]);
-
-  const handleStartDemoConversation = useCallback(() => {
-    startAcceptanceDemo();
-    setActiveNav("chat");
-    if (isMobile) setShowMobileConvList(false);
-  }, [isMobile, setActiveNav]);
 
   // 监听会话重命名事件 → 发送 WS 持久化
   useEffect(() => {
@@ -744,7 +727,6 @@ export default function Page() {
                   <ChatEmptyState
                     onCreate={() => setShowCreateModal(true)}
                     onPrompt={handleSend}
-                    onStartDemo={handleStartDemoConversation}
                   />
                 )}
               </div>

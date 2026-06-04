@@ -3,9 +3,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NavKey } from "@/stores/navigation-store";
 import { useNavigationStore } from "@/stores/navigation-store";
-import { useChatStore } from "@/stores/chat-store";
-import { useWorkspaceStore } from "@/stores/workspace-store";
-import { ACCEPTANCE_GROUP_CONVERSATION_ID, startAcceptanceDemo } from "@/features/demo/acceptance-demo";
 
 interface CommandItem {
   id: string;
@@ -33,21 +30,14 @@ export function CommandPalette() {
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const setActiveNav = useNavigationStore((state) => state.setActiveNav);
-  const setActiveConversation = useChatStore((state) => state.setActiveConversation);
-  const switchConversation = useWorkspaceStore((state) => state.switchConversation);
 
-  const openDemoTab = useCallback((tab?: string) => {
-    startAcceptanceDemo();
-    setActiveConversation(ACCEPTANCE_GROUP_CONVERSATION_ID);
-    switchConversation(ACCEPTANCE_GROUP_CONVERSATION_ID);
+  const openChatPanel = useCallback((tab: string) => {
     setActiveNav("chat");
-    window.dispatchEvent(new CustomEvent("conversation:select", { detail: { conversationId: ACCEPTANCE_GROUP_CONVERSATION_ID } }));
-    if (tab) {
-      window.setTimeout(() => {
-        window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
-      }, 120);
-    }
-  }, [setActiveConversation, setActiveNav, switchConversation]);
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+      window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+    }, 0);
+  }, [setActiveNav]);
 
   const openPalette = useCallback(() => {
     setQuery("");
@@ -74,49 +64,42 @@ export function CommandPalette() {
         action: () => setActiveNav(command.nav),
       })),
       {
-        id: "demo-start",
-        title: "启动演示会话",
-        section: "演示",
-        keywords: "demo start 重置 演示 会话",
-        action: () => openDemoTab(),
-      },
-      {
-        id: "demo-pmo",
+        id: "open-pmo",
         title: "查看 PMO 调度",
-        section: "演示",
+        section: "工作台",
         keywords: "pmo 主 agent 调度 任务",
-        action: () => openDemoTab("tasks"),
+        action: () => openChatPanel("tasks"),
       },
       {
-        id: "demo-preview",
+        id: "open-preview",
         title: "打开产物预览",
-        section: "演示",
+        section: "工作台",
         keywords: "preview 预览 网页 文档 ppt",
-        action: () => openDemoTab("preview"),
+        action: () => openChatPanel("preview"),
       },
       {
-        id: "demo-diff",
+        id: "open-diff",
         title: "查看 Diff 与版本",
-        section: "演示",
+        section: "工作台",
         keywords: "diff 版本 冲突 代码",
-        action: () => openDemoTab("diff"),
+        action: () => openChatPanel("diff"),
       },
       {
-        id: "demo-deploy",
+        id: "open-deploy",
         title: "打开部署面板",
-        section: "演示",
+        section: "工作台",
         keywords: "deploy 部署 vercel miaoda preview",
-        action: () => openDemoTab("deploy"),
+        action: () => openChatPanel("deploy"),
       },
       {
-        id: "demo-context",
+        id: "open-context",
         title: "查看上下文管理",
-        section: "演示",
+        section: "工作台",
         keywords: "context 上下文 引用 文档",
-        action: () => openDemoTab("context"),
+        action: () => openChatPanel("context"),
       },
     ];
-  }, [openDemoTab, setActiveNav]);
+  }, [openChatPanel, setActiveNav]);
 
   const filtered = useMemo(() => {
     const key = normalize(query);

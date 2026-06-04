@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { startAcceptanceDemo } from "@/features/demo/acceptance-demo";
 import { AGENT_DIRECTORY, getAgentConnection, getConnectionStateMeta, type AgentConnectionState } from "@/features/chat/agent-directory";
 import { useNavigationStore } from "@/stores/navigation-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
@@ -262,15 +261,6 @@ export function AgentsView() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => { startAcceptanceDemo(); setActiveNav("chat"); }}
-              className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-white"
-              style={{ background: "#174ea6" }}
-            >
-              <Icon path="M5 3l14 9-14 9V3z" size={13} />
-              启动演示会话
-            </button>
             <button
               type="button"
               onClick={() => setActiveNav("my-agents")}

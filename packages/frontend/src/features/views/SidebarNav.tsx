@@ -177,7 +177,6 @@ function CollapsedNav() {
   const { activeNav, setActiveNav, toggleSidebar } = useNavigationStore();
   const user = useAuthStore((state) => state.user);
   const t = useT();
-  const openCommandPalette = () => window.dispatchEvent(new CustomEvent("command-palette:open"));
 
   return (
     <div className="flex h-full w-12 flex-col items-center gap-1 py-3">
@@ -189,17 +188,6 @@ function CollapsedNav() {
         title="展开导航"
       >
         <Image src="/brand/logo-mark.png" alt="AgentHub" width={26} height={26} style={{ width: 26, height: 26, objectFit: "contain" }} />
-      </button>
-      <button
-        type="button"
-        onClick={openCommandPalette}
-        className="mb-2 grid h-8 w-8 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-white)]"
-        style={{ color: "var(--fg-tertiary)", border: "1px solid var(--border)" }}
-        title="快速跳转"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-          <path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
-        </svg>
       </button>
       <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto custom-scrollbar">
         {NAV_ITEMS.map((item) => (
@@ -241,7 +229,6 @@ function ExpandedNav({
   const { locale, toggleLocale } = useSettingsStore();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
-  const openCommandPalette = () => window.dispatchEvent(new CustomEvent("command-palette:open"));
 
   return (
     <div className="flex h-full flex-col" style={{ width: "100%" }}>
@@ -270,18 +257,6 @@ function ExpandedNav({
             </svg>
           </button>
         </div>
-
-        <button
-          type="button"
-          onClick={openCommandPalette}
-          className="mt-3 flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-xs font-semibold transition-colors hover:bg-[var(--surface-white)]"
-          style={{ color: "var(--fg-secondary)", background: "rgba(255,255,255,0.5)", border: "1px solid var(--border)" }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" />
-          </svg>
-          <span className="min-w-0 flex-1 truncate">快速跳转</span>
-        </button>
 
         {variant === "chat" && (
           <button

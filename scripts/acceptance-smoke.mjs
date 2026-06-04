@@ -5,38 +5,38 @@ const API_URL = process.env.API_URL || "http://localhost:3002";
 const SMOKE_EMAIL = process.env.SMOKE_EMAIL || "acceptance-smoke@agenthub.local";
 const SMOKE_PASSWORD = process.env.SMOKE_PASSWORD || "acceptance-smoke-2026";
 const SELECTORS = {
-  commandPalette: '[data-testid="command-palette"]',
-  deployPanel: '[data-testid="deploy-panel"]',
+  sidebar: "aside",
 };
 
 const checks = [
-  {
-    name: "PMO 调度中枢",
-    command: "查看 PMO 调度",
-    text: "主 Agent 调度中枢",
-  },
-  {
-    name: "失败降级与 Diff",
-    command: "查看 Diff 与版本",
-    text: "Diff 视图",
-  },
-  {
-    name: "产物预览",
-    command: "打开产物预览",
-    text: "产物预览",
-  },
-  {
-    name: "部署状态",
-    command: "打开部署面板",
-    text: "部署状态",
-    deploy: true,
-  },
+  { name: "工作台首页", text: "多 Agent 协作项目控制台" },
+  { name: "任务队列", text: "任务队列" },
+  { name: "Agent 状态", text: "Agent 状态" },
+  { name: "接入 Agent", text: "接入 Agent" },
 ];
+
+const removedEntryTexts = ["快速跳转", "快速分配", "启动演示会话", "协作演示会话", "打开演示会话"];
 
 async function waitForText(page, text) {
   await page.waitForFunction((needle) => {
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    let node = walker.nextNode();
+    return window.__agenthubSmokeVisibleTextIncludes(needle);
+  }, text, { timeout: 10000 });
+}
+
+async function expectTextNotVisible(page, text) {
+  const visible = await page.evaluate((needle) => window.__agenthubSmokeVisibleTextIncludes(needle), text);
+  if (visible) throw new Error(`Removed UI entry is still visible: ${text}`);
+}
+
+async function waitForSidebar(page) {
+  await page.locator(SELECTORS.sidebar).first().waitFor({ timeout: 10000 });
+}
+
+async function exposeSmokeHelpers(page) {
+  await page.addInitScript(() => {
+    window.__agenthubSmokeVisibleTextIncludes = (needle) => {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
 
     while (node) {
       if (node.nodeValue?.includes(needle)) {
@@ -58,16 +58,9 @@ async function waitForText(page, text) {
       node = walker.nextNode();
     }
 
-    return false;
-  }, text, { timeout: 10000 });
-}
-
-async function runCommand(page, query) {
-  await page.evaluate(() => window.dispatchEvent(new CustomEvent("command-palette:open")));
-  await page.locator(SELECTORS.commandPalette).waitFor({ timeout: 10000 });
-  const input = page.locator(`${SELECTORS.commandPalette} input`).first();
-  await input.fill(query);
-  await input.press("Enter");
+      return false;
+    };
+  });
 }
 
 async function requestAuth(path, body) {
@@ -121,26 +114,23 @@ async function main() {
     }, token);
 
     const page = await context.newPage();
+    await exposeSmokeHelpers(page);
     await page.goto(APP_URL, { waitUntil: "domcontentloaded", timeout: 30000 });
     await waitForText(page, "AgentHub 工作台");
-    await runCommand(page, "启动演示会话");
-    await waitForText(page, "课题验收演示：多 Agent 协作");
+    await waitForSidebar(page);
 
     for (const check of checks) {
-      await runCommand(page, check.command);
       await waitForText(page, check.text);
-      if (check.deploy) {
-        await page.locator(SELECTORS.deployPanel).waitFor({ timeout: 10000 });
-        await page.locator('[data-testid="deploy-platform-mock-preview"]').click();
-        await page.locator('[data-testid="deploy-start"]').click();
-        await waitForText(page, "部署成功");
-      }
+    }
+
+    for (const text of removedEntryTexts) {
+      await expectTextNotVisible(page, text);
     }
 
     console.log(JSON.stringify({
       ok: true,
       appUrl: APP_URL,
-      checked: checks.map((check) => check.name),
+      checked: [...checks.map((check) => check.name), "演示入口已移除"],
     }, null, 2));
   } catch (error) {
     console.error(JSON.stringify({

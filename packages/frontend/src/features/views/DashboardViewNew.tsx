@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { startAcceptanceDemo as resetAndStartAcceptanceDemo } from "@/features/demo/acceptance-demo";
+import { useMemo } from "react";
 import { useChatStore } from "@/stores/chat-store";
 import { useNavigationStore } from "@/stores/navigation-store";
 
@@ -35,24 +34,6 @@ const STATUS_MAP: Record<StatusKey, { label: string; color: string; bg: string }
 };
 
 const AGENT_COLORS = ["#174ea6", "#0f766e", "#9a6700", "#a50e0e", "#5f6368", "#7c3aed"];
-
-const SUGGESTIONS = [
-  "帮我拆解一个多 Agent 任务",
-  "生成一个网页产物并预览",
-  "检查代码冲突并输出 Diff",
-  "把当前产物部署到预览环境",
-];
-
-const ACCEPTANCE_ITEMS = [
-  "会话列表",
-  "单聊 / 群聊",
-  "PMO 主 Agent",
-  "Codex / Claude Code",
-  "自建 Agent",
-  "预览 / 编辑 / Diff",
-  "版本历史",
-  "部署卡片",
-];
 
 const CONNECTED_AGENTS = [
   { name: "PMO 主 Agent", tag: "协调器", desc: "拆解、调度、降级、冲突处理" },
@@ -140,27 +121,10 @@ const MOCK_ACTIVITY: ActivityItem[] = [
   },
 ];
 
-function SendIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M22 2 11 13" />
-      <path d="m22 2-7 20-4-9-9-4 20-7Z" />
-    </svg>
-  );
-}
-
 function PlusIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
       <path d="M12 5v14M5 12h14" />
-    </svg>
-  );
-}
-
-function PlayIcon() {
-  return (
-    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M5 3l14 9-14 9V3Z" />
     </svg>
   );
 }
@@ -214,7 +178,6 @@ function ProgressBar({ value }: { value: number }) {
 export function DashboardViewNew() {
   const { setActiveNav } = useNavigationStore();
   const { conversations, sessionAgentStatuses, taskProgress, taskFlow } = useChatStore();
-  const [input, setInput] = useState("");
 
   const tasks = useMemo<DashboardTask[]>(() => {
     if (taskFlow.length === 0) return MOCK_TASKS;
@@ -261,21 +224,6 @@ export function DashboardViewNew() {
     ];
   }, [conversations, sessionAgentStatuses, taskProgress, taskFlow]);
 
-  const submitTask = (text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-
-    useChatStore.getState().setPendingMessage(trimmed);
-    window.dispatchEvent(new CustomEvent("dashboard:send", { detail: { text: trimmed } }));
-    setInput("");
-    setActiveNav("chat");
-  };
-
-  const startAcceptanceDemo = () => {
-    resetAndStartAcceptanceDemo();
-    setActiveNav("chat");
-  };
-
   return (
     <div className="h-full overflow-y-auto custom-scrollbar" style={{ background: "var(--page-bg)" }}>
       <div className="mx-auto flex w-full max-w-[1180px] flex-col gap-5 px-5 py-5 lg:px-7 lg:py-6">
@@ -292,15 +240,6 @@ export function DashboardViewNew() {
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={startAcceptanceDemo}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold text-white"
-              style={{ background: "#174ea6", boxShadow: "var(--shadow-sm)" }}
-            >
-              <PlayIcon />
-              启动演示会话
-            </button>
-            <button
-              type="button"
               onClick={() => setActiveNav("chat")}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-md px-4 text-sm font-semibold"
               style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
@@ -310,80 +249,6 @@ export function DashboardViewNew() {
             </button>
           </div>
         </header>
-
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
-          <div className="rounded-lg p-4" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
-            <label htmlFor="dashboard-task-input" className="mb-2 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>
-              快速分配
-            </label>
-            <div className="flex min-h-11 items-center gap-2 rounded-md px-3" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
-              <input
-                id="dashboard-task-input"
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") submitTask(input);
-                }}
-                placeholder="输入任务，例如：把这段需求交给 Codex 和 Claude Code 并行处理"
-                className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none"
-                style={{ color: "var(--fg-primary)" }}
-              />
-              <button
-                type="button"
-                onClick={() => submitTask(input)}
-                aria-label="发送任务"
-                className="grid h-8 w-8 place-items-center rounded-md text-white"
-                style={{ background: "#174ea6" }}
-              >
-                <SendIcon />
-              </button>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {SUGGESTIONS.map((suggestion) => (
-                <button
-                  key={suggestion}
-                  type="button"
-                  onClick={() => submitTask(suggestion)}
-                  className="h-8 rounded-md px-3 text-xs font-semibold"
-                  style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.06)", border: "1px solid rgba(23, 78, 166, 0.12)" }}
-                >
-                  {suggestion}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <aside className="rounded-lg p-4" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 style={{ color: "var(--fg-primary)", fontSize: 15, fontWeight: 740 }}>协作演示会话</h2>
-                <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.6 }}>
-                  一键注入单聊、群聊、主 Agent 调度、产物和部署状态，便于快速体验完整流程。
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={startAcceptanceDemo}
-                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-white"
-                style={{ background: "#174ea6" }}
-              >
-                <PlayIcon />
-                演示
-              </button>
-            </div>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {ACCEPTANCE_ITEMS.map((item) => (
-                <span
-                  key={item}
-                  className="rounded-md px-2 py-1 text-xs"
-                  style={{ color: "var(--fg-secondary)", background: "var(--surface-low)" }}
-                >
-                  {item}
-                </span>
-              ))}
-            </div>
-          </aside>
-        </section>
 
         <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="统计">
           {stats.map((stat) => (
