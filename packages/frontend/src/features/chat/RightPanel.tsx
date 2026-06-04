@@ -291,18 +291,72 @@ interface ArtifactTopic {
   latestAt: number;
 }
 
+function decodeTextEntities(value: string) {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'");
+}
+
+function compactTopicTitle(value: unknown) {
+  if (typeof value !== "string") return null;
+  const title = decodeTextEntities(value)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!title) return null;
+  if (/^(index|output|file|snippet|artifact)(-\d+)?\.(html|txt|md|json|js|ts|css)$/i.test(title)) return null;
+  if (/^(html|code|json|markdown|document|slides|deploy_url|preview_url)$/i.test(title)) return null;
+  return title.length > 28 ? `${title.slice(0, 28)}...` : title;
+}
+
+function artifactContentTitle(artifact: Artifact) {
+  const content = artifact.content || "";
+  const htmlTitle = content.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+  const h1Title = content.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1];
+  const markdownTitle = content.match(/^\s*#\s+(.+)$/m)?.[1];
+  const headingLike = content.match(/(?:系统名称|项目名称|页面标题|标题)[:：]\s*([^\n<]+)/i)?.[1];
+  return compactTopicTitle(htmlTitle)
+    ?? compactTopicTitle(h1Title)
+    ?? compactTopicTitle(markdownTitle)
+    ?? compactTopicTitle(headingLike);
+}
+
+function metadataTopicTitle(artifact: Artifact) {
+  return compactTopicTitle(artifact.metadata?.topicTitle)
+    ?? compactTopicTitle(artifact.metadata?.task)
+    ?? compactTopicTitle(artifact.metadata?.requestTitle)
+    ?? compactTopicTitle(artifact.metadata?.sourceTask);
+}
+
 function topicTitle(topicId: string, artifacts: Artifact[], messages: Message[]) {
   for (let index = messages.length - 1; index >= 0; index--) {
     const message = messages[index];
     const payload = messagePayload(message);
     if (payload.jobId !== topicId) continue;
-    if (typeof payload.task === "string" && payload.task.trim()) return payload.task.trim();
-    if (typeof payload.title === "string" && payload.title.trim()) return payload.title.trim();
+    const payloadTitle = compactTopicTitle(payload.topicTitle)
+      ?? compactTopicTitle(payload.task)
+      ?? compactTopicTitle(payload.title);
+    if (payloadTitle) return payloadTitle;
   }
 
-  const latest = artifacts.slice().sort((a, b) => b.createdAt - a.createdAt)[0];
-  const metadataTitle = typeof latest?.metadata?.topicTitle === "string" ? latest.metadata.topicTitle : undefined;
-  return metadataTitle || latest?.filename || `任务 ${topicId.slice(0, 8)}`;
+  const orderedArtifacts = artifacts.slice().sort((a, b) => b.createdAt - a.createdAt);
+  for (const artifact of orderedArtifacts) {
+    const title = metadataTopicTitle(artifact);
+    if (title) return title;
+  }
+  for (const artifact of orderedArtifacts) {
+    const title = artifactContentTitle(artifact);
+    if (title) return title;
+  }
+
+  const readableFilename = orderedArtifacts
+    .map((artifact) => compactTopicTitle(artifact.filename))
+    .find(Boolean);
+  return readableFilename || `任务 ${topicId.slice(0, 8)}`;
 }
 
 function buildArtifactTopics(artifacts: Artifact[], messages: Message[]): ArtifactTopic[] {
