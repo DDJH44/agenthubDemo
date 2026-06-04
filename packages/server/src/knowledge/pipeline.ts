@@ -31,38 +31,43 @@ export async function ingestDocument(documentId: string): Promise<void> {
     const adapter = createAdapterFromEnv();
     await adapter.connect();
 
-    const batchSize = 20;
-    for (let i = 0; i < chunks.length; i += batchSize) {
-      const batch = chunks.slice(i, i + batchSize);
-      // 串行调 embedding API（避免 rate limit）
-      for (const chunk of batch) {
-        let embedding: number[] = [];
-        try {
-          if (adapter.capabilities.embeddings) {
-            embedding = await adapter.generateEmbedding(chunk.content);
+    try {
+      const batchSize = 20;
+      for (let i = 0; i < chunks.length; i += batchSize) {
+        const batch = chunks.slice(i, i + batchSize);
+        // 串行调 embedding API（避免 rate limit）
+        for (const chunk of batch) {
+          let embedding: number[] = [];
+          try {
+            if (adapter.capabilities.embeddings) {
+              embedding = await adapter.generateEmbedding(chunk.content);
+            }
+          } catch (err) {
+            logger.warn(`Embedding failed for chunk ${chunk.chunkIndex}: ${err}`, 'Ingestion');
+            embedding = [];
           }
-        } catch (err) {
-          logger.warn(`Embedding failed for chunk ${chunk.chunkIndex}: ${err}`, 'Ingestion');
-          embedding = [];
-        }
-        await chunkRepo.create({
-          documentId,
-          chunkIndex: chunk.chunkIndex,
-          content: chunk.content,
-          tokenCount: chunk.tokenCount,
-          sectionTitle: chunk.sectionTitle,
-          chunkType: chunk.chunkType,
-          prevChunkId: chunk.prevChunkId,
-          nextChunkId: chunk.nextChunkId,
-        });
-        // Store embedding via raw SQL (pgvector)
-        if (embedding.length > 0) {
-          await storeEmbedding(documentId, chunk.chunkIndex, embedding);
+          await chunkRepo.create({
+            documentId,
+            chunkIndex: chunk.chunkIndex,
+            content: chunk.content,
+            tokenCount: chunk.tokenCount,
+            sectionTitle: chunk.sectionTitle,
+            chunkType: chunk.chunkType,
+            prevChunkId: chunk.prevChunkId,
+            nextChunkId: chunk.nextChunkId,
+          });
+          if (embedding.length > 0) {
+            try {
+              await storeEmbedding(documentId, chunk.chunkIndex, embedding);
+            } catch (err) {
+              logger.warn(`Embedding store skipped for chunk ${chunk.chunkIndex}: ${err}`, 'Ingestion');
+            }
+          }
         }
       }
+    } finally {
+      await adapter.disconnect().catch((err) => logger.warn(`Adapter disconnect failed: ${err}`, 'Ingestion'));
     }
-
-    await adapter.disconnect();
     await documentRepo.updateStatus(documentId, "completed");
     logger.info(`Document ${doc.title} ingested: ${chunks.length} chunks`, 'Ingestion');
   } catch (err) {

@@ -1218,6 +1218,60 @@ function writeKnowledgeTempFile(documentId: string, content: string) {
   writeFileSync(tmpPath, Buffer.from(content, "utf-8"));
 }
 
+function hasBrokenEncoding(value?: string | null): boolean {
+  if (!value) return false;
+  return /[�]/.test(value) || /\?{3,}/.test(value) || /[֪ʶָ֤ȫԿ]/.test(value);
+}
+
+function repairKnowledgeLabel(value: string | null | undefined, kind: "base" | "description" | "document"): string | null | undefined {
+  if (!value || !hasBrokenEncoding(value)) return value;
+  const compact = value.replace(/\s+/g, "");
+
+  if (kind === "description") {
+    if (/pgvector/i.test(compact)) return "验证 pgvector";
+    return "历史导入资料";
+  }
+
+  if (/AgentHub/i.test(compact)) {
+    return /v2/i.test(compact) ? "AgentHub 使用指南 v2" : "AgentHub 使用指南";
+  }
+  if (/^JWT/i.test(compact)) {
+    return /ָ|指南|guide/i.test(compact) ? "JWT 认证配置指南" : "JWT 认证说明";
+  }
+  if (/^API/i.test(compact)) return "API 密钥配置";
+  if (/[֤ȫ]/.test(compact)) return "认证与安全说明";
+
+  if (kind === "base") {
+    if (/pgvector/i.test(compact)) return "测试知识库";
+    return "历史知识库";
+  }
+
+  return "历史资料";
+}
+
+function normalizeKnowledgeBase<T extends { name: string; description?: string | null }>(base: T): T {
+  const repairedDescription = repairKnowledgeLabel(base.description, "description") ?? base.description;
+  return {
+    ...base,
+    name: hasBrokenEncoding(base.name) && /pgvector/i.test(base.description ?? "") ? "测试知识库" : repairKnowledgeLabel(base.name, "base") ?? base.name,
+    description: repairedDescription,
+  };
+}
+
+function normalizeKnowledgeDocument<T extends { title: string }>(doc: T): T {
+  return {
+    ...doc,
+    title: repairKnowledgeLabel(doc.title, "document") ?? doc.title,
+  };
+}
+
+function normalizeKnowledgeSearchResults<T extends { documentTitle: string }>(results: T[]): T[] {
+  return results.map((result) => ({
+    ...result,
+    documentTitle: repairKnowledgeLabel(result.documentTitle, "document") ?? result.documentTitle,
+  }));
+}
+
 async function fallbackKnowledgeSearch(knowledgeBaseId: string, query: string, limit: number) {
   const chunks = await prisma.chunk.findMany({
     where: {
@@ -1235,7 +1289,7 @@ async function fallbackKnowledgeSearch(knowledgeBaseId: string, query: string, l
   return chunks.map((chunk) => ({
     chunkId: chunk.id,
     documentId: chunk.documentId,
-    documentTitle: chunk.document.title,
+    documentTitle: repairKnowledgeLabel(chunk.document.title, "document") ?? chunk.document.title,
     content: chunk.content,
     sectionTitle: chunk.sectionTitle ?? undefined,
     chunkType: chunk.chunkType,
@@ -1254,7 +1308,7 @@ registerRoute("GET", "/api/knowledge-bases", async (req, res) => {
   const workspaceId = (req as unknown as { query?: Record<string, string> }).query?.workspaceId ?? "default";
   const bases = await knowledgeBaseRepo.listByWorkspace(workspaceId);
   res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ bases }));
+  res.end(JSON.stringify({ bases: bases.map(normalizeKnowledgeBase) }));
 });
 
 /* ── POST /api/knowledge-bases ── */
@@ -1286,7 +1340,7 @@ registerRoute("GET", "/api/knowledge-bases/:id/documents", async (req, res) => {
   if (!kbId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
   const docs = await documentRepo.listByKnowledgeBase(kbId);
   res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ documents: docs }));
+  res.end(JSON.stringify({ documents: docs.map(normalizeKnowledgeDocument) }));
 });
 
 /* ── POST /api/knowledge-bases/:id/documents ── */
@@ -1367,11 +1421,11 @@ registerRoute("POST", "/api/knowledge-bases/:id/search", async (req, res) => {
     const results = await hybridSearch(adapter, { query: body.query, knowledgeBaseId: kbId, topK: body.topK, rerankTopK: body.rerankTopK });
     await adapter.disconnect();
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ results }));
+    res.end(JSON.stringify({ results: normalizeKnowledgeSearchResults(results) }));
   } catch (err) {
     const results = await fallbackKnowledgeSearch(kbId, body.query, body.rerankTopK ?? body.topK ?? 8);
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ results, warning: err instanceof Error ? err.message : "Search used fallback" }));
+    res.end(JSON.stringify({ results: normalizeKnowledgeSearchResults(results), warning: err instanceof Error ? err.message : "Search used fallback" }));
   }
 });
 
