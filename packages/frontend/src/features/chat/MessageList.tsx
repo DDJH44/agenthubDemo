@@ -6,6 +6,7 @@ import type { Message } from "@agenthub/shared";
 import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
 import { ArtifactCard, type ArtifactCardType } from "./ArtifactCard";
+import { getCodeFilename, inferCodeLanguage, splitMessageContent } from "./message-content-parser";
 
 interface SenderMeta {
   label: string;
@@ -69,6 +70,14 @@ function extractDisplayContent(content: string) {
   };
 }
 
+function isStandaloneHtmlContent(content: string) {
+  const trimmed = content.trim();
+  if (!/^<!doctype html|^<html[\s>]/i.test(trimmed)) return false;
+  const endMatch = /<\/html\s*>/i.exec(trimmed);
+  if (!endMatch) return true;
+  return trimmed.slice(endMatch.index + endMatch[0].length).trim().length === 0;
+}
+
 function renderInline(text: string): ReactNode[] {
   const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).filter(Boolean);
   return parts.map((part, index) => {
@@ -119,115 +128,6 @@ function TextContent({ text }: { text: string }) {
       })}
     </div>
   );
-}
-
-type MessageContentPart =
-  | { type: "text"; value: string }
-  | { type: "code"; value: string; language?: string; filename?: string; open?: boolean };
-
-function parseFenceHeader(header: string) {
-  const trimmed = header.trim();
-  const filenameMatch = trimmed.match(/(?:filename|file)=["']?([^"'\s]+)["']?/i);
-  const language = trimmed.split(/\s+/).find((token) => token && !token.includes("="));
-  return {
-    language: language || undefined,
-    filename: filenameMatch?.[1],
-  };
-}
-
-function splitLooseHtml(content: string): MessageContentPart[] | null {
-  const htmlStart = content.search(/<!doctype html|<html[\s>]/i);
-  if (htmlStart <= 0) return null;
-  const before = content.slice(0, htmlStart);
-  const html = content.slice(htmlStart);
-  if (html.trim().length < 40) return null;
-  return [
-    { type: "text", value: before },
-    { type: "code", value: html.trim(), language: "html", filename: "index.html" },
-  ];
-}
-
-function splitCodeBlocks(content: string): MessageContentPart[] {
-  const parts: MessageContentPart[] = [];
-  const fenceRegex = /```([^\n`]*)\n?/g;
-  let cursor = 0;
-  let match: RegExpExecArray | null;
-
-  while ((match = fenceRegex.exec(content)) !== null) {
-    if (match.index > cursor) {
-      parts.push({ type: "text", value: content.slice(cursor, match.index) });
-    }
-
-    const { language, filename } = parseFenceHeader(match[1] || "");
-    const codeStart = fenceRegex.lastIndex;
-    const closeIndex = content.indexOf("```", codeStart);
-
-    if (closeIndex === -1) {
-      parts.push({
-        type: "code",
-        value: content.slice(codeStart).trimEnd(),
-        language,
-        filename,
-        open: true,
-      });
-      cursor = content.length;
-      break;
-    }
-
-    parts.push({
-      type: "code",
-      value: content.slice(codeStart, closeIndex).trim(),
-      language,
-      filename,
-    });
-    cursor = closeIndex + 3;
-    fenceRegex.lastIndex = cursor;
-  }
-
-  if (cursor < content.length) {
-    parts.push({ type: "text", value: content.slice(cursor) });
-  }
-
-  if (parts.length > 0) return parts;
-  return splitLooseHtml(content) ?? [{ type: "text", value: content }];
-}
-
-function inferCodeLanguage(language: string | undefined, code: string) {
-  const normalized = language?.toLowerCase();
-  if (normalized) return normalized;
-  const trimmed = code.trim();
-  if (/^<!doctype html|^<html[\s>]/i.test(trimmed)) return "html";
-  if (/^\s*[{[]/.test(trimmed)) {
-    try {
-      JSON.parse(trimmed);
-      return "json";
-    } catch {}
-  }
-  if (/^(import|export|const|let|var|function)\s/m.test(trimmed)) return "javascript";
-  if (/^[.#]?[a-z-]+\s*\{[\s\S]*\}/i.test(trimmed)) return "css";
-  return normalized;
-}
-
-function getCodeFilename(language?: string) {
-  const normalized = language?.toLowerCase();
-  const extensionMap: Record<string, string> = {
-    html: "html",
-    css: "css",
-    js: "js",
-    javascript: "js",
-    ts: "ts",
-    typescript: "ts",
-    tsx: "tsx",
-    jsx: "jsx",
-    json: "json",
-    py: "py",
-    python: "py",
-    md: "md",
-    markdown: "md",
-    bash: "sh",
-    shell: "sh",
-  };
-  return `snippet.${extensionMap[normalized ?? ""] ?? normalized ?? "txt"}`;
 }
 
 function InlineCodeBlock({
@@ -823,8 +723,8 @@ const MessageBubble = memo(function MessageBubble({
   const hasFencedCode = /```[\s\S]*?```/.test(displayContent);
   const htmlLike = !artifactType && !["diff_card", "deploy_card", "preview_card"].includes(message.type) &&
     !hasFencedCode &&
-    (/^<!doctype html/i.test(trimmedDisplayContent) || /^<html[\s>]/i.test(trimmedDisplayContent));
-  const parts = useMemo(() => splitCodeBlocks(displayContent), [displayContent]);
+    isStandaloneHtmlContent(trimmedDisplayContent);
+  const parts = useMemo(() => splitMessageContent(displayContent), [displayContent]);
 
   const showAvatar = !prevMessage || prevMessage.sender !== message.sender || prevMessage.senderId !== message.senderId || message.timestamp - prevMessage.timestamp > 5 * 60 * 1000;
   const showDate = prevMessage && message.timestamp - prevMessage.timestamp > 30 * 60 * 1000;
