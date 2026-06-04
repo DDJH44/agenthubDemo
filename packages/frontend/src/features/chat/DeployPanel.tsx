@@ -9,6 +9,7 @@ import { useWorkspaceStore } from "@/stores/workspace-store";
 import type { WSClientMessage } from "@agenthub/shared";
 import { collectDeployFiles, pickDeployArtifact } from "./deploy-artifacts";
 import { upsertDeployCard } from "./deploy-card";
+import { getDeployProviderLabel } from "./deploy-platforms";
 
 type Platform = "mock-preview" | "vercel" | "miaoda" | "self-hosted";
 
@@ -190,6 +191,7 @@ export function DeployPanel() {
   const safeProgress = Math.max(0, Math.min(progress, 100));
   const activePlatform = PLATFORMS.find((platform) => platform.key === (deployProvider || selectedPlatform)) ?? PLATFORMS[0];
   const selectedPlatformOption = PLATFORMS.find((platform) => platform.key === selectedPlatform) ?? PLATFORMS[0];
+  const activePlatformLabel = deployProvider ? getDeployProviderLabel(deployProvider) : activePlatform.label;
   const baseCanDeploy = Boolean(activeConversationId && deployableArtifact && deployFiles.length > 0);
   const isDeploying = normalizedStatus === "deploying";
   const deployFilePreview = deployFiles.slice(0, 4);
@@ -456,7 +458,7 @@ export function DeployPanel() {
         <div className="grid grid-cols-3 border-y" style={{ borderColor: "var(--border)", background: "var(--surface-tinted)" }}>
           {[
             { label: "产物文件", value: deployFiles.length },
-            { label: "当前平台", value: activePlatform.label },
+            { label: "当前平台", value: activePlatformLabel },
             { label: "进度", value: `${safeProgress}%`, color: statusMeta.color },
           ].map((item, index) => (
             <div key={item.label} className="min-w-0 px-3 py-2" style={{ borderLeft: index === 0 ? "none" : "1px solid var(--divider)" }}>
@@ -781,7 +783,7 @@ export function DeployPanel() {
       <section data-testid="deploy-lifecycle" className="rounded-xl p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
         <div className="mb-3 flex items-center justify-between">
           <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>部署生命周期</p>
-          {deployProvider && <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{deployProvider}</span>}
+          {deployProvider && <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{activePlatformLabel}</span>}
         </div>
         <div className="relative space-y-2">
           <span className="absolute left-3 top-4 bottom-4 w-px" style={{ background: "var(--divider)" }} />

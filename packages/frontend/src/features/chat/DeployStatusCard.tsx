@@ -1,6 +1,7 @@
 "use client";
 
 import { useWorkspaceStore } from "@/stores/workspace-store";
+import { getDeployProviderLabel } from "./deploy-platforms";
 
 function normalizeStatus(status: string | null) {
   if (status === "done" || status === "completed" || status === "success") return "success";
@@ -23,6 +24,7 @@ export function DeployStatusCard() {
   const border = isDone ? "var(--success-border)" : isFailed ? "var(--danger-border)" : "rgba(23, 78, 166, 0.18)";
   const label = isDone ? "部署成功" : isFailed ? "部署失败" : "部署中";
   const progress = deployProgress ?? (isDone || isFailed ? 100 : 35);
+  const providerLabel = deployProvider ? getDeployProviderLabel(deployProvider) : null;
 
   return (
     <div className="px-4 py-2">
@@ -40,9 +42,9 @@ export function DeployStatusCard() {
               {label}
             </span>
           </div>
-          {deployProvider && (
+          {providerLabel && (
             <span className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-white)" }}>
-              {deployProvider}
+              {providerLabel}
             </span>
           )}
         </div>

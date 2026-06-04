@@ -10,6 +10,7 @@ import { useConversationGroupStore } from "@/stores/conversation-group-store";
 import { useMcpStore } from "@/stores/mcp-store";
 import { useTaskTreeStore } from "@/stores/task-tree-store";
 import { upsertDeployCard } from "@/features/chat/deploy-card";
+import { getDeployProviderLabel } from "@/features/chat/deploy-platforms";
 import { createAgentSocket } from "@/lib/ws-client";
 import type { WSServerMessage, Conversation, WSClientMessage, Artifact, Message, WorkflowReferencePayload } from "@agenthub/shared";
 
@@ -790,9 +791,10 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           const url = "url" in msg ? msg.url : undefined;
           const conversationId = eventConversationId(msg);
           const progress = msg.type === "deploy:progress" ? msg.progress : 100;
+          const platformLabel = getDeployProviderLabel(msg.providerId);
           const logs = msg.type === "deploy:progress"
             ? msg.logs
-            : [msg.type === "deploy:completed" ? `部署完成：${msg.url}` : msg.error];
+            : [msg.type === "deploy:completed" ? `${platformLabel} 部署完成：${msg.url}` : msg.error];
 
           if (!conversationId || isActiveConversation(conversationId)) {
             useWorkspaceStore.getState().setDeployStatus(status, url, {
@@ -807,7 +809,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
             upsertDeployCard(conversationId, msg.deployId, {
               status: "deploying",
               platform: msg.providerId,
-              platformLabel: msg.providerId,
+              platformLabel,
               progress,
             });
           }
@@ -832,14 +834,14 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
                 status: "success",
                 verified: msg.verified,
                 verificationStatus: msg.verificationStatus,
-                changeSummary: `部署成功：${msg.providerId}`,
+                changeSummary: `部署成功：${platformLabel}`,
               },
             };
             useWorkspaceStore.getState().addArtifact(artifact);
             upsertDeployCard(conversationId, msg.deployId, {
               status: "done",
               platform: msg.providerId,
-              platformLabel: msg.providerId,
+              platformLabel,
               url: msg.url,
               artifactId: artifact.id,
               verified: msg.verified,
@@ -852,7 +854,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
             upsertDeployCard(conversationId, msg.deployId, {
               status: "failed",
               platform: msg.providerId,
-              platformLabel: msg.providerId,
+              platformLabel,
               error: msg.error,
               progress: 100,
             });

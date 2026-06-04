@@ -1,5 +1,6 @@
 import type { Message } from "@agenthub/shared";
 import { useChatStore } from "@/stores/chat-store";
+import { getDeployProviderLabel } from "./deploy-platforms";
 
 type DeployCardStatus = "deploying" | "done" | "success" | "failed";
 
@@ -38,7 +39,9 @@ export function upsertDeployCard(conversationId: string | undefined, deployId: s
   const existing = useChatStore.getState().messages[conversationId]?.find((message) => message.id === messageId);
   const existingPayload = (existing?.payload ?? {}) as Record<string, unknown>;
   const platform = options.platform ?? (existingPayload.platform as string | undefined);
-  const platformLabel = options.platformLabel || (existingPayload.platformLabel as string | undefined) || platform || "部署目标";
+  const platformLabel = getDeployProviderLabel(
+    options.platformLabel || (existingPayload.platformLabel as string | undefined) || platform
+  );
   const normalizedStatus = options.status === "success" ? "done" : options.status;
   const message: Message = {
     id: messageId,

@@ -7,6 +7,7 @@ import { renderMarkdown } from "@/lib/markdown-utils";
 import { useChatStore } from "@/stores/chat-store";
 import { downloadSlidesAsPptx, getPptxFilename } from "./pptx-export";
 import { parseSlidesArtifact } from "./slide-parser";
+import { getDeployProviderLabel } from "./deploy-platforms";
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react").then((module) => module.default), { ssr: false });
 const MonacoDiffEditor = dynamic(() => import("@monaco-editor/react").then((module) => module.DiffEditor), { ssr: false });
@@ -647,6 +648,7 @@ function DeployView({
 }) {
   const done = status === "done" || status === "completed" || status === "success";
   const failed = status === "failed" || status === "error";
+  const providerLabel = provider ? getDeployProviderLabel(provider) : "";
   const label = done ? "部署完成" : failed ? "部署失败" : "部署中";
   const color = done ? "var(--success)" : failed ? "var(--danger)" : "#174ea6";
   const displayLabel = done && verified ? "部署完成，已验证" : label;
@@ -688,7 +690,7 @@ function DeployView({
   return (
     <CardShell
       title="部署状态"
-      meta={provider ? `${provider} · ${label}` : label}
+      meta={providerLabel ? `${providerLabel} · ${label}` : label}
       actions={
         <>
           {failed && conversationId && (
