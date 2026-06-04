@@ -279,7 +279,7 @@ function getArtifactType(payload: Record<string, unknown> | undefined): Artifact
   return ARTIFACT_TYPES.has(normalized as ArtifactCardType) ? normalized as ArtifactCardType : null;
 }
 
-function TaskStatusCard({ payload }: { payload?: Record<string, unknown> }) {
+function _TaskStatusCard({ payload }: { payload?: Record<string, unknown> }) {
   const status = String(payload?.status || "running");
   const title = String(payload?.title || "任务处理中");
   const body = String(payload?.body || "");
@@ -326,6 +326,170 @@ function TaskStatusCard({ payload }: { payload?: Record<string, unknown> }) {
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+type TaskLifecyclePhase = "received" | "planning" | "dispatching" | "executing" | "reviewing" | "completed" | "failed";
+
+const TASK_LIFECYCLE_STEPS: Array<{ phase: Exclude<TaskLifecyclePhase, "failed">; label: string; hint: string }> = [
+  { phase: "received", label: "接收", hint: "理解目标" },
+  { phase: "planning", label: "规划", hint: "拆解步骤" },
+  { phase: "dispatching", label: "分派", hint: "匹配 Agent" },
+  { phase: "executing", label: "执行", hint: "生成内容" },
+  { phase: "completed", label: "交付", hint: "产物就绪" },
+];
+
+function getAgentLabelFallback(agentId: string) {
+  return AGENT_META[agentId]?.label || agentId || "Agent";
+}
+
+function normalizeTaskPhase(payload: Record<string, unknown> | undefined, status: string): TaskLifecyclePhase {
+  const raw = typeof payload?.phase === "string" ? payload.phase : "";
+  if (["received", "planning", "dispatching", "executing", "reviewing", "completed", "failed"].includes(raw)) {
+    return raw as TaskLifecyclePhase;
+  }
+  if (status === "failed") return "failed";
+  if (status === "done") return "completed";
+  const items = Array.isArray(payload?.items) ? payload.items : [];
+  if (items.some((item) => typeof item === "object" && item && (item as { status?: string }).status === "running")) return "executing";
+  if (items.length > 0) return "planning";
+  return "received";
+}
+
+function taskCardStatusLabel(status: string) {
+  if (status === "done") return "已完成";
+  if (status === "failed") return "失败";
+  if (status === "queued") return "排队中";
+  return "进行中";
+}
+
+function taskItemStatusLabel(status: string) {
+  if (status === "done") return "完成";
+  if (status === "running") return "进行中";
+  if (status === "failed") return "失败";
+  return "等待";
+}
+
+function taskPhaseIndex(phase: TaskLifecyclePhase) {
+  if (phase === "failed") return Math.max(0, TASK_LIFECYCLE_STEPS.findIndex((step) => step.phase === "executing"));
+  if (phase === "reviewing") return Math.max(0, TASK_LIFECYCLE_STEPS.findIndex((step) => step.phase === "completed"));
+  return Math.max(0, TASK_LIFECYCLE_STEPS.findIndex((step) => step.phase === phase));
+}
+
+function openRightPanel(tab: "tasks" | "preview" | "code" | "deploy" | "context") {
+  window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+  window.setTimeout(() => {
+    window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+  }, 0);
+}
+
+function composeTaskFollowup(title: string) {
+  window.dispatchEvent(new CustomEvent("chat:compose", {
+    detail: {
+      mode: "replace",
+      text: `继续优化这个任务：${title}\n\n请基于当前会话、产物和任务流程，先说明你准备改哪一部分，再继续执行。`,
+    },
+  }));
+}
+
+function TaskLifecycleCard({ payload }: { payload?: Record<string, unknown> }) {
+  const status = String(payload?.status || "running");
+  const title = String(payload?.title || "任务处理中");
+  const body = String(payload?.body || "");
+  const phase = normalizeTaskPhase(payload, status);
+  const items = Array.isArray(payload?.items)
+    ? payload.items as Array<{ label?: string; status?: string }>
+    : [];
+  const currentPhaseIndex = taskPhaseIndex(phase);
+  const doneCount = items.filter((item) => item.status === "done").length;
+  const activeAgentId = String(payload?.activeAgentId || payload?.agentId || "");
+  const activeAgentLabel = activeAgentId ? getAgentLabelFallback(activeAgentId) : "";
+  const color =
+    status === "done" ? "var(--success)" :
+    status === "failed" ? "var(--danger)" :
+    status === "queued" ? "var(--fg-tertiary)" :
+    "var(--accent)";
+
+  return (
+    <div className="p-3.5">
+      <div className="flex items-start gap-2.5">
+        <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ background: color }} />
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{title}</span>
+            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color, background: "var(--surface-low)" }}>
+              {taskCardStatusLabel(status)}
+            </span>
+            {activeAgentLabel && status !== "done" && status !== "failed" && (
+              <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
+                {activeAgentLabel}
+              </span>
+            )}
+          </div>
+          {body && <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.55 }}>{body}</p>}
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-lg px-2.5 py-2.5" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+        <div className="grid grid-cols-5 gap-1.5">
+          {TASK_LIFECYCLE_STEPS.map((step, index) => {
+            const isDone = status === "done" || (phase !== "failed" && index < currentPhaseIndex);
+            const isActive = phase === "failed" ? index === currentPhaseIndex : index === currentPhaseIndex && status !== "done";
+            const stateColor = phase === "failed" && isActive ? "var(--danger)" : isDone ? "var(--success)" : isActive ? "var(--accent)" : "var(--fg-disabled)";
+            return (
+              <div key={step.phase} className="min-w-0">
+                <div className="mb-1 flex items-center gap-1">
+                  <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold" style={{ color: isDone ? "#fff" : stateColor, background: isDone ? stateColor : "var(--surface-white)", border: `1px solid ${stateColor}` }}>
+                    {isDone ? "✓" : index + 1}
+                  </span>
+                  <span className="h-px min-w-0 flex-1" style={{ background: index === TASK_LIFECYCLE_STEPS.length - 1 ? "transparent" : stateColor, opacity: isDone || isActive ? 0.9 : 0.28 }} />
+                </div>
+                <div className="truncate text-[11px] font-semibold" style={{ color: isActive || isDone ? "var(--fg-primary)" : "var(--fg-tertiary)" }}>{step.label}</div>
+                <div className="truncate text-[10px]" style={{ color: "var(--fg-disabled)" }}>{step.hint}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {items.length > 0 && (
+        <div className="mt-3 space-y-1.5">
+          <div className="flex items-center justify-between gap-2 px-1">
+            <span className="text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)" }}>步骤进度</span>
+            <span className="text-[10px]" style={{ color: "var(--fg-disabled)" }}>{doneCount}/{items.length}</span>
+          </div>
+          {items.slice(0, 5).map((item, index) => {
+            const itemStatus = item.status || "pending";
+            const itemColor =
+              itemStatus === "done" ? "var(--success)" :
+              itemStatus === "running" ? "var(--accent)" :
+              itemStatus === "failed" ? "var(--danger)" :
+              "var(--fg-disabled)";
+            return (
+              <div key={`${index}-${item.label}`} className="flex items-center gap-2 rounded-md px-2 py-1.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-bold" style={{ color: itemStatus === "done" ? "#fff" : itemColor, background: itemStatus === "done" ? itemColor : "transparent", border: `1px solid ${itemColor}` }}>
+                  {itemStatus === "done" ? "✓" : itemStatus === "running" ? "…" : index + 1}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-xs" style={{ color: "var(--fg-secondary)" }}>{item.label || "任务步骤"}</span>
+                <span className="shrink-0 text-[10px]" style={{ color: itemColor }}>{taskItemStatusLabel(itemStatus)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <button type="button" onClick={() => openRightPanel("tasks")} className="h-7 rounded-md px-2 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+          查看流程
+        </button>
+        <button type="button" onClick={() => openRightPanel(status === "done" ? "preview" : "code")} className="h-7 rounded-md px-2 text-[10px] font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+          {status === "done" ? "查看产物" : "查看产物区"}
+        </button>
+        <button type="button" onClick={() => composeTaskFollowup(title)} className="h-7 rounded-md px-2 text-[10px] font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+          继续优化
+        </button>
+      </div>
     </div>
   );
 }
@@ -583,6 +747,40 @@ function getWorkflowReferenceMeta(payload: Record<string, unknown> | undefined) 
   };
 }
 
+const TASK_CARD_SUFFIXES = ["lifecycle", "queued", "plan", "progress", "completed", "failed"];
+
+function taskLifecycleGroupKey(message: Message) {
+  const payload = message.payload as Record<string, unknown> | undefined;
+  const isTaskStatus = message.type === "task_card" || payload?.kind === "task_status";
+  if (!isTaskStatus) return null;
+
+  const payloadJobId = typeof payload?.jobId === "string" ? payload.jobId : "";
+  if (payloadJobId) return payloadJobId;
+
+  if (!message.id.startsWith("task-")) return null;
+  const body = message.id.slice(5);
+  for (const suffix of TASK_CARD_SUFFIXES) {
+    if (body.endsWith(`-${suffix}`)) return body.slice(0, -suffix.length - 1);
+  }
+  const assignedIndex = body.lastIndexOf("-assigned-");
+  if (assignedIndex > 0) return body.slice(0, assignedIndex);
+  return null;
+}
+
+function collapseTaskLifecycleMessages(messages: Message[]) {
+  const latestIndexByJob = new Map<string, number>();
+  messages.forEach((message, index) => {
+    const key = taskLifecycleGroupKey(message);
+    if (key) latestIndexByJob.set(key, index);
+  });
+
+  if (latestIndexByJob.size === 0) return messages;
+  return messages.filter((message, index) => {
+    const key = taskLifecycleGroupKey(message);
+    return !key || latestIndexByJob.get(key) === index;
+  });
+}
+
 const MessageBubble = memo(function MessageBubble({
   message,
   prevMessage,
@@ -695,7 +893,7 @@ const MessageBubble = memo(function MessageBubble({
             )}
 
             {isTaskCard && (
-              <TaskStatusCard payload={payload} />
+              <TaskLifecycleCard payload={payload} />
             )}
 
             {(message.type === "deploy_card" || message.type === "preview_card") && (
@@ -867,7 +1065,7 @@ export const MessageList = memo(function MessageList({
   const hasAgentOutput = messages.some((message) => message.type === "agent_message");
 
   const filtered = useMemo(() => {
-    return messages
+    return collapseTaskLifecycleMessages(messages)
       .filter((message) => message.content !== "[AGENT_START]" && message.content !== "[AGENT_END]")
       .filter((message) => {
         if (messageFilter === "all") return true;
