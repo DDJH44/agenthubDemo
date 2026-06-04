@@ -1265,11 +1265,22 @@ function normalizeKnowledgeDocument<T extends { title: string }>(doc: T): T {
   };
 }
 
+function normalizeKnowledgeChunk<T extends { content: string; sectionTitle?: string | null }>(chunk: T): T {
+  return {
+    ...chunk,
+    sectionTitle: repairKnowledgeLabel(chunk.sectionTitle, "document") ?? chunk.sectionTitle,
+  };
+}
+
 function normalizeKnowledgeSearchResults<T extends { documentTitle: string }>(results: T[]): T[] {
   return results.map((result) => ({
     ...result,
     documentTitle: repairKnowledgeLabel(result.documentTitle, "document") ?? result.documentTitle,
   }));
+}
+
+function buildDocumentContent(chunks: Array<{ content: string }>): string {
+  return chunks.map((chunk) => chunk.content.trim()).filter(Boolean).join("\n\n");
 }
 
 async function fallbackKnowledgeSearch(knowledgeBaseId: string, query: string, limit: number) {
@@ -1394,6 +1405,30 @@ registerRoute("GET", "/api/documents/:id/status", async (req, res) => {
   if (!doc) { res.writeHead(404); res.end(JSON.stringify({ error: "not found" })); return; }
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ id: doc.id, status: doc.status, errorMessage: doc.errorMessage }));
+});
+
+/* ── GET /api/documents/:id ── */
+registerRoute("GET", "/api/documents/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const docId = (req as RequestWithParams).params?.id;
+  if (!docId) { res.writeHead(400); res.end(JSON.stringify({ error: "id required" })); return; }
+  const doc = await documentRepo.getById(docId);
+  if (!doc) { res.writeHead(404); res.end(JSON.stringify({ error: "not found" })); return; }
+
+  const normalizedDoc = normalizeKnowledgeDocument(doc);
+  const chunks = doc.chunks.map(normalizeKnowledgeChunk);
+  const content = buildDocumentContent(chunks);
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({
+    document: {
+      ...normalizedDoc,
+      chunks,
+      content,
+      hasContent: content.trim().length > 0,
+    },
+  }));
 });
 
 /* ── DELETE /api/documents/:id ── */
