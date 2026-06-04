@@ -153,11 +153,11 @@ function IconButton({
       aria-label={title}
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold transition-colors hover:bg-[var(--surface-low)] disabled:cursor-not-allowed disabled:opacity-45"
-      style={{ color: disabled ? "var(--fg-disabled)" : "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+      className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-semibold transition-colors hover:bg-[var(--surface-low)] disabled:cursor-not-allowed disabled:opacity-40"
+      style={{ color: disabled ? "var(--fg-disabled)" : "var(--fg-secondary)", background: "transparent", border: "1px solid transparent" }}
     >
       {children}
-      <span className="hidden xl:inline">{label}</span>
+      <span className="hidden 2xl:inline">{label}</span>
     </button>
   );
 }
@@ -212,65 +212,40 @@ export const CurrentTaskStatusBar = memo(function CurrentTaskStatusBar({
       : state.deployStatus
         ? "部署中"
         : "未部署";
+  const progressPercent = Math.max(8, Math.min(100, ((state.currentIndex + (state.phase === "completed" ? 1 : 0)) / PHASES.length) * 100));
+  const activePhase = PHASES[Math.max(0, Math.min(state.currentIndex, PHASES.length - 1))]?.label || "处理";
+  const summaryParts = [
+    totalSteps ? `步骤 ${state.doneCount}/${totalSteps}` : "",
+    state.artifactCount ? `产物 ${state.artifactCount}` : "",
+    deployLabel !== "未部署" ? deployLabel : "",
+  ].filter(Boolean);
 
   return (
-    <section className="shrink-0 px-4 py-2" style={{ background: "var(--surface-white)", borderTop: "1px solid var(--divider)", borderBottom: "1px solid var(--divider)" }}>
-      <div className="flex min-w-0 flex-wrap items-center gap-3 rounded-lg px-3 py-2" style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}>
-        <div className="min-w-[220px] flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="truncate text-xs font-bold" style={{ color: "var(--fg-primary)" }}>
-              当前任务：{state.title || "等待下一步"}
+    <section className="shrink-0 px-4 py-1.5" style={{ background: "var(--surface-white)", borderTop: "1px solid var(--divider)", borderBottom: "1px solid var(--divider)" }}>
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: state.meta.color }} />
+
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>
+              {state.title || "等待下一步"}
             </span>
-            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: state.meta.color, background: state.meta.bg }}>
+            <span className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: state.meta.color, background: state.meta.bg }}>
               {state.meta.label}
             </span>
-            {state.activeAgent && (
-              <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-white)" }}>
-                {state.activeAgent}
-              </span>
-            )}
-            {state.updatedAt && (
-              <span className="text-[10px]" style={{ color: "var(--fg-disabled)" }}>
-                更新 {state.updatedAt}
-              </span>
-            )}
+            <span className="hidden shrink-0 text-[10px] md:inline" style={{ color: "var(--fg-tertiary)" }}>
+              {activePhase}
+              {state.activeAgent ? ` · ${state.activeAgent}` : ""}
+              {summaryParts.length ? ` · ${summaryParts.join(" · ")}` : ""}
+              {state.updatedAt ? ` · ${state.updatedAt}` : ""}
+            </span>
           </div>
-
-          <div className="mt-2 grid grid-cols-5 gap-1.5">
-            {PHASES.map((phase, index) => {
-              const isDone = state.phase === "completed" || (state.phase !== "failed" && index < state.currentIndex);
-              const isActive = state.phase === "failed" ? index === state.currentIndex : index === state.currentIndex && state.phase !== "completed";
-              const color = state.phase === "failed" && isActive ? "var(--danger)" : isDone ? "var(--success)" : isActive ? "var(--accent)" : "var(--fg-disabled)";
-              return (
-                <div key={phase.key} className="flex min-w-0 items-center gap-1">
-                  <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full text-[9px] font-bold" style={{ color: isDone ? "#fff" : color, background: isDone ? color : "var(--surface-white)", border: `1px solid ${color}` }}>
-                    {isDone ? "✓" : index + 1}
-                  </span>
-                  <span className="truncate text-[10px] font-semibold" style={{ color: isActive || isDone ? "var(--fg-primary)" : "var(--fg-tertiary)" }}>
-                    {phase.label}
-                  </span>
-                </div>
-              );
-            })}
+          <div className="mt-1 h-1 overflow-hidden rounded-full" style={{ background: "var(--surface-low)" }}>
+            <div className="h-full rounded-full transition-all" style={{ width: `${progressPercent}%`, background: state.meta.color }} />
           </div>
         </div>
 
-        <div className="hidden min-w-[210px] grid-cols-3 gap-1.5 lg:grid">
-          <div className="rounded-md px-2 py-1.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-            <div className="text-[10px]" style={{ color: "var(--fg-disabled)" }}>步骤</div>
-            <div className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{totalSteps ? `${state.doneCount}/${totalSteps}` : "-"}</div>
-          </div>
-          <div className="rounded-md px-2 py-1.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-            <div className="text-[10px]" style={{ color: "var(--fg-disabled)" }}>产物</div>
-            <div className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{state.artifactCount || "-"}</div>
-          </div>
-          <div className="rounded-md px-2 py-1.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-            <div className="text-[10px]" style={{ color: "var(--fg-disabled)" }}>部署</div>
-            <div className="truncate text-xs font-bold" style={{ color: state.deployStatus === "failed" ? "var(--danger)" : state.deployUrl ? "var(--success)" : "var(--fg-primary)" }}>{deployLabel}</div>
-          </div>
-        </div>
-
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-0.5">
           <IconButton label="流程" title="查看任务流程" onClick={() => openPanel("tasks")}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <path d="M4 6h6" />
