@@ -126,6 +126,11 @@ function formatUpdateTime(timestamp?: number) {
   return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
+function deployNeedsAttention(status: string) {
+  const normalized = status.toLowerCase();
+  return ["deploying", "building", "running", "pending", "failed"].includes(normalized);
+}
+
 function openPanel(tab: PanelTab) {
   window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
   window.setTimeout(() => {
@@ -219,6 +224,45 @@ export const CurrentTaskStatusBar = memo(function CurrentTaskStatusBar({
     state.artifactCount ? `产物 ${state.artifactCount}` : "",
     deployLabel !== "未部署" ? deployLabel : "",
   ].filter(Boolean);
+  const shouldCompact = state.phase === "completed" && !deployNeedsAttention(state.deployStatus);
+
+  if (shouldCompact) {
+    return (
+      <section className="shrink-0 px-4 py-1" style={{ background: "var(--surface-white)", borderTop: "1px solid var(--divider)", borderBottom: "1px solid var(--divider)" }}>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="grid h-4 w-4 shrink-0 place-items-center rounded-full" style={{ color: "#fff", background: "var(--success)" }}>
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M20 6 9 17l-5-5" />
+            </svg>
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[11px] font-semibold" style={{ color: "var(--fg-secondary)" }}>
+            已完成 · {state.title || "任务结果已整理"}
+          </span>
+          {summaryParts.length > 0 && (
+            <span className="hidden shrink-0 text-[10px] md:inline" style={{ color: "var(--fg-tertiary)" }}>
+              {summaryParts.join(" · ")}
+            </span>
+          )}
+          <div className="ml-auto flex shrink-0 items-center gap-0.5">
+            <IconButton label="产物" title="查看产物预览" onClick={() => openPanel(state.artifactCount ? "preview" : "code")} disabled={!state.artifactCount}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M4 5h16v14H4z" />
+                <path d="M8 9h8" />
+                <path d="M8 13h5" />
+              </svg>
+            </IconButton>
+            <IconButton label="部署" title="打开部署面板" onClick={() => openPanel("deploy")} disabled={!state.artifactCount && !state.deployStatus}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M12 3v12" />
+                <path d="m7 10 5 5 5-5" />
+                <path d="M5 21h14" />
+              </svg>
+            </IconButton>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="shrink-0 px-4 py-1.5" style={{ background: "var(--surface-white)", borderTop: "1px solid var(--divider)", borderBottom: "1px solid var(--divider)" }}>
