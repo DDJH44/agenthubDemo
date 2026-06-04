@@ -11,11 +11,17 @@ export interface AgentRuntimeProfile {
   configured: boolean;
 }
 
+interface RuntimeModelOptions {
+  fallbackModel?: string;
+}
+
 interface RawAgentConfig {
   model?: unknown;
   systemPrompt?: unknown;
   tools?: unknown;
 }
+
+const PLACEHOLDER_MODELS = new Set(["gpt-4o-mini"]);
 
 function parseJsonObject(raw: string | null | undefined): Record<string, unknown> {
   if (!raw) return {};
@@ -80,9 +86,21 @@ export async function resolveAgentRuntimeProfiles(userId: string, agentNames: st
   });
 }
 
-export function chooseRuntimeModel(profiles: AgentRuntimeProfile[]) {
-  return profiles.find((profile) => !isCoordinatorAgent(profile.name) && profile.model)?.model
-    ?? profiles.find((profile) => profile.model)?.model;
+function isUsableRuntimeModel(model: string | undefined, options: RuntimeModelOptions) {
+  const normalized = model?.trim();
+  if (!normalized) return false;
+
+  const fallbackModel = options.fallbackModel ?? process.env.LLM_MODEL;
+  if (fallbackModel && fallbackModel !== normalized && PLACEHOLDER_MODELS.has(normalized)) {
+    return false;
+  }
+
+  return true;
+}
+
+export function chooseRuntimeModel(profiles: AgentRuntimeProfile[], options: RuntimeModelOptions = {}) {
+  return profiles.find((profile) => !isCoordinatorAgent(profile.name) && isUsableRuntimeModel(profile.model, options))?.model
+    ?? profiles.find((profile) => isUsableRuntimeModel(profile.model, options))?.model;
 }
 
 export function buildAgentRuntimePrompt(profiles: AgentRuntimeProfile[]) {

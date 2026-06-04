@@ -8,6 +8,12 @@ describe("agent runtime profiles", () => {
     ])).toBe("gpt-4o");
   });
 
+  it("ignores the sample model when the server has a different default model", () => {
+    expect(chooseRuntimeModel([
+      { id: "fe", name: "Frontend Agent", type: "frontend", model: "gpt-4o-mini", tools: ["code_execution"], configured: true },
+    ], { fallbackModel: "ep-20260508214225-g6x7g" })).toBeUndefined();
+  });
+
   it("builds a runtime prompt from configured agents", () => {
     const prompt = buildAgentRuntimePrompt([
       {
