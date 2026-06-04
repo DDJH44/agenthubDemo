@@ -14,6 +14,11 @@ import { useUserAgentStore } from "../../packages/frontend/src/stores/user-agent
 import { useAuthStore } from "../../packages/frontend/src/stores/auth-store";
 import { SidebarNav } from "../../packages/frontend/src/features/views/SidebarNav";
 import { CommandPalette } from "../../packages/frontend/src/features/views/CommandPalette";
+import {
+  OPEN_ARTIFACT_EVENT,
+  panelTabForArtifact,
+  type OpenArtifactRequestDetail,
+} from "../../packages/frontend/src/features/chat/open-artifact";
 
 const AgentChatPanel = dynamic(
   () => import("../../packages/frontend/src/features/chat/AgentChatPanel").then((mod) => mod.AgentChatPanel),
@@ -514,6 +519,46 @@ export default function Page() {
     };
     window.addEventListener("workflow:artifact:create", handler);
     return () => window.removeEventListener("workflow:artifact:create", handler);
+  }, [isMobile, setActiveNav]);
+
+  // Open an artifact from any workspace surface and move the user to its conversation.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<OpenArtifactRequestDetail>).detail;
+      if (!detail?.artifactId || !detail.type || detail.content == null) return;
+
+      const targetConversationId = detail.conversationId ?? useChatStore.getState().activeConversationId;
+      if (targetConversationId) {
+        useChatStore.getState().setActiveConversation(targetConversationId);
+        useWorkspaceStore.getState().switchConversation(targetConversationId);
+        window.dispatchEvent(new CustomEvent("conversation:select", { detail: { conversationId: targetConversationId } }));
+      }
+
+      useChatStore.getState().setCurrentPreview({
+        artifactId: detail.artifactId,
+        type: detail.type,
+        content: detail.content,
+        filename: detail.filename,
+      });
+
+      setActiveNav("chat");
+      setShowCreateModal(false);
+      if (isMobile) {
+        setShowMobileSidebar(false);
+        setShowMobileConvList(false);
+      }
+
+      const tab = detail.tab ?? panelTabForArtifact(detail.type);
+      const openPanel = () => {
+        window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+        window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+      };
+      window.setTimeout(openPanel, 0);
+      window.setTimeout(openPanel, 80);
+    };
+
+    window.addEventListener(OPEN_ARTIFACT_EVENT, handler);
+    return () => window.removeEventListener(OPEN_ARTIFACT_EVENT, handler);
   }, [isMobile, setActiveNav]);
 
   const handlePin = useCallback((id: string) => {

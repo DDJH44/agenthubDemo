@@ -3,6 +3,7 @@
 import { useState, useCallback } from "react";
 import { useChatStore } from "@/stores/chat-store";
 import { useNavigationStore } from "@/stores/navigation-store";
+import { useWorkspaceStore } from "@/stores/workspace-store";
 import { getGlobalSend } from "@/lib/ws-client";
 
 export function ProjectsView() {
@@ -14,6 +15,7 @@ export function ProjectsView() {
 
   const handleProjectClick = useCallback((convId: string) => {
     useChatStore.getState().setActiveConversation(convId);
+    useWorkspaceStore.getState().switchConversation(convId);
     const event = new CustomEvent('conversation:select', { detail: { conversationId: convId } });
     window.dispatchEvent(event);
     useNavigationStore.getState().setActiveNav("chat");

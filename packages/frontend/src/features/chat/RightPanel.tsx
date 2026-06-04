@@ -8,6 +8,7 @@ import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { DeployPanel as DeployWorkflowPanel } from "./DeployPanel";
+import { panelTabForArtifact } from "./open-artifact";
 import { downloadSlidesAsPptx, getPptxFilename } from "./pptx-export";
 import { parseSlidesArtifact } from "./slide-parser";
 import { SlidesRenderer } from "./SlidesRenderer";
@@ -1777,8 +1778,9 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
 
 export function RightPanel() {
   const [activeTab, setActiveTab] = useState<PanelTab>("tasks");
-  const { messages, activeConversationId, resources, isStreaming, contextReferences } = useChatStore();
+  const { messages, activeConversationId, resources, isStreaming, contextReferences, currentPreview } = useChatStore();
   const workspace = useWorkspaceStore();
+  const lastAutoPreviewRef = useRef<string | null>(null);
   const activeArtifactTopicId = workspace.activeArtifactTopicId;
   const setActiveArtifactTopic = workspace.setActiveArtifactTopic;
   const convMessages = activeConversationId ? (messages[activeConversationId] ?? []) : [];
@@ -1812,6 +1814,17 @@ export function RightPanel() {
     window.addEventListener("right-panel:tab", handleTabChange);
     return () => window.removeEventListener("right-panel:tab", handleTabChange);
   }, []);
+
+  useEffect(() => {
+    if (!currentPreview) return;
+    const previewKey = `${currentPreview.artifactId}:${currentPreview.type}`;
+    if (lastAutoPreviewRef.current === previewKey) return;
+    lastAutoPreviewRef.current = previewKey;
+    const tab = panelTabForArtifact(currentPreview.type);
+    if (!TABS.some((item) => item.key === tab)) return;
+    const timer = window.setTimeout(() => setActiveTab(tab), 0);
+    return () => window.clearTimeout(timer);
+  }, [currentPreview]);
 
   useEffect(() => {
     if (activeArtifactTopicId !== activeTopicId) {

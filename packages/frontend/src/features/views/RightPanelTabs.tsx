@@ -6,6 +6,7 @@ import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { timeAgo } from "@/lib/utils";
 import { addPendingTeamInvite } from "@/features/team/team-invites";
+import { panelTabForArtifact, requestOpenArtifact } from "@/features/chat/open-artifact";
 
 type TabKey = "context" | "files" | "activity";
 
@@ -54,7 +55,6 @@ export function RightPanelTabs() {
   const {
     conversations, messages, sessionAgentStatuses, taskProgress,
     conversationDetail, agentTyping, activeConversationId, agentStates,
-    setCurrentPreview,
   } = useChatStore();
   const { artifacts } = useWorkspaceStore();
 
@@ -99,13 +99,15 @@ export function RightPanelTabs() {
   }, [artifacts]);
 
   const handleFileClick = useCallback((artifactId: string, filename: string, type: string, content: string) => {
-    setCurrentPreview({ artifactId, type, content, filename });
-    if (typeof window !== "undefined") {
-      const tab = type === "code" ? "code" : "preview";
-      window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
-      window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
-    }
-  }, [setCurrentPreview]);
+    requestOpenArtifact({
+      artifactId,
+      type,
+      content,
+      filename,
+      conversationId: activeConversationId,
+      tab: panelTabForArtifact(type),
+    });
+  }, [activeConversationId]);
 
   const agents = useMemo(() => {
     const typingIds = agentTyping[activeConversationId ?? ""] ?? [];
@@ -487,9 +489,9 @@ export function RightPanelTabs() {
             </p>
             {files.length > 0 ? (
               <div className="space-y-1">
-                {files.map((f, i) => (
+                {files.map((f) => (
                   <div
-                    key={i}
+                    key={f.id}
                     className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors cursor-pointer hover:bg-[var(--bg-hover)]"
                     onClick={() => handleFileClick(f.id, f.name || "untitled", f.type, f.content)}
                   >
