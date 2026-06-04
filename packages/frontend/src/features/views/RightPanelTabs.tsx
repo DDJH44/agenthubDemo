@@ -6,7 +6,7 @@ import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { timeAgo } from "@/lib/utils";
 import { addPendingTeamInvite } from "@/features/team/team-invites";
-import { panelTabForArtifact, requestOpenArtifact } from "@/features/chat/open-artifact";
+import { OPEN_ARTIFACT_EVENT, panelTabForArtifact } from "@/features/chat/open-artifact";
 
 type TabKey = "context" | "files" | "activity";
 
@@ -99,14 +99,37 @@ export function RightPanelTabs() {
   }, [artifacts]);
 
   const handleFileClick = useCallback((artifactId: string, filename: string, type: string, content: string) => {
-    requestOpenArtifact({
-      artifactId,
-      type,
-      content,
-      filename,
-      conversationId: activeConversationId,
-      tab: panelTabForArtifact(type),
-    });
+    const tab = panelTabForArtifact(type);
+    useNavigationStore.getState().setActiveNav("chat");
+    useChatStore.getState().setCurrentPreview({ artifactId, type, content, filename });
+    window.dispatchEvent(new CustomEvent(OPEN_ARTIFACT_EVENT, {
+      detail: { artifactId, type, content, filename, conversationId: activeConversationId, tab },
+    }));
+    if (activeConversationId) {
+      useChatStore.getState().setActiveConversation(activeConversationId);
+      try {
+        useWorkspaceStore.getState().switchConversation(activeConversationId);
+      } catch {
+        // Keep navigation and preview opening intact even if local workspace persistence fails.
+      }
+      window.dispatchEvent(new CustomEvent("conversation:select", { detail: { conversationId: activeConversationId } }));
+    }
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+      window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+    }, 0);
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+      window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+    }, 80);
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+      window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+    }, 500);
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+      window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+    }, 1200);
   }, [activeConversationId]);
 
   const agents = useMemo(() => {
@@ -314,9 +337,12 @@ export function RightPanelTabs() {
                   {projectFiles.map((f) => {
                     const art = artifacts.find((a) => a.id === f.id);
                     return (
-                      <div
+                      <button
+                        type="button"
+                        data-artifact-file-id={f.id}
+                        data-artifact-conversation-id={activeConversationId ?? ""}
                         key={f.id}
-                        className="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-[var(--bg-hover)]"
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
                         onClick={() => art && handleFileClick(art.id, art.filename || "untitled", art.type, art.content)}
                       >
                         <svg
@@ -340,7 +366,7 @@ export function RightPanelTabs() {
                         <span className="text-[10px] shrink-0" style={{ color: "var(--fg-disabled)" }}>
                           {f.time}
                         </span>
-                      </div>
+                      </button>
                     );
                   })}
                 </div>
@@ -490,9 +516,12 @@ export function RightPanelTabs() {
             {files.length > 0 ? (
               <div className="space-y-1">
                 {files.map((f) => (
-                  <div
+                  <button
+                    type="button"
+                    data-artifact-file-id={f.id}
+                    data-artifact-conversation-id={activeConversationId ?? ""}
                     key={f.id}
-                    className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors cursor-pointer hover:bg-[var(--bg-hover)]"
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--bg-hover)]"
                     onClick={() => handleFileClick(f.id, f.name || "untitled", f.type, f.content)}
                   >
                     <svg
@@ -519,7 +548,7 @@ export function RightPanelTabs() {
                     <span className="text-[10px] shrink-0" style={{ color: "var(--fg-tertiary)" }}>
                       {f.size}
                     </span>
-                  </div>
+                  </button>
                 ))}
               </div>
             ) : (

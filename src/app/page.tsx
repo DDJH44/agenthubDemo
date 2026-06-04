@@ -149,6 +149,34 @@ function LazyMountedPanel({
   );
 }
 
+function forceChatNavigation(setActiveNav: (key: NavKey) => void) {
+  setActiveNav("chat");
+  try {
+    localStorage.setItem("agenthub-active-nav", "chat");
+  } catch {}
+  window.setTimeout(() => {
+    setActiveNav("chat");
+    try {
+      localStorage.setItem("agenthub-active-nav", "chat");
+    } catch {}
+    document.querySelector<HTMLButtonElement>('[data-nav-key="chat"]')?.click();
+  }, 0);
+  window.setTimeout(() => {
+    setActiveNav("chat");
+    try {
+      localStorage.setItem("agenthub-active-nav", "chat");
+    } catch {}
+    document.querySelector<HTMLButtonElement>('[data-nav-key="chat"]')?.click();
+  }, 80);
+  window.setTimeout(() => {
+    setActiveNav("chat");
+    try {
+      localStorage.setItem("agenthub-active-nav", "chat");
+    } catch {}
+    document.querySelector<HTMLButtonElement>('[data-nav-key="chat"]')?.click();
+  }, 300);
+}
+
 const CHAT_STARTERS = [
   "帮我拆解一个多 Agent 项目计划",
   "生成一个网页产物并打开预览",
@@ -464,7 +492,7 @@ export default function Page() {
       }>).detail;
       if (!detail?.conversationId || !detail.artifact || !detail.message) return;
 
-      setActiveNav("chat");
+      forceChatNavigation(setActiveNav);
       setShowCreateModal(false);
       if (isMobile) {
         setShowMobileSidebar(false);
@@ -528,20 +556,26 @@ export default function Page() {
       if (!detail?.artifactId || !detail.type || detail.content == null) return;
 
       const targetConversationId = detail.conversationId ?? useChatStore.getState().activeConversationId;
+      forceChatNavigation(setActiveNav);
+      try {
+        useChatStore.getState().setCurrentPreview({
+          artifactId: detail.artifactId,
+          type: detail.type,
+          content: detail.content,
+          filename: detail.filename,
+        });
+      } catch {
+        // Navigation should still work if the preview store is temporarily unavailable.
+      }
       if (targetConversationId) {
         useChatStore.getState().setActiveConversation(targetConversationId);
-        useWorkspaceStore.getState().switchConversation(targetConversationId);
+        try {
+          useWorkspaceStore.getState().switchConversation(targetConversationId);
+        } catch {
+          // Keep navigation and preview opening intact even if local workspace persistence fails.
+        }
         window.dispatchEvent(new CustomEvent("conversation:select", { detail: { conversationId: targetConversationId } }));
       }
-
-      useChatStore.getState().setCurrentPreview({
-        artifactId: detail.artifactId,
-        type: detail.type,
-        content: detail.content,
-        filename: detail.filename,
-      });
-
-      setActiveNav("chat");
       setShowCreateModal(false);
       if (isMobile) {
         setShowMobileSidebar(false);
@@ -555,10 +589,84 @@ export default function Page() {
       };
       window.setTimeout(openPanel, 0);
       window.setTimeout(openPanel, 80);
+      window.setTimeout(openPanel, 500);
+      window.setTimeout(openPanel, 1200);
     };
 
     window.addEventListener(OPEN_ARTIFACT_EVENT, handler);
     return () => window.removeEventListener(OPEN_ARTIFACT_EVENT, handler);
+  }, [isMobile, setActiveNav]);
+
+  useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      const target = event.target instanceof Element
+        ? event.target.closest<HTMLElement>("[data-artifact-file-id]")
+        : null;
+      const artifactId = target?.dataset.artifactFileId;
+      if (!artifactId) return;
+      const targetConversationId =
+        target?.dataset.artifactConversationId
+        || useChatStore.getState().activeConversationId
+        || useWorkspaceStore.getState().activeConvId;
+      let artifact = useWorkspaceStore.getState().artifacts.find((item) => item.id === artifactId);
+      if (!artifact && targetConversationId) {
+        try {
+          const raw = localStorage.getItem(`agenthub-ws-${targetConversationId}`);
+          const stored = raw ? JSON.parse(raw) as { artifacts?: Artifact[] } : null;
+          artifact = stored?.artifacts?.find((item) => item.id === artifactId);
+        } catch {
+          artifact = undefined;
+        }
+      }
+      if (!artifact) return;
+
+      forceChatNavigation(setActiveNav);
+      try {
+        useChatStore.getState().setCurrentPreview({
+          artifactId: artifact.id,
+          type: artifact.type,
+          content: artifact.content,
+          filename: artifact.filename,
+        });
+      } catch {
+        // Navigation should still work if the preview store is temporarily unavailable.
+      }
+      if (targetConversationId) {
+        useChatStore.getState().setActiveConversation(targetConversationId);
+        try {
+          useWorkspaceStore.getState().switchConversation(targetConversationId);
+        } catch {
+          // Keep navigation and preview opening intact even if local workspace persistence fails.
+        }
+        window.dispatchEvent(new CustomEvent("conversation:select", { detail: { conversationId: targetConversationId } }));
+      }
+      setShowCreateModal(false);
+      if (isMobile) {
+        setShowMobileSidebar(false);
+        setShowMobileConvList(false);
+      }
+
+      const tab = panelTabForArtifact(artifact.type);
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+        window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+      }, 0);
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+        window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+      }, 80);
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+        window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+      }, 500);
+      window.setTimeout(() => {
+        window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+        window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+      }, 1200);
+    };
+
+    document.addEventListener("click", handler, true);
+    return () => document.removeEventListener("click", handler, true);
   }, [isMobile, setActiveNav]);
 
   const handlePin = useCallback((id: string) => {
