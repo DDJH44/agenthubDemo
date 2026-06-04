@@ -5,6 +5,7 @@ import { useNavigationStore } from "@/stores/navigation-store";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { timeAgo } from "@/lib/utils";
+import { addPendingTeamInvite } from "@/features/team/team-invites";
 
 type TabKey = "context" | "files" | "activity";
 
@@ -48,6 +49,7 @@ export function RightPanelTabs() {
   const [memoryInput, setMemoryInput] = useState("");
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [memoryHydrated, setMemoryHydrated] = useState(false);
+  const [inviteStatus, setInviteStatus] = useState<string | null>(null);
 
   const {
     conversations, messages, sessionAgentStatuses, taskProgress,
@@ -98,6 +100,11 @@ export function RightPanelTabs() {
 
   const handleFileClick = useCallback((artifactId: string, filename: string, type: string, content: string) => {
     setCurrentPreview({ artifactId, type, content, filename });
+    if (typeof window !== "undefined") {
+      const tab = type === "code" ? "code" : "preview";
+      window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+      window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+    }
   }, [setCurrentPreview]);
 
   const agents = useMemo(() => {
@@ -196,12 +203,24 @@ export function RightPanelTabs() {
   const files = useMemo(() => {
     return artifacts.slice(0, 5).map((art) => ({
       name: art.filename,
+      id: art.id,
       time: timeAgo(art.createdAt),
       size: `${Math.round(art.content.length / 1024)} KB`,
       type: art.type,
+      content: art.content,
       iconColor: art.type === "html" ? "#3b82f6" : art.type === "code" ? "#006c49" : "#825100",
     }));
   }, [artifacts]);
+
+  const handleInviteMember = useCallback(() => {
+    const email = prompt("请输入要邀请的成员邮箱：");
+    const result = addPendingTeamInvite(email, "right-panel");
+    if (!result.ok) {
+      setInviteStatus("请输入有效邮箱。");
+      return;
+    }
+    setInviteStatus(result.duplicate ? `${result.invite.email} 已在待确认列表。` : `已添加 ${result.invite.email}，等待成员确认。`);
+  }, []);
 
   const tabs: { key: TabKey; label: string; badge?: number }[] = [
     { key: "context", label: "上下文" },
@@ -342,6 +361,7 @@ export function RightPanelTabs() {
                     <div
                       key={agent.id}
                       className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg cursor-pointer transition-colors hover:bg-[var(--bg-hover)]"
+                      onClick={() => useNavigationStore.getState().setActiveNav("agents")}
                     >
                       <div className="relative shrink-0">
                         <div
@@ -471,6 +491,7 @@ export function RightPanelTabs() {
                   <div
                     key={i}
                     className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg transition-colors cursor-pointer hover:bg-[var(--bg-hover)]"
+                    onClick={() => handleFileClick(f.id, f.name || "untitled", f.type, f.content)}
                   >
                     <svg
                       width="16"
@@ -551,13 +572,15 @@ export function RightPanelTabs() {
           <button
             className="px-4 py-1.5 rounded-lg text-[11px] font-semibold bg-white"
             style={{ color: ACCENT }}
-            onClick={() => {
-              const email = prompt("请输入要邀请的成员邮箱：");
-              if (email && email.includes("@")) alert(`已向 ${email} 发送邀请`);
-            }}
+            onClick={handleInviteMember}
           >
             立即邀请
           </button>
+          {inviteStatus && (
+            <p className="mt-2 text-[10px] leading-relaxed text-white/80">
+              {inviteStatus}
+            </p>
+          )}
         </div>
       </div>
     </aside>

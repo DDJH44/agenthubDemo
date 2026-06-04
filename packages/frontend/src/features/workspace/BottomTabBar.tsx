@@ -1,6 +1,7 @@
 "use client";
 
 import { useT } from "@/hooks/useT";
+import { useNavigationStore } from "@/stores/navigation-store";
 
 export type WorkspaceTab = "task" | "files" | "diff" | "preview" | "deploy" | "members" | "file-manager" | "memory";
 
@@ -8,6 +9,13 @@ interface Props { activeTab: WorkspaceTab | null; onTabChange: (tab: WorkspaceTa
 
 export function BottomTabBar({ activeTab, onTabChange, onTabClose, taskCount }: Props) {
   const t = useT();
+  const setActiveNav = useNavigationStore((state) => state.setActiveNav);
+  const openMcp = () => {
+    setActiveNav("mcp");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("agenthub:navigate", { detail: { key: "mcp" } }));
+    }
+  };
   const TABS: { key: WorkspaceTab; label: string; icon: string }[] = [
     { key: "task", label: t("tab.task"), icon: "M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" },
     { key: "files", label: t("tab.files"), icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8" },
@@ -36,7 +44,7 @@ export function BottomTabBar({ activeTab, onTabChange, onTabClose, taskCount }: 
         );
       })}
       <div className="flex-1" />
-      <button className="flex items-center gap-1 px-3 h-full transition-all hover:text-[var(--fg-secondary)]" style={{ color: "var(--fg-tertiary)", fontSize: "var(--text-2xs)", fontWeight: 500 }}>
+      <button type="button" onClick={openMcp} className="flex items-center gap-1 px-3 h-full transition-all hover:text-[var(--fg-secondary)]" style={{ color: "var(--fg-tertiary)", fontSize: "var(--text-2xs)", fontWeight: 500 }}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" /></svg>
         MCP
       </button>

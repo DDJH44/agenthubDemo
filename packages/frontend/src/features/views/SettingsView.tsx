@@ -4,6 +4,13 @@ import { useState, useEffect } from "react";
 import { useUserAgentStore } from "@/stores/user-agent-store";
 import { useSettingsStore } from "@/stores/settings-store";
 import { api } from "@/lib/api-client";
+import {
+  addPendingTeamInvite,
+  getPendingTeamInvites,
+  removePendingTeamInvite,
+  subscribeTeamInvites,
+  type TeamInvite,
+} from "@/features/team/team-invites";
 
 interface ConfigStatus {
   adapter: {
@@ -33,6 +40,17 @@ export function SettingsView() {
   const [selectedPreset, setSelectedPreset] = useState("volc-doubao");
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pendingInvites, setPendingInvites] = useState<TeamInvite[]>([]);
+  const [inviteMsg, setInviteMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => setPendingInvites(getPendingTeamInvites()), 0);
+    const unsubscribe = subscribeTeamInvites(setPendingInvites);
+    return () => {
+      window.clearTimeout(timeoutId);
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     if (tab === "api") {
@@ -45,6 +63,19 @@ export function SettingsView() {
       }).catch(() => setConfigStatus(null));
     }
   }, [tab]);
+
+  const handleInviteMember = () => {
+    const email = prompt("请输入要邀请的成员邮箱：");
+    const result = addPendingTeamInvite(email, "settings");
+    if (!result.ok) {
+      setInviteMsg({ ok: false, text: "请输入有效邮箱。" });
+      return;
+    }
+    setInviteMsg({
+      ok: true,
+      text: result.duplicate ? `${result.invite.email} 已在待确认邀请中。` : `已添加 ${result.invite.email}，等待成员确认。`,
+    });
+  };
 
   const TABS = [
     { key: "general", label: "通用设置", icon: "M14.7 3.3a1 1 0 010 1.4l-1.6 1.6a1 1 0 01-1.4 0L10 4.7a1 1 0 011.4-1.4l.3.3.9-.9a1 1 0 011.4 0zm0 9.4a1 1 0 010 1.4l-1.6 1.6a1 1 0 01-1.4 0L10 14.1a1 1 0 011.4-1.4l.3.3.9-.9a1 1 0 011.4 0zM6 10a2 2 0 100-4 2 2 0 000 4zm10 0a2 2 0 100-4 2 2 0 000 4z M12 19a2 2 0 100-4 2 2 0 000 4z" },
@@ -260,11 +291,42 @@ export function SettingsView() {
                 </div>
               ))}
             </div>
-            <button className="rounded-lg font-medium text-white mt-3 transition-all"
-              onClick={() => { const email = prompt("请输入要邀请的成员邮箱："); if (email?.includes("@")) alert(`已向 ${email} 发送邀请`); }}
-              style={{ height: 32, fontSize: "var(--text-2xs)", padding: "0 14px", background: "var(--accent)" }}>
-              + 邀请成员
-            </button>
+            {pendingInvites.length > 0 && (
+              <div className="mt-4 rounded-xl p-3" style={{ border: "1px solid var(--border)", background: "var(--surface-low)" }}>
+                <p style={{ fontSize: "var(--text-2xs)", fontWeight: 700, color: "var(--fg-secondary)", marginBottom: 8 }}>
+                  待确认邀请
+                </p>
+                <div className="space-y-1">
+                  {pendingInvites.map((invite) => (
+                    <div key={invite.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5" style={{ background: "var(--surface-white)" }}>
+                      <span className="min-w-0 flex-1 truncate" style={{ fontSize: "var(--text-xs)", color: "var(--fg-primary)" }}>
+                        {invite.email}
+                      </span>
+                      <span className="rounded px-1.5 py-0.5" style={{ fontSize: 9, color: "var(--accent)", background: "var(--accent-subtle)" }}>
+                        待确认
+                      </span>
+                      <button type="button" onClick={() => removePendingTeamInvite(invite.id)} className="rounded px-1.5 py-0.5" style={{ fontSize: 9, color: "var(--danger)" }}>
+                        移除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                className="rounded-lg font-medium text-white transition-all"
+                onClick={handleInviteMember}
+                style={{ height: 32, fontSize: "var(--text-2xs)", padding: "0 14px", background: "var(--accent)" }}
+              >
+                + 邀请成员
+              </button>
+              {inviteMsg && (
+                <span style={{ fontSize: "var(--text-2xs)", color: inviteMsg.ok ? "var(--success)" : "var(--danger)" }}>
+                  {inviteMsg.text}
+                </span>
+              )}
+            </div>
           </div>
         )}
 

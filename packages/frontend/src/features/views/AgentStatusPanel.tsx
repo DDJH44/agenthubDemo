@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useChatStore } from "@/stores/chat-store";
+import { useNavigationStore } from "@/stores/navigation-store";
 import { AGENT_COLORS } from "@agenthub/shared";
 import { getAgentMeta, getConnectionStateMeta } from "@/features/chat/agent-directory";
 
@@ -13,6 +14,7 @@ const AGENT_ROLES: Record<string, string> = {
 
 export function AgentStatusPanel() {
   const { sessionAgentStatuses, conversations } = useChatStore();
+  const setActiveNav = useNavigationStore((state) => state.setActiveNav);
 
   const agents = useMemo(() => {
     if (sessionAgentStatuses.length > 0) {
@@ -78,7 +80,7 @@ export function AgentStatusPanel() {
         <h3 className="text-[14px] font-bold" style={{ color: "var(--fg-primary)" }}>
           智能体状态
         </h3>
-        <button className="text-[12px] font-medium" style={{ color: "var(--accent)" }}>
+        <button type="button" onClick={() => setActiveNav("agents")} className="text-[12px] font-medium" style={{ color: "var(--accent)" }}>
           查看全部智能体 →
         </button>
       </div>

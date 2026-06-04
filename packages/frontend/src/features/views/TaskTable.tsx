@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useChatStore } from "@/stores/chat-store";
+import { useNavigationStore } from "@/stores/navigation-store";
+import { useWorkspaceStore } from "@/stores/workspace-store";
 import { timeAgo } from "@/lib/utils";
 import { AGENT_COLORS } from "@agenthub/shared";
 
@@ -25,7 +27,26 @@ const progressColor: Record<string, string> = {
 };
 
 export function TaskTable() {
-  const { conversations } = useChatStore();
+  const conversations = useChatStore((state) => state.conversations);
+  const setActiveConversation = useChatStore((state) => state.setActiveConversation);
+  const setActiveNav = useNavigationStore((state) => state.setActiveNav);
+  const switchConversation = useWorkspaceStore((state) => state.switchConversation);
+
+  const openConversation = useCallback((conversationId: string, panelTab?: "tasks") => {
+    setActiveConversation(conversationId);
+    switchConversation(conversationId);
+    setActiveNav("chat");
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("conversation:select", { detail: { conversationId } }));
+      window.dispatchEvent(new CustomEvent("agenthub:navigate", { detail: { key: "chat" } }));
+      if (panelTab) {
+        window.setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab: panelTab } }));
+          window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab: panelTab } }));
+        }, 0);
+      }
+    }
+  }, [setActiveConversation, setActiveNav, switchConversation]);
 
   const tasks = useMemo(() => {
     return conversations.slice(0, 5).map((conv) => {
@@ -36,6 +57,7 @@ export function TaskTable() {
       }));
 
       return {
+        id: conv.id,
         name: conv.title,
         tag: "项目",
         status: conv.status === "active" ? "running" as const : "done" as const,
@@ -65,7 +87,7 @@ export function TaskTable() {
         <h3 className="text-[14px] font-bold" style={{ color: "var(--fg-primary)" }}>
           最近任务
         </h3>
-        <button className="text-[12px] font-medium" style={{ color: "var(--accent)" }}>
+        <button type="button" onClick={() => setActiveNav("tasks")} className="text-[12px] font-medium" style={{ color: "var(--accent)" }}>
           查看全部 →
         </button>
       </div>
@@ -94,6 +116,15 @@ export function TaskTable() {
           return (
             <div
               key={i}
+              role="button"
+              tabIndex={0}
+              onClick={() => openConversation(task.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  openConversation(task.id);
+                }
+              }}
               className="grid grid-cols-[2.5fr_0.8fr_1.5fr_1.2fr_0.8fr_0.3fr] gap-3 px-5 py-3 items-center transition-colors hover:bg-[var(--bg-hover)]"
               style={{
                 borderBottom: i < tasks.length - 1 ? "1px solid var(--divider)" : "none",
@@ -130,7 +161,11 @@ export function TaskTable() {
 
               <span className="text-[12px]" style={{ color: "var(--fg-tertiary)" }}>{task.time}</span>
 
-              <button className="w-6 h-6 rounded flex items-center justify-center transition-colors hover:bg-[var(--bg-active)]"
+              <button type="button" className="w-6 h-6 rounded flex items-center justify-center transition-colors hover:bg-[var(--bg-active)]"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  openConversation(task.id, "tasks");
+                }}
                 style={{ color: "var(--fg-disabled)" }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                   <circle cx="12" cy="5" r="1.5" />

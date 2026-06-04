@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useChatStore } from "@/stores/chat-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
+import { useNavigationStore } from "@/stores/navigation-store";
 import { getAgentMeta } from "./agent-directory";
 import { ContextWindowIndicator } from "./ContextWindowIndicator";
 
@@ -24,8 +25,11 @@ export function ConversationNavBar() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [showMembers, setShowMembers] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [moreStatus, setMoreStatus] = useState<string | null>(null);
   const userAgents = useUserAgentStore((state) => state.agents);
   const hydrateUserAgents = useUserAgentStore((state) => state.hydrate);
+  const setActiveNav = useNavigationStore((state) => state.setActiveNav);
 
   useEffect(() => {
     void hydrateUserAgents();
@@ -62,6 +66,25 @@ export function ConversationNavBar() {
     updateConversationTitle(trimmed);
     setEditingTitle(false);
     window.dispatchEvent(new CustomEvent("conversation:rename", { detail: { conversationId: activeConversationId, title: trimmed } }));
+  };
+
+  const openRightPanel = (tab: "tasks" | "context") => {
+    setShowMoreMenu(false);
+    window.dispatchEvent(new CustomEvent("right-panel:open", { detail: { tab } }));
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("right-panel:tab", { detail: { tab } }));
+    }, 0);
+  };
+
+  const copyConversationSummary = async () => {
+    const summary = `${title}\n模式：${modeLabel}\n消息数：${contextData.messageCount}\n上下文字符：${contextData.totalChars}`;
+    try {
+      await navigator.clipboard.writeText(summary);
+      setMoreStatus("摘要已复制");
+    } catch {
+      setMoreStatus("复制失败，请手动选择");
+    }
+    window.setTimeout(() => setMoreStatus(null), 1400);
   };
 
   return (
@@ -190,10 +213,43 @@ export function ConversationNavBar() {
           </div>
         )}
 
-        <button type="button" className="grid h-9 w-9 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-tertiary)" }} title="更多操作">
+        <button
+          type="button"
+          onClick={() => setShowMoreMenu((value) => !value)}
+          className="grid h-9 w-9 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
+          style={{ color: "var(--fg-tertiary)" }}
+          title="更多操作"
+          aria-expanded={showMoreMenu}
+        >
           <Icon path="M12 13a1 1 0 100-2 1 1 0 000 2zM19 13a1 1 0 100-2 1 1 0 000 2zM5 13a1 1 0 100-2 1 1 0 000 2z" size={16} />
         </button>
       </div>
+
+      {showMoreMenu && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setShowMoreMenu(false)} />
+          <div className="absolute right-4 top-14 z-50 w-48 overflow-hidden rounded-xl p-1" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-lg)" }}>
+            <button type="button" onClick={() => { setEditingTitle(true); setTitleDraft(title); setShowMoreMenu(false); }} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-primary)" }}>
+              重命名会话
+            </button>
+            <button type="button" onClick={() => openRightPanel("tasks")} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-primary)" }}>
+              打开任务面板
+            </button>
+            <button type="button" onClick={() => openRightPanel("context")} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-primary)" }}>
+              打开上下文
+            </button>
+            <button type="button" onClick={() => { setActiveNav("tasks"); setShowMoreMenu(false); }} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-primary)" }}>
+              查看全部任务
+            </button>
+            <button type="button" onClick={copyConversationSummary} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-primary)" }}>
+              复制会话摘要
+            </button>
+            {moreStatus && (
+              <p className="px-3 pb-2 pt-1 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{moreStatus}</p>
+            )}
+          </div>
+        </>
+      )}
 
       {showMembers && isGroup && (
         <>
