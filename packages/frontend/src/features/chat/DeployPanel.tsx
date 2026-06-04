@@ -47,11 +47,19 @@ interface DeploymentTargetsResponse {
 
 const PLATFORMS: PlatformOption[] = [
   {
+    key: "self-hosted",
+    label: "服务器发布",
+    desc: "优先发布到 AgentHub 默认服务器，也支持用户添加自有服务器。",
+    hint: "默认服务器已配置时可直接发布",
+    tags: ["默认服务器", "SSH 发布"],
+    icon: "M4 6h16v4H4z M4 14h16v4H4z M8 8h.01 M8 16h.01",
+  },
+  {
     key: "mock-preview",
-    label: "内置预览",
-    desc: "通过内置预览适配器写入静态产物并返回可访问链接。",
-    hint: "内置可用，不依赖第三方密钥",
-    tags: ["内置适配器", "无需密钥"],
+    label: "静态预览",
+    desc: "写入本地静态预览目录，快速获得可访问的预览链接。",
+    hint: "适合快速预览，不依赖第三方密钥",
+    tags: ["本地预览", "无需密钥"],
     icon: "M4 5h16v12H4z M8 21h8 M12 17v4",
   },
   {
@@ -69,14 +77,6 @@ const PLATFORMS: PlatformOption[] = [
     hint: "需要 MIAODA_DEPLOY_WEBHOOK 或手动填写 Webhook",
     tags: ["第三方平台", "Webhook"],
     icon: "M12 2l7 4v6c0 5-3 8-7 10-4-2-7-5-7-10V6l7-4z",
-  },
-  {
-    key: "self-hosted",
-    label: "自有服务器",
-    desc: "通过服务端 SSH 配置上传静态产物，并回写服务器访问地址。",
-    hint: "需要服务端配置 SELF_HOSTED_SSH_HOST / SELF_HOSTED_SSH_USER",
-    tags: ["SSH 发布", "自有主机"],
-    icon: "M4 6h16v4H4z M4 14h16v4H4z M8 8h.01 M8 16h.01",
   },
 ];
 
@@ -140,7 +140,7 @@ function effectiveArtifactTopicId(artifacts: Array<{ id: string; jobId: string; 
 }
 
 export function DeployPanel() {
-  const [selectedPlatform, setSelectedPlatform] = useState<Platform>("mock-preview");
+  const [selectedPlatform, setSelectedPlatform] = useState<Platform>("self-hosted");
   const [miaodaWebhookUrl, setMiaodaWebhookUrl] = useState("");
   const [miaodaToken, setMiaodaToken] = useState("");
   const [miaodaAppUrl, setMiaodaAppUrl] = useState("");
@@ -213,6 +213,8 @@ export function DeployPanel() {
         if (fallbackTarget) {
           setSelectedDeploymentTargetId((current) => current === "platform-default" ? fallbackTarget.id : current);
           setStatusMessage(`默认服务器未配置，已自动选择你的服务器目标：${fallbackTarget.name}`);
+        } else if (data.defaultTarget.configured === false) {
+          setStatusMessage("默认服务器未配置。可以添加自有服务器，或切换到静态预览先查看产物。");
         }
       })
       .catch((error) => {
