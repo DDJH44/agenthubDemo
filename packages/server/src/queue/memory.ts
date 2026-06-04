@@ -1,6 +1,7 @@
 import type { IJobQueue, JobPayload, JobResult } from "./types";
 import { createOrchestrator } from "../orchestrator/index";
 import { createAdapterFromEnv } from "@agenthub/adapter";
+import type { Artifact } from "@agenthub/shared";
 import { jobRepo } from "../db/repositories/job";
 import { messageRepo } from "../db/repositories/message";
 import { logger } from "../utils/logger";
@@ -10,25 +11,77 @@ const DEFAULT_TIMEOUT = 300_000;
 
 interface QueuedJob { jobId: string; payload: JobPayload; enqueuedAt: number; }
 
+const LANGUAGE_EXTENSION_MAP: Record<string, string> = {
+  bash: "sh",
+  css: "css",
+  html: "html",
+  javascript: "js",
+  js: "js",
+  json: "json",
+  jsx: "jsx",
+  markdown: "md",
+  md: "md",
+  py: "py",
+  python: "py",
+  shell: "sh",
+  ts: "ts",
+  tsx: "tsx",
+  typescript: "ts",
+};
+
+function parseFenceHeader(header: string) {
+  const language = header.trim().split(/\s+/).find((token) => token && !token.includes("="))?.toLowerCase() || "";
+  const filename = header.match(/(?:filename|file)=["']?([^"'\s]+)["']?/i)?.[1];
+  return { language, filename };
+}
+
+function extractHtmlSegment(text: string) {
+  const htmlStart = text.search(/<!doctype html|<html[\s>]/i);
+  if (htmlStart < 0) return null;
+  const tail = text.slice(htmlStart);
+  const endMatch = /<\/html\s*>/i.exec(tail);
+  const htmlEnd = endMatch ? htmlStart + endMatch.index + endMatch[0].length : text.length;
+  const content = text.slice(htmlStart, htmlEnd).trim();
+  return content.length > 40 ? content : null;
+}
+
 function extractPrimaryCodeArtifact(result: string, stepId: string) {
-  const match = result.match(/```(\w*)\n([\s\S]*?)```/);
-  const language = match?.[1]?.toLowerCase() || "";
-  const content = match?.[2]?.trim() || result;
+  const match = result.match(/```([^\r\n`]*)[ \t]*(?:\r?\n)([\s\S]*?)```/);
+  const { language, filename } = parseFenceHeader(match?.[1] ?? "");
+  const fencedContent = match?.[2]?.trim();
+  const content = fencedContent || extractHtmlSegment(result) || result.trim();
 
   if (language === "html" || /<!doctype html|<html/i.test(content)) {
-    return { type: "html" as const, filename: "index.html", content };
+    return { type: "html" as const, filename: filename ?? "index.html", content: extractHtmlSegment(content) ?? content };
   }
 
-  const extensionMap: Record<string, string> = {
-    javascript: "js",
-    typescript: "ts",
-    python: "py",
-    markdown: "md",
-    bash: "sh",
-    shell: "sh",
+  const extension = LANGUAGE_EXTENSION_MAP[language] ?? language ?? "txt";
+  const type = ["json"].includes(language) ? "json" as const : "code" as const;
+  return { type, filename: filename ?? `output-${stepId}.${extension || "txt"}`, content };
+}
+
+function artifactLanguage(artifact: Artifact) {
+  if (artifact.type === "html") return "html";
+  if (artifact.type === "json") return "json";
+  const extension = artifact.filename?.split(".").pop()?.toLowerCase();
+  const languageMap: Record<string, string> = {
+    css: "css",
+    js: "javascript",
+    jsx: "jsx",
+    json: "json",
+    md: "markdown",
+    py: "python",
+    sh: "bash",
+    ts: "typescript",
+    tsx: "tsx",
   };
-  const extension = extensionMap[language] ?? language ?? "txt";
-  return { type: "code" as const, filename: `output-${stepId}.${extension || "txt"}`, content };
+  return languageMap[extension ?? ""] ?? extension;
+}
+
+function artifactSender(artifact: Artifact) {
+  if (artifact.type === "html" || artifact.type === "code" || artifact.type === "json") return "coder";
+  if (artifact.type === "slides" || artifact.type === "document" || artifact.type === "markdown") return "refiner";
+  return "worker";
 }
 
 export class MemoryQueue implements IJobQueue {
@@ -244,37 +297,73 @@ export class MemoryQueue implements IJobQueue {
             });
           }
 
-          emit({
-            type: "job:completed",
-            summary: final.summary as string ?? "",
-            stats: {},
-          });
+          const publishArtifactMessage = async (artifact: Artifact) => {
+            emit({ type: "artifact:created", artifact });
+            if (!payload.conversationId) return;
+
+            const sender = artifactSender(artifact);
+            const artifactMsg = await messageRepo.createAndUpdateConv({
+              conversationId: payload.conversationId,
+              type: "agent_message",
+              sender,
+              senderId: sender,
+              content: artifact.content,
+              payload: {
+                kind: "artifact",
+                artifactType: artifact.type,
+                artifactId: artifact.id,
+                filename: artifact.filename,
+                language: artifactLanguage(artifact),
+                jobId,
+                workflowRef: payload.workflowRef,
+              },
+            });
+            emit({
+              type: "message:created",
+              message: {
+                id: artifactMsg.id,
+                conversationId: artifactMsg.conversationId,
+                type: artifactMsg.type,
+                sender: artifactMsg.sender,
+                senderId: artifactMsg.senderId ?? undefined,
+                content: artifactMsg.content,
+                payload: {
+                  kind: "artifact",
+                  artifactType: artifact.type,
+                  artifactId: artifact.id,
+                  filename: artifact.filename,
+                  language: artifactLanguage(artifact),
+                  jobId,
+                  workflowRef: payload.workflowRef,
+                },
+                mentions: [],
+                timestamp: artifactMsg.timestamp.getTime(),
+              },
+            });
+          };
 
           for (const sr of stepResults) {
             if (sr.toolUsed === "code" || sr.toolUsed === "search") {
               const codeArtifact = sr.toolUsed === "code" ? extractPrimaryCodeArtifact(sr.result, sr.id) : null;
               const artifactType = codeArtifact?.type ?? "markdown";
               const filename = codeArtifact?.filename ?? `research-${sr.id}.md`;
-              emit({
-                type: "artifact:created",
-                artifact: {
-                  id: `artifact-${jobId}-${sr.id}`,
-                  jobId,
-                  type: artifactType,
-                  filename,
-                  content: codeArtifact?.content ?? sr.result,
-                  createdAt: Date.now(),
-                },
+              await publishArtifactMessage({
+                id: `artifact-${jobId}-${sr.id}`,
+                jobId,
+                type: artifactType,
+                filename,
+                content: codeArtifact?.content ?? sr.result,
+                createdAt: Date.now(),
               });
             }
           }
 
-          const codeBlockRegex = /```(\w*)\n([\s\S]*?)```/g;
+          const codeBlockRegex = /```([^\r\n`]*)[ \t]*(?:\r?\n)([\s\S]*?)```/g;
           const summaryText = final.summary as string ?? "";
           let match: RegExpExecArray | null;
           let codeIdx = 0;
           while ((match = codeBlockRegex.exec(summaryText)) !== null) {
-            const lang = match[1] || "text";
+            const { language: lang, filename: explicitFilename } = parseFenceHeader(match[1] || "");
             const code = match[2];
             if (code.trim().length < 10) continue;
             const extMap: Record<string, string> = {
@@ -291,17 +380,14 @@ export class MemoryQueue implements IJobQueue {
               : ["css", "javascript", "typescript", "json", "python", "go", "rust", "java", "cpp", "c", "php", "sql", "shell", "yaml", "xml"].includes(normalizedExt)
                 ? "code"
                 : "markdown";
-            const filename = extMap[ext] ? `index.${ext}` : `file-${codeIdx}.${ext || "txt"}`;
-            emit({
-              type: "artifact:created",
-              artifact: {
-                id: `artifact-${jobId}-code-${codeIdx}`,
-                jobId,
-                type: artifactType,
-                filename,
-                content: code,
-                createdAt: Date.now(),
-              },
+            const filename = explicitFilename ?? (extMap[ext] ? `index.${ext}` : `file-${codeIdx}.${ext || "txt"}`);
+            await publishArtifactMessage({
+              id: `artifact-${jobId}-code-${codeIdx}`,
+              jobId,
+              type: artifactType,
+              filename,
+              content: artifactType === "html" ? extractHtmlSegment(code) ?? code.trim() : code.trim(),
+              createdAt: Date.now(),
             });
             codeIdx++;
           }
@@ -322,11 +408,17 @@ export class MemoryQueue implements IJobQueue {
                 type: "agent_message",
                 sender: "refiner",
                 content: String(final.summary).slice(0, 2000),
-                payload: { ...(final as Record<string, unknown>), jobId, workflowRef: payload.workflowRef },
+                payload: { ...(final as Record<string, unknown>), kind: "final_summary", jobId, workflowRef: payload.workflowRef },
               });
-              emit({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, content: summaryMsg.content, payload: { ...(final as Record<string, unknown>), jobId, workflowRef: payload.workflowRef }, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
+              emit({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, content: summaryMsg.content, payload: { ...(final as Record<string, unknown>), kind: "final_summary", jobId, workflowRef: payload.workflowRef }, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
             }
           }
+
+          emit({
+            type: "job:completed",
+            summary: final.summary as string ?? "",
+            stats: {},
+          });
 
           this.statuses.set(jobId, "completed");
           const jobResult: JobResult = { jobId, status: "completed", summary: final.summary as string, steps };

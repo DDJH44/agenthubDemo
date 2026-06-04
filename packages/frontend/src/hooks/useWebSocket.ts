@@ -413,11 +413,13 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         case "message:created": {
           const messagePayload = msg.message.payload as Record<string, unknown> | undefined;
           const messageJobId = typeof messagePayload?.jobId === "string" ? messagePayload.jobId : undefined;
+          const isArtifactMessage = typeof messagePayload?.artifactType === "string" || messagePayload?.kind === "artifact";
+          const isFinalSummary = messagePayload?.kind === "final_summary";
           const completedJobs = useChatStore.getState().completedJobs[msg.message.conversationId] ?? [];
           const hasLiveStreamForJob = messageJobId
             ? (useChatStore.getState().messages[msg.message.conversationId] ?? []).some((message) => message.id.startsWith(messageJobId))
             : false;
-          if (messageJobId && completedJobs.includes(messageJobId) && hasLiveStreamForJob) break;
+          if (messageJobId && completedJobs.includes(messageJobId) && hasLiveStreamForJob && !isArtifactMessage && !isFinalSummary) break;
           useChatStore.getState().addMessage(msg.message.conversationId, msg.message);
           break;
         }
