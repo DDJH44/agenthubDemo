@@ -84,6 +84,18 @@ function artifactSender(artifact: Artifact) {
   return "worker";
 }
 
+function parseArtifactMetadata(metadata: unknown, fallback?: Record<string, unknown>) {
+  if (typeof metadata !== "string" || !metadata.trim()) return fallback;
+  try {
+    const parsed = JSON.parse(metadata);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export class MemoryQueue implements IJobQueue {
   private handlers: Array<(result: JobResult) => void> = [];
   private statuses = new Map<string, "pending" | "running" | "completed" | "failed">();
@@ -298,22 +310,39 @@ export class MemoryQueue implements IJobQueue {
           }
 
           const publishArtifactMessage = async (artifact: Artifact) => {
-            emit({ type: "artifact:created", artifact });
+            const storedArtifact = await jobRepo.addArtifact(jobId, {
+              type: artifact.type,
+              content: artifact.content,
+              filename: artifact.filename,
+              metadata: artifact.metadata,
+            });
+            const persistedArtifact: Artifact = {
+              ...artifact,
+              id: storedArtifact.id,
+              jobId: storedArtifact.jobId,
+              type: storedArtifact.type as Artifact["type"],
+              content: storedArtifact.content,
+              filename: storedArtifact.filename ?? undefined,
+              metadata: parseArtifactMetadata(storedArtifact.metadata, artifact.metadata),
+              createdAt: storedArtifact.createdAt.getTime(),
+            };
+
+            emit({ type: "artifact:created", artifact: persistedArtifact });
             if (!payload.conversationId) return;
 
-            const sender = artifactSender(artifact);
+            const sender = artifactSender(persistedArtifact);
             const artifactMsg = await messageRepo.createAndUpdateConv({
               conversationId: payload.conversationId,
               type: "agent_message",
               sender,
               senderId: sender,
-              content: artifact.content,
+              content: persistedArtifact.content,
               payload: {
                 kind: "artifact",
-                artifactType: artifact.type,
-                artifactId: artifact.id,
-                filename: artifact.filename,
-                language: artifactLanguage(artifact),
+                artifactType: persistedArtifact.type,
+                artifactId: persistedArtifact.id,
+                filename: persistedArtifact.filename,
+                language: artifactLanguage(persistedArtifact),
                 jobId,
                 workflowRef: payload.workflowRef,
               },
@@ -329,10 +358,10 @@ export class MemoryQueue implements IJobQueue {
                 content: artifactMsg.content,
                 payload: {
                   kind: "artifact",
-                  artifactType: artifact.type,
-                  artifactId: artifact.id,
-                  filename: artifact.filename,
-                  language: artifactLanguage(artifact),
+                  artifactType: persistedArtifact.type,
+                  artifactId: persistedArtifact.id,
+                  filename: persistedArtifact.filename,
+                  language: artifactLanguage(persistedArtifact),
                   jobId,
                   workflowRef: payload.workflowRef,
                 },

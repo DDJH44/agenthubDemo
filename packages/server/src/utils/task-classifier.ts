@@ -26,6 +26,16 @@ const COMPLEX_INDICATORS = [
   "分析报告", "对比", "评估报告",
 ];
 
+const ARTIFACT_REQUEST_HINTS = [
+  /网站|网页|页面|站点|小程序|demo|原型|组件|界面|前端|代码|游戏|小游戏|动画|可视化|看板|表单/i,
+  /番茄钟|番茄工作法|计时器|倒计时|pomodoro|timer|stopwatch|clock/i,
+  /todo|待办|抽奖|轮盘|播放器|画板|白板|计算器|日历|记账|天气|音乐|相册|作品集/i,
+];
+
+const BUILD_ACTION_HINTS = [
+  /帮我|请|做|写|生成|创建|开发|制作|实现|编写|构建|搭建|设计/i,
+];
+
 export function isSimpleChat(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length > 80) return false;
@@ -40,9 +50,12 @@ export function isArtifactGenerationTask(text: string): boolean {
   if (!lower) return false;
   if (COMPLEX_INDICATORS.some((keyword) => lower.includes(keyword))) return false;
 
-  const hasBuildAction = BUILD_ACTIONS.some((keyword) => lower.includes(keyword));
+  const hasBuildAction = BUILD_ACTIONS.some((keyword) => lower.includes(keyword))
+    || BUILD_ACTION_HINTS.some((pattern) => pattern.test(text));
   const deliverableHits = DELIVERABLE_KEYWORDS.filter((keyword) => lower.includes(keyword)).length;
   const hasCodeFenceHint = /(?:\.html|\.tsx?|\.jsx?|<!doctype|<html|canvas|代码)/i.test(text);
 
-  return hasBuildAction && (deliverableHits >= 1 || hasCodeFenceHint);
+  const hasArtifactRequestHint = ARTIFACT_REQUEST_HINTS.some((pattern) => pattern.test(text));
+
+  return hasBuildAction && (deliverableHits >= 1 || hasCodeFenceHint || hasArtifactRequestHint);
 }

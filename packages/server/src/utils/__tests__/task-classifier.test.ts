@@ -18,6 +18,9 @@ describe("task classifier", () => {
       expect(isArtifactGenerationTask("生成一个小型的放烟花网站")).toBe(true);
       expect(isArtifactGenerationTask("帮我做一个 todo 页面")).toBe(true);
       expect(isArtifactGenerationTask("create a simple fireworks demo")).toBe(true);
+      expect(isArtifactGenerationTask("生成番茄钟")).toBe(true);
+      expect(isArtifactGenerationTask("帮我做一个番茄钟应用")).toBe(true);
+      expect(isArtifactGenerationTask("create a pomodoro timer")).toBe(true);
     });
 
     it("does not route pure analysis or casual chat to artifact generation", () => {

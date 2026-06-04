@@ -72,6 +72,56 @@ function isActiveConversation(conversationId: string | undefined) {
   return Boolean(conversationId && useChatStore.getState().activeConversationId === conversationId);
 }
 
+const ARTIFACT_MESSAGE_TYPES: ReadonlySet<Artifact["type"]> = new Set([
+  "markdown",
+  "code",
+  "json",
+  "html",
+  "preview_url",
+  "deploy_url",
+  "image",
+  "document",
+  "slides",
+]);
+
+function isArtifactType(value: unknown): value is Artifact["type"] {
+  return typeof value === "string" && ARTIFACT_MESSAGE_TYPES.has(value as Artifact["type"]);
+}
+
+function artifactFromMessage(message: Message): Artifact | null {
+  const payload = message.payload as Record<string, unknown> | undefined;
+  if (payload?.kind !== "artifact" || !isArtifactType(payload.artifactType)) return null;
+
+  const artifactId = typeof payload.artifactId === "string" && payload.artifactId.trim()
+    ? payload.artifactId
+    : `message-artifact-${message.id}`;
+  const filename = typeof payload.filename === "string" ? payload.filename : undefined;
+  const jobId = typeof payload.jobId === "string" ? payload.jobId : message.conversationId;
+  const metadata: Record<string, unknown> = { sourceMessageId: message.id };
+
+  if (typeof payload.language === "string") metadata.language = payload.language;
+  if (payload.workflowRef) metadata.workflowRef = payload.workflowRef;
+
+  return {
+    id: artifactId,
+    jobId,
+    type: payload.artifactType,
+    content: message.content,
+    filename,
+    metadata,
+    createdAt: message.timestamp || Date.now(),
+    createdBy: message.sender,
+  };
+}
+
+function syncArtifactFromMessage(message: Message) {
+  if (!isActiveConversation(message.conversationId)) return;
+  const artifact = artifactFromMessage(message);
+  if (!artifact) return;
+  useWorkspaceStore.getState().addArtifact(artifact);
+  useTaskTreeStore.getState().addArtifact(artifact);
+}
+
 const AGENT_LABELS: Record<string, string> = {
   planner: "PMO",
   pmo: "PMO",
@@ -421,6 +471,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
             : false;
           if (messageJobId && completedJobs.includes(messageJobId) && hasLiveStreamForJob && !isArtifactMessage && !isFinalSummary) break;
           useChatStore.getState().addMessage(msg.message.conversationId, msg.message);
+          syncArtifactFromMessage(msg.message);
           break;
         }
         case "conversation:created": {
@@ -549,6 +600,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
             }));
 
           useChatStore.getState().mergeConversationHistory(convId, parsed);
+          parsed.forEach(syncArtifactFromMessage);
           break;
         }
 
