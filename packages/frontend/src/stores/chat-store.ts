@@ -53,6 +53,60 @@ function saveConversations(convs: Conversation[]) {
   } catch { /* quota exceeded */ }
 }
 
+let _messageSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let _conversationSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let _pendingMessagesSnapshot: Record<string, Message[]> | null = null;
+let _pendingConversationsSnapshot: Conversation[] | null = null;
+let _flushListenersInstalled = false;
+
+function flushScheduledMessageSave() {
+  if (_messageSaveTimer) {
+    clearTimeout(_messageSaveTimer);
+    _messageSaveTimer = null;
+  }
+  const snapshot = _pendingMessagesSnapshot;
+  _pendingMessagesSnapshot = null;
+  if (snapshot) saveMessages(snapshot);
+}
+
+function flushScheduledConversationSave() {
+  if (_conversationSaveTimer) {
+    clearTimeout(_conversationSaveTimer);
+    _conversationSaveTimer = null;
+  }
+  const snapshot = _pendingConversationsSnapshot;
+  _pendingConversationsSnapshot = null;
+  if (snapshot) saveConversations(snapshot);
+}
+
+function flushScheduledPersistenceSaves() {
+  flushScheduledMessageSave();
+  flushScheduledConversationSave();
+}
+
+function ensurePersistenceFlushListeners() {
+  if (typeof window === "undefined" || _flushListenersInstalled) return;
+  _flushListenersInstalled = true;
+  window.addEventListener("pagehide", flushScheduledPersistenceSaves);
+  window.addEventListener("beforeunload", flushScheduledPersistenceSaves);
+}
+
+function scheduleSaveMessages(msgs: Record<string, Message[]>, delay = 250) {
+  if (typeof window === "undefined") return;
+  ensurePersistenceFlushListeners();
+  _pendingMessagesSnapshot = msgs;
+  if (_messageSaveTimer) return;
+  _messageSaveTimer = setTimeout(flushScheduledMessageSave, delay);
+}
+
+function scheduleSaveConversations(convs: Conversation[], delay = 350) {
+  if (typeof window === "undefined") return;
+  ensurePersistenceFlushListeners();
+  _pendingConversationsSnapshot = convs;
+  if (_conversationSaveTimer) return;
+  _conversationSaveTimer = setTimeout(flushScheduledConversationSave, delay);
+}
+
 function loadActiveConvId(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(ACTIVE_CONV_KEY);
@@ -446,7 +500,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const newMessages = { ...s.messages, [convId]: updated };
       saveConversations(conversations);
       // 异步持久化
-      setTimeout(() => saveMessages(newMessages), 0);
+      scheduleSaveMessages(newMessages);
       return { messages: newMessages, conversations };
     }),
 
@@ -464,7 +518,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       );
       const newMessages = { ...s.messages, [convId]: updated };
       saveConversations(conversations);
-      setTimeout(() => saveMessages(newMessages), 0);
+      scheduleSaveMessages(newMessages);
       return { messages: newMessages, conversations };
     }),
 
@@ -476,7 +530,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         : mergeMessageLists(existing, messages);
       const nextMessages = { ...s.messages, [convId]: merged };
       const completedJobIds = getCompletedJobIdsFromMessages(merged);
-      saveMessages(nextMessages);
+      scheduleSaveMessages(nextMessages);
       if (completedJobIds.length > 0) {
         const previousTaskState = taskStateFor(s.conversationTasks, convId);
         const nextTaskState: ConversationTaskState = {
@@ -502,6 +556,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   persistCurrentState: () => {
     const state = get();
+    flushScheduledPersistenceSaves();
     saveConversations(state.conversations);
     saveMessages(state.messages);
     saveActiveConvId(state.activeConversationId);
@@ -621,8 +676,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           : conversation
       );
 
-      setTimeout(() => saveMessages(nextMessages), 0);
-      saveConversations(conversations);
+      scheduleSaveMessages(nextMessages);
+      scheduleSaveConversations(conversations);
       return {
         messages: nextMessages,
         conversations,
@@ -675,7 +730,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           timestamp: Date.now(),
         };
         const newMessages = { ...state.messages, [legacyConvId]: [...existing, streamMsg] };
-        setTimeout(() => saveMessages(newMessages), 0);
+        scheduleSaveMessages(newMessages);
         set({ taskSummary: summary, isStreaming: false, streamBuffer: "", messages: newMessages });
         return;
       }
@@ -705,7 +760,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const nextCompletedJobs = jobId && !completedForConversation.includes(jobId)
         ? { ...s.completedJobs, [convId]: [...completedForConversation, jobId].slice(-20) }
         : s.completedJobs;
-      setTimeout(() => saveMessages(nextMessages), 0);
+      scheduleSaveMessages(nextMessages);
       return {
         messages: nextMessages,
         conversationTasks: { ...s.conversationTasks, [convId]: nextTaskState },
@@ -1073,7 +1128,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const updatedMessages = { ...state.messages, [conversationId]: newMessages };
       
       // 异步持久化
-      setTimeout(() => saveMessages(updatedMessages), 0);
+      scheduleSaveMessages(updatedMessages);
       
       return {
         messages: updatedMessages,
@@ -1089,7 +1144,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const updatedMessages = { ...state.messages, [conversationId]: newMessages };
       
       // 异步持久化
-      setTimeout(() => saveMessages(updatedMessages), 0);
+      scheduleSaveMessages(updatedMessages);
       
       return {
         messages: updatedMessages

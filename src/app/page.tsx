@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import type { Artifact, Conversation, Message, WorkflowReferencePayload } from "@agenthub/shared";
 import { useWebSocket } from "../../packages/frontend/src/hooks/useWebSocket";
@@ -10,17 +12,87 @@ import { useWorkspaceStore } from "../../packages/frontend/src/stores/workspace-
 import { useNavigationStore, type NavKey } from "../../packages/frontend/src/stores/navigation-store";
 import { useUserAgentStore } from "../../packages/frontend/src/stores/user-agent-store";
 import { useAuthStore } from "../../packages/frontend/src/stores/auth-store";
-import { AgentChatPanel } from "../../packages/frontend/src/features/chat/AgentChatPanel";
-import { RightPanel } from "../../packages/frontend/src/features/chat/RightPanel";
-import { ConversationListView } from "../../packages/frontend/src/features/chat/ConversationListView";
-import { CreateConversationModal } from "../../packages/frontend/src/features/chat/CreateConversationModal";
 import { startAcceptanceDemo } from "../../packages/frontend/src/features/demo/acceptance-demo";
-import {
-  DashboardViewNew, AgentsView, TasksView, ProjectsView,
-  KnowledgeView, FilesView, AgentMarketView, MyAgentsView,
-  McpView, WorkflowsView, SettingsView, HelpView,
-  SidebarNav, RightPanelTabs, AIAssistantView, ContactsView, CommandPalette,
-} from "../../packages/frontend/src/features/views";
+import { SidebarNav } from "../../packages/frontend/src/features/views/SidebarNav";
+import { CommandPalette } from "../../packages/frontend/src/features/views/CommandPalette";
+
+const AgentChatPanel = dynamic(
+  () => import("../../packages/frontend/src/features/chat/AgentChatPanel").then((mod) => mod.AgentChatPanel),
+  { ssr: false, loading: () => <ViewLoading label="加载会话..." /> }
+);
+const ConversationListView = dynamic(
+  () => import("../../packages/frontend/src/features/chat/ConversationListView").then((mod) => mod.ConversationListView),
+  { ssr: false, loading: () => <ViewLoading label="加载会话列表..." /> }
+);
+const RightPanel = dynamic(
+  () => import("../../packages/frontend/src/features/chat/RightPanel").then((mod) => mod.RightPanel),
+  { ssr: false, loading: () => <ViewLoading label="加载产物工作台..." compact /> }
+);
+const CreateConversationModal = dynamic(
+  () => import("../../packages/frontend/src/features/chat/CreateConversationModal").then((mod) => mod.CreateConversationModal),
+  { ssr: false }
+);
+
+const DashboardViewNew = dynamic(
+  () => import("../../packages/frontend/src/features/views/DashboardViewNew").then((mod) => mod.DashboardViewNew),
+  { ssr: false, loading: () => <ViewLoading label="加载工作台..." /> }
+);
+const AIAssistantView = dynamic(
+  () => import("../../packages/frontend/src/features/views/AIAssistantView").then((mod) => mod.AIAssistantView),
+  { ssr: false, loading: () => <ViewLoading label="加载 AI 智能助手..." /> }
+);
+const AgentsView = dynamic(
+  () => import("../../packages/frontend/src/features/views/AgentsView").then((mod) => mod.AgentsView),
+  { ssr: false, loading: () => <ViewLoading label="加载智能体..." /> }
+);
+const TasksView = dynamic(
+  () => import("../../packages/frontend/src/features/views/TasksView").then((mod) => mod.TasksView),
+  { ssr: false, loading: () => <ViewLoading label="加载任务..." /> }
+);
+const ProjectsView = dynamic(
+  () => import("../../packages/frontend/src/features/views/ProjectsView").then((mod) => mod.ProjectsView),
+  { ssr: false, loading: () => <ViewLoading label="加载项目..." /> }
+);
+const KnowledgeView = dynamic(
+  () => import("../../packages/frontend/src/features/views/KnowledgeView").then((mod) => mod.KnowledgeView),
+  { ssr: false, loading: () => <ViewLoading label="加载知识库..." /> }
+);
+const FilesView = dynamic(
+  () => import("../../packages/frontend/src/features/views/FilesView").then((mod) => mod.FilesView),
+  { ssr: false, loading: () => <ViewLoading label="加载文件..." /> }
+);
+const ContactsView = dynamic(
+  () => import("../../packages/frontend/src/features/views/ContactsView").then((mod) => mod.ContactsView),
+  { ssr: false, loading: () => <ViewLoading label="加载通讯录..." /> }
+);
+const AgentMarketView = dynamic(
+  () => import("../../packages/frontend/src/features/views/AgentMarketView").then((mod) => mod.AgentMarketView),
+  { ssr: false, loading: () => <ViewLoading label="加载智能体市场..." /> }
+);
+const MyAgentsView = dynamic(
+  () => import("../../packages/frontend/src/features/views/MyAgentsView").then((mod) => mod.MyAgentsView),
+  { ssr: false, loading: () => <ViewLoading label="加载我的智能体..." /> }
+);
+const McpView = dynamic(
+  () => import("../../packages/frontend/src/features/views/McpView").then((mod) => mod.McpView),
+  { ssr: false, loading: () => <ViewLoading label="加载 MCP..." /> }
+);
+const WorkflowsView = dynamic(
+  () => import("../../packages/frontend/src/features/views/WorkflowsView").then((mod) => mod.WorkflowsView),
+  { ssr: false, loading: () => <ViewLoading label="加载工作流..." /> }
+);
+const SettingsView = dynamic(
+  () => import("../../packages/frontend/src/features/views/SettingsView").then((mod) => mod.SettingsView),
+  { ssr: false, loading: () => <ViewLoading label="加载设置..." /> }
+);
+const HelpView = dynamic(
+  () => import("../../packages/frontend/src/features/views/HelpView").then((mod) => mod.HelpView),
+  { ssr: false, loading: () => <ViewLoading label="加载帮助..." /> }
+);
+const RightPanelTabs = dynamic(
+  () => import("../../packages/frontend/src/features/views/RightPanelTabs").then((mod) => mod.RightPanelTabs),
+  { ssr: false, loading: () => <ViewLoading label="加载概览..." compact /> }
+);
 
 function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => void }) {
   return (
@@ -34,6 +106,41 @@ function ResizeHandle({ onMouseDown }: { onMouseDown: (e: React.MouseEvent) => v
         className="absolute inset-y-0 opacity-0 group-hover:opacity-100 transition-opacity"
         style={{ left: "50%", transform: "translateX(-50%)", width: 3, background: "var(--accent)", borderRadius: 2 }}
       />
+    </div>
+  );
+}
+
+function ViewLoading({ label, compact = false }: { label: string; compact?: boolean }) {
+  return (
+    <div
+      className="flex h-full min-h-0 items-center justify-center px-4"
+      style={{ background: "var(--surface-white)", color: "var(--fg-tertiary)" }}
+    >
+      <div className={compact ? "text-center text-[11px] font-semibold" : "text-center text-sm font-semibold"}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function LazyMountedPanel({
+  active,
+  children,
+}: {
+  active: boolean;
+  children: ReactNode;
+}) {
+  const [hasMounted, setHasMounted] = useState(active);
+
+  useEffect(() => {
+    if (!active || hasMounted) return;
+    const timer = window.setTimeout(() => setHasMounted(true), 0);
+    return () => window.clearTimeout(timer);
+  }, [active, hasMounted]);
+
+  return (
+    <div style={{ display: active ? "" : "none", flex: 1, minHeight: 0 }}>
+      {active || hasMounted ? children : null}
     </div>
   );
 }
@@ -539,11 +646,11 @@ export default function Page() {
           </div>
         )}
         
-        {/* 所有视图保持挂载，用 display 切换，避免 SSE/WS 中断 */}
+        {/* 视图首次访问后保持挂载，避免首屏加载所有工作台模块。 */}
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden" style={{ minHeight: 0 }}>
-          <div style={{ display: activeNav === "dashboard" ? "" : "none", flex: 1, minHeight: 0 }}><DashboardViewNew /></div>
-          <div style={{ display: activeNav === "ai-assistant" ? "" : "none", flex: 1, minHeight: 0 }}><AIAssistantView /></div>
-          <div style={{ display: activeNav === "chat" ? "" : "none", flex: 1, minHeight: 0 }}>
+          <LazyMountedPanel active={activeNav === "dashboard"}><DashboardViewNew /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "ai-assistant"}><AIAssistantView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "chat"}>
             <div className="flex h-full" style={{ minHeight: 0 }}>
               {/* 会话列表 */}
               {!isMobile && (
@@ -642,19 +749,19 @@ export default function Page() {
                 )}
               </div>
             </div>
-          </div>
-          <div style={{ display: activeNav === "agents" ? "" : "none", flex: 1, minHeight: 0 }}><AgentsView /></div>
-          <div style={{ display: activeNav === "tasks" ? "" : "none", flex: 1, minHeight: 0 }}><TasksView /></div>
-          <div style={{ display: activeNav === "projects" ? "" : "none", flex: 1, minHeight: 0 }}><ProjectsView /></div>
-          <div style={{ display: activeNav === "knowledge" ? "" : "none", flex: 1, minHeight: 0 }}><KnowledgeView /></div>
-          <div style={{ display: activeNav === "files" ? "" : "none", flex: 1, minHeight: 0 }}><FilesView /></div>
-          <div style={{ display: activeNav === "contacts" ? "" : "none", flex: 1, minHeight: 0 }}><ContactsView /></div>
-          <div style={{ display: activeNav === "agent-market" ? "" : "none", flex: 1, minHeight: 0 }}><AgentMarketView /></div>
-          <div style={{ display: activeNav === "my-agents" ? "" : "none", flex: 1, minHeight: 0 }}><MyAgentsView /></div>
-          <div style={{ display: activeNav === "mcp" ? "" : "none", flex: 1, minHeight: 0 }}><McpView /></div>
-          <div style={{ display: activeNav === "workflows" ? "" : "none", flex: 1, minHeight: 0 }}><WorkflowsView /></div>
-          <div style={{ display: activeNav === "settings" ? "" : "none", flex: 1, minHeight: 0 }}><SettingsView /></div>
-          <div style={{ display: activeNav === "help" ? "" : "none", flex: 1, minHeight: 0 }}><HelpView /></div>
+          </LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "agents"}><AgentsView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "tasks"}><TasksView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "projects"}><ProjectsView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "knowledge"}><KnowledgeView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "files"}><FilesView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "contacts"}><ContactsView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "agent-market"}><AgentMarketView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "my-agents"}><MyAgentsView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "mcp"}><McpView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "workflows"}><WorkflowsView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "settings"}><SettingsView /></LazyMountedPanel>
+          <LazyMountedPanel active={activeNav === "help"}><HelpView /></LazyMountedPanel>
         </div>
       </div>
 
@@ -690,11 +797,13 @@ export default function Page() {
       ) : null}
 
       {/* 新建会话弹窗 */}
-      <CreateConversationModal
-        open={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onCreate={handleCreateConversation}
-      />
+      {showCreateModal ? (
+        <CreateConversationModal
+          open
+          onClose={() => setShowCreateModal(false)}
+          onCreate={handleCreateConversation}
+        />
+      ) : null}
       <CommandPalette />
     </div>
     </div>
