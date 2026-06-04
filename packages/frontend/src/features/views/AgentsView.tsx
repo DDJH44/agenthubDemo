@@ -202,8 +202,6 @@ export function AgentsView() {
   const { setActiveNav } = useNavigationStore();
   const userAgents = useUserAgentStore((state) => state.agents);
   const [selectedId, setSelectedId] = useState("pmo");
-  const [testInput, setTestInput] = useState("");
-  const [testResult, setTestResult] = useState("");
 
   const selected = PLATFORM_AGENTS.find((agent) => agent.id === selectedId) ?? PLATFORM_AGENTS[0];
   const selectedConnection = getPlatformConnection(selected.id);
@@ -242,12 +240,6 @@ export function AgentsView() {
       ],
     };
   }, []);
-
-  const runMockTest = () => {
-    if (!testInput.trim()) return;
-    const connection = selectedConnection ?? getPlatformConnection(selected.id);
-    setTestResult(`${selected.name} 已接收测试任务：${testInput.trim().slice(0, 80)}。当前边界：${connection?.boundary ?? "按平台适配器发送"} 适配器：${connection?.adapter ?? selected.adapter}。`);
-  };
 
   return (
     <div className="flex h-full min-h-0" style={{ background: "var(--page-bg)" }}>
@@ -392,31 +384,6 @@ export function AgentsView() {
           <DetailField label="失败降级">{selected.fallback}</DetailField>
         </div>
 
-        <div className="mt-6 rounded-lg p-4" style={{ background: "var(--page-bg)", border: "1px solid var(--border)" }}>
-          <h3 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>调用测试</h3>
-          <textarea
-            value={testInput}
-            onChange={(event) => setTestInput(event.target.value)}
-            placeholder={`向 ${selected.name} 发送一条测试任务`}
-            rows={4}
-            className="mt-3 w-full resize-none rounded-md px-3 py-2 text-sm outline-none"
-            style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
-          />
-          <button
-            type="button"
-            onClick={runMockTest}
-            disabled={!testInput.trim()}
-            className="mt-2 h-9 w-full rounded-md text-xs font-semibold text-white"
-            style={{ background: testInput.trim() ? "#174ea6" : "var(--surface-mid)", color: testInput.trim() ? "#fff" : "var(--fg-disabled)" }}
-          >
-            发送测试
-          </button>
-          {testResult && (
-            <p className="mt-3 rounded-md px-3 py-2 text-xs" style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", lineHeight: 1.6 }}>
-              {testResult}
-            </p>
-          )}
-        </div>
       </aside>
     </div>
   );

@@ -43,84 +43,6 @@ const CONNECTED_AGENTS = [
   { name: "UX Reviewer", tag: "自建", desc: "复核演示路径与体验问题" },
 ];
 
-const MOCK_TASKS: DashboardTask[] = [
-  {
-    id: "demo-1",
-    name: "课题验收演示",
-    desc: "单聊、群聊、多 Agent 调度、产物预览、Diff 与部署闭环",
-    status: "running",
-    progress: 72,
-    agents: ["PMO", "Codex", "Claude"],
-    updatedAt: "刚刚",
-  },
-  {
-    id: "demo-2",
-    name: "产物预览与编辑",
-    desc: "网页、文档、PPT、代码编辑和版本历史集中在右侧面板",
-    status: "active",
-    progress: 64,
-    agents: ["Codex", "UX"],
-    updatedAt: "5 分钟前",
-  },
-  {
-    id: "demo-3",
-    name: "部署状态卡片",
-    desc: "展示构建、完成、失败和第三方访问链接",
-    status: "done",
-    progress: 100,
-    agents: ["Open"],
-    updatedAt: "12 分钟前",
-  },
-  {
-    id: "demo-4",
-    name: "上下文引用",
-    desc: "引用需求段落后交给 Agent 继续处理",
-    status: "waiting",
-    progress: 0,
-    agents: ["Research"],
-    updatedAt: "待开始",
-  },
-];
-
-const MOCK_ACTIVITY: ActivityItem[] = [
-  {
-    id: "activity-1",
-    name: "PMO 主 Agent",
-    action: "完成拆解",
-    status: "done",
-    desc: "将课题拆成交互、调度、Agent 接入和产物链路四条验收线。",
-    time: "2 分钟前",
-    progress: 100,
-  },
-  {
-    id: "activity-2",
-    name: "Codex",
-    action: "生成产物",
-    status: "running",
-    desc: "正在维护 HTML 预览、代码编辑和版本记录。",
-    time: "刚刚",
-    progress: 72,
-  },
-  {
-    id: "activity-3",
-    name: "Claude Code",
-    action: "处理冲突",
-    status: "active",
-    desc: "接管同文件修改冲突，输出可查看的 Diff。",
-    time: "3 分钟前",
-    progress: 76,
-  },
-  {
-    id: "activity-4",
-    name: "Open Code",
-    action: "部署完成",
-    status: "done",
-    desc: "已生成部署状态卡片和预览访问链接。",
-    time: "5 分钟前",
-    progress: 100,
-  },
-];
-
 function PlusIcon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
@@ -175,12 +97,41 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
+function EmptyPanel({
+  title,
+  desc,
+  action,
+  onAction,
+}: {
+  title: string;
+  desc: string;
+  action?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <div className="flex min-h-[180px] flex-col items-center justify-center rounded-lg px-6 py-8 text-center" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
+      <p className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{title}</p>
+      <p className="mt-2 max-w-sm text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.7 }}>{desc}</p>
+      {action && onAction && (
+        <button
+          type="button"
+          onClick={onAction}
+          className="mt-4 inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-semibold"
+          style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}
+        >
+          {action}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function DashboardViewNew() {
   const { setActiveNav } = useNavigationStore();
   const { conversations, sessionAgentStatuses, taskProgress, taskFlow } = useChatStore();
 
   const tasks = useMemo<DashboardTask[]>(() => {
-    if (taskFlow.length === 0) return MOCK_TASKS;
+    if (taskFlow.length === 0) return [];
 
     return taskFlow.map((task) => ({
       id: task.id,
@@ -194,7 +145,7 @@ export function DashboardViewNew() {
   }, [taskFlow]);
 
   const activity = useMemo<ActivityItem[]>(() => {
-    if (sessionAgentStatuses.length === 0) return MOCK_ACTIVITY;
+    if (sessionAgentStatuses.length === 0) return [];
 
     return sessionAgentStatuses.map((agent) => {
       const status: StatusKey = agent.status === "done" ? "done" : agent.status === "running" ? "running" : "waiting";
@@ -268,36 +219,45 @@ export function DashboardViewNew() {
               </button>
             </div>
 
-            <div className="grid gap-3 lg:grid-cols-2">
-              {tasks.map((task, taskIndex) => (
-                <article key={task.id} className="rounded-lg p-4 transition hover:-translate-y-0.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
-                  <div className="mb-3 flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="truncate" style={{ color: "var(--fg-primary)", fontSize: 14, fontWeight: 720 }}>{task.name}</h3>
-                      <p className="mt-1 line-clamp-2 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.55 }}>{task.desc}</p>
+            {tasks.length === 0 ? (
+              <EmptyPanel
+                title="还没有执行中的任务"
+                desc="从会话发起一个需求后，任务拆解、Agent 分配和执行进度会自动同步到这里。"
+                action="去会话创建任务"
+                onAction={() => setActiveNav("chat")}
+              />
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {tasks.map((task, taskIndex) => (
+                  <article key={task.id} className="rounded-lg p-4 transition hover:-translate-y-0.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="truncate" style={{ color: "var(--fg-primary)", fontSize: 14, fontWeight: 720 }}>{task.name}</h3>
+                        <p className="mt-1 line-clamp-2 text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.55 }}>{task.desc}</p>
+                      </div>
+                      <StatusBadge status={task.status} />
                     </div>
-                    <StatusBadge status={task.status} />
-                  </div>
 
-                  <div className="mb-3">
-                    <div className="mb-1.5 flex items-center justify-between text-xs">
-                      <span style={{ color: "var(--fg-tertiary)" }}>进度</span>
-                      <span style={{ color: "var(--fg-secondary)", fontWeight: 650 }}>{task.progress}%</span>
+                    <div className="mb-3">
+                      <div className="mb-1.5 flex items-center justify-between text-xs">
+                        <span style={{ color: "var(--fg-tertiary)" }}>进度</span>
+                        <span style={{ color: "var(--fg-secondary)", fontWeight: 650 }}>{task.progress}%</span>
+                      </div>
+                      <ProgressBar value={task.progress} />
                     </div>
-                    <ProgressBar value={task.progress} />
-                  </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex gap-1">
-                      {task.agents.slice(0, 3).map((agent, agentIndex) => (
-                        <AgentAvatar key={agent} name={agent} index={taskIndex + agentIndex} />
-                      ))}
+                    <div className="flex items-center justify-between">
+                      <div className="flex gap-1">
+                        {task.agents.slice(0, 3).map((agent, agentIndex) => (
+                          <AgentAvatar key={agent} name={agent} index={taskIndex + agentIndex} />
+                        ))}
+                      </div>
+                      <span className="text-xs" style={{ color: "var(--fg-disabled)" }}>{task.updatedAt}</span>
                     </div>
-                    <span className="text-xs" style={{ color: "var(--fg-disabled)" }}>{task.updatedAt}</span>
-                  </div>
-                </article>
-              ))}
-            </div>
+                  </article>
+                ))}
+              </div>
+            )}
           </section>
 
           <aside className="min-w-0">
@@ -306,26 +266,33 @@ export function DashboardViewNew() {
               <span className="text-xs" style={{ color: "var(--fg-tertiary)" }}>{activity.length} 条</span>
             </div>
 
-            <div className="rounded-lg" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
-              {activity.map((item, index) => (
-                <div key={item.id} className="flex gap-3 p-4" style={{ borderBottom: index === activity.length - 1 ? "none" : "1px solid var(--divider)" }}>
-                  <AgentAvatar name={item.name} index={index} size={32} />
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-1 flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{item.name}</span>
-                      <span className="text-xs" style={{ color: "var(--fg-tertiary)" }}>{item.action}</span>
-                    </div>
-                    <p className="line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>{item.desc}</p>
-                    <div className="mt-3 flex items-center gap-3">
-                      <div className="min-w-0 flex-1">
-                        <ProgressBar value={item.progress} />
+            {activity.length === 0 ? (
+              <EmptyPanel
+                title="暂无 Agent 执行状态"
+                desc="当 PMO 开始拆解并调度子 Agent 后，这里会展示实时状态、进度和最近动作。"
+              />
+            ) : (
+              <div className="rounded-lg" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
+                {activity.map((item, index) => (
+                  <div key={item.id} className="flex gap-3 p-4" style={{ borderBottom: index === activity.length - 1 ? "none" : "1px solid var(--divider)" }}>
+                    <AgentAvatar name={item.name} index={index} size={32} />
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{item.name}</span>
+                        <span className="text-xs" style={{ color: "var(--fg-tertiary)" }}>{item.action}</span>
                       </div>
-                      <span className="shrink-0 text-xs" style={{ color: "var(--fg-disabled)" }}>{item.time}</span>
+                      <p className="line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>{item.desc}</p>
+                      <div className="mt-3 flex items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                          <ProgressBar value={item.progress} />
+                        </div>
+                        <span className="shrink-0 text-xs" style={{ color: "var(--fg-disabled)" }}>{item.time}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             <div className="mt-5">
               <div className="mb-3 flex items-center justify-between">
