@@ -11,6 +11,13 @@ import { conversationGroupRepo } from "../db/repositories/conversation-group";
 import { userRepo } from "../db/repositories/user";
 import { getQueue } from "../queue/index";
 import { matchByKeywords } from "../agents/matching";
+import {
+  CORE_AGENT_NAMES,
+  buildInitialConversationAgentNames,
+  getEffectiveEnabledAgentNames,
+  isCoordinatorAgent,
+  selectEnabledAgentsForTask,
+} from "../agents/conversation-routing";
 import { createAdapterFromEnv } from "@agenthub/adapter";
 import { logger } from "../utils/logger";
 import { prisma } from "../db/index";
@@ -121,7 +128,7 @@ async function checkConversationAccess(ws: WebSocket, conversationId: string, us
 }
 
 const DEFAULT_WORKSPACE = "default";
-const AGENT_NAMES = ["planner", "worker", "critic", "researcher", "refiner"];
+const AGENT_NAMES: string[] = [...CORE_AGENT_NAMES];
 const AGENT_ROLES: AgentRole[] = ["planner", "worker", "critic", "researcher", "refiner", "coder", "reviewer", "frontend", "backend", "design", "custom"];
 const WORKFLOW_NODE_TYPES: WorkflowNodeType[] = ["agent", "code", "condition", "loop", "variable"];
 
@@ -371,9 +378,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                 },
               });
 
-              // For group chats, create default agent entries (enabled)
+              // For group chats, enable only the coordinator plus agents selected in the conversation.
               if (convType === "group" || convType === "task_room") {
-                for (const agentName of AGENT_NAMES) {
+                for (const agentName of buildInitialConversationAgentNames(participants, convType)) {
                   await tx.conversationAgent.create({
                     data: { conversationId: conv.id, agentName, enabled: true },
                   });
@@ -499,10 +506,12 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
 
             let convType = "group";
             let agentName = "planner";
+            let convParticipants: string[] = [];
             try {
               const conv = await conversationRepo.getById(conversationId);
               if (conv) {
                 convType = conv.type ?? "group";
+                convParticipants = getParticipants(conv);
                 if (convType === "direct") {
                   // 查找对话中实际的智能体名称
                   const convAgents = await conversationAgentRepo.listByConversation(conversationId);
@@ -519,7 +528,8 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const artifactTask = isArtifactGenerationTask(text);
 
             const convAgents = await conversationAgentRepo.listByConversation(conversationId);
-            const hasEnabledAgents = convAgents.some(a => a.enabled);
+            const enabledAgentNames = getEffectiveEnabledAgentNames(convParticipants, convType, convAgents);
+            const hasEnabledAgents = enabledAgentNames.length > 0;
 
             if (simpleChat || ((!hasEnabledAgents || isDirectConv) && !artifactTask)) {
               const userMsg = await messageRepo.createAndUpdateConv({
@@ -586,12 +596,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                 : "完整流水线";
             }
 
-            // Filter to only enabled agents
-            const enabledAgentNames = convAgents.filter(a => a.enabled).map(a => a.agentName);
-            matchedAgents = matchedAgents.filter(a => enabledAgentNames.includes(a));
-            if (matchedAgents.length === 0) {
-              matchedAgents = enabledAgentNames.length > 0 ? [enabledAgentNames[0]] : ["planner"];
-            }
+            // Route only to agents that belong to this conversation. Custom agents can satisfy
+            // built-in roles, e.g. "Frontend Agent" can receive a worker/code task.
+            matchedAgents = selectEnabledAgentsForTask(matchedAgents, enabledAgentNames);
 
             const userMsg = await messageRepo.createAndUpdateConv({
               conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: matchedAgents,
@@ -683,11 +690,27 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
 
           case "agent:list": {
             if (!await checkConversationAccess(ws, msg.conversationId, userId)) break;
+            const conv = await conversationRepo.getById(msg.conversationId);
+            if (!conv) { sendError(ws, "NOT_FOUND", "Conversation not found"); break; }
             const agents = await conversationAgentRepo.listByConversation(msg.conversationId);
+            const participants = getParticipants(conv);
+            const initialAgentNames = buildInitialConversationAgentNames(participants, conv.type);
+            const hasExplicitParticipantAgents = initialAgentNames.some((name) => !isCoordinatorAgent(name));
+            const visibleAgentNames = hasExplicitParticipantAgents
+              ? initialAgentNames
+              : agents.map((agent) => agent.agentName);
+            const agentMap = new Map(agents.map((agent) => [agent.agentName, agent]));
             ws.send(JSON.stringify({
               type: "agent:list:results",
               conversationId: msg.conversationId,
-              agents: agents.map(a => ({ agentName: a.agentName, enabled: a.enabled, addedAt: a.addedAt.getTime() })),
+              agents: visibleAgentNames.map((agentName) => {
+                const entry = agentMap.get(agentName);
+                return {
+                  agentName,
+                  enabled: entry?.enabled ?? true,
+                  addedAt: entry?.addedAt.getTime() ?? conv.createdAt.getTime(),
+                };
+              }),
               timestamp: Date.now(),
             }));
             break;
@@ -726,14 +749,17 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const conv = await conversationRepo.getById(msg.conversationId);
             if (!conv) { sendError(ws, "NOT_FOUND", "Conversation not found"); break; }
             const participants = getParticipants(conv);
-            const userIds = participants.filter((p) => !AGENT_NAMES.includes(p));
+            const agentNames = buildInitialConversationAgentNames(participants, conv.type);
+            const agentNameSet = new Set(agentNames);
+            const userIds = participants.filter((p) => !isCoordinatorAgent(p) && !AGENT_NAMES.includes(p) && !agentNameSet.has(p));
             const users = await userRepo.getByIds(userIds);
             const userMap = new Map(users.map((u) => [u.id, u]));
-            const members = participants.map((pid) => {
-              if (AGENT_NAMES.includes(pid)) return { userId: pid, userName: pid, role: "agent", joinedAt: 0 };
+            const agentMembers = agentNames.map((agentName) => ({ userId: agentName, userName: agentName, role: "agent", joinedAt: 0 }));
+            const userMembers = participants.map((pid) => {
               const u = userMap.get(pid);
               return u ? { userId: u.id, userName: u.name, role: "member", joinedAt: u.createdAt.getTime() } : null;
             }).filter(Boolean);
+            const members = [...agentMembers, ...userMembers];
             ws.send(JSON.stringify({ type: "member:list:results", conversationId: msg.conversationId, members, timestamp: Date.now() }));
             break;
           }
@@ -888,13 +914,19 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
           case "agent:assign": {
             const targetConvId = msg.conversationId || currentRoom;
             if (!targetConvId) { sendError(ws, "NO_CONVERSATION", "No conversation selected"); break; }
+            if (!await checkConversationAccess(ws, targetConvId, userId)) break;
+            const conv = await conversationRepo.getById(targetConvId);
+            const convAgents = await conversationAgentRepo.listByConversation(targetConvId);
+            const participants = conv ? getParticipants(conv) : [];
+            const enabledAgentNames = getEffectiveEnabledAgentNames(participants, conv?.type ?? "group", convAgents);
+            const targetAgents = selectEnabledAgentsForTask([msg.agentId], enabledAgentNames);
             const userMsg = {
               id: msg.clientMsgId || crypto.randomUUID(),
               conversationId: targetConvId,
               type: "user_message",
               sender: "user",
               content: msg.content,
-              mentions: [msg.agentId],
+              mentions: targetAgents,
               timestamp: Date.now(),
             };
             await messageRepo.create(userMsg);
@@ -904,10 +936,12 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               subscribedRooms.add(targetConvId);
             }
             currentRoom = targetConvId;
-            broadcast(targetConvId, { type: "agent:typing", conversationId: targetConvId, agentId: msg.agentId, agentName: msg.agentId, isTyping: true });
+            for (const agentId of targetAgents) {
+              broadcast(targetConvId, { type: "agent:typing", conversationId: targetConvId, agentId, agentName: agentId, isTyping: true });
+            }
             try {
               const queue = getQueue();
-              queue.enqueue({ workspaceId: "default", conversationId: targetConvId, userId: "system", task: msg.content, mentions: [msg.agentId], broadcast: (event) => {
+              queue.enqueue({ workspaceId: "default", conversationId: targetConvId, userId: "system", task: msg.content, mentions: targetAgents, broadcast: (event) => {
                 broadcast(targetConvId, event);
               }});
             } catch (err) { sendError(ws, "AGENT_ERROR", `Failed to assign agent: ${err}`); }

@@ -5,6 +5,7 @@ import type { Artifact } from "@agenthub/shared";
 import { jobRepo } from "../db/repositories/job";
 import { messageRepo } from "../db/repositories/message";
 import { logger } from "../utils/logger";
+import { resolveVisibleAgentForRole } from "../agents/conversation-routing";
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
 const DEFAULT_TIMEOUT = 300_000;
@@ -227,6 +228,8 @@ export class MemoryQueue implements IJobQueue {
         ...data,
       });
     };
+    const activeAgents = payload.mentions.length > 0 ? payload.mentions : ["planner"];
+    const visibleAgentForRole = (role: string) => resolveVisibleAgentForRole(role, activeAgents);
 
     let timedOut = false;
     const timeoutHandle = setTimeout(() => {
@@ -257,8 +260,8 @@ export class MemoryQueue implements IJobQueue {
             switch (event.type) {
         case "system": {
           const systemText = String(msg.msg || msg);
-          emit({ type: "agent:status", agentId: "planner", status: "acting", lastOutput: systemText });
-          emit({ type: "agent:stream", agentId: "planner", chunk: systemText, messageId: `${jobId}-system` });
+          emit({ type: "agent:status", agentId: visibleAgentForRole("planner"), status: "acting", lastOutput: systemText });
+          emit({ type: "agent:stream", agentId: visibleAgentForRole("planner"), chunk: systemText, messageId: `${jobId}-system` });
           break;
         }
 
@@ -268,7 +271,7 @@ export class MemoryQueue implements IJobQueue {
           const stepsArr = plan as Array<{ id: string; task: string }>;
           if (Array.isArray(stepsArr)) {
             for (const s of stepsArr) {
-              emit({ type: "step:started", stepId: s.id, task: s.task, agentRole: "planner" });
+              emit({ type: "step:started", stepId: s.id, task: s.task, agentRole: visibleAgentForRole("planner") });
             }
           }
           break;
@@ -282,7 +285,7 @@ export class MemoryQueue implements IJobQueue {
               const step = JSON.parse(json);
               emit({
                 type: "agent:step",
-                agentId: "worker",
+                agentId: visibleAgentForRole("worker"),
                 iteration: step.iteration ?? 0,
                 thought: step.thought ?? "",
                 action: step.action,
@@ -290,25 +293,25 @@ export class MemoryQueue implements IJobQueue {
                 isFinal: step.isFinal ?? false,
               });
             } catch {
-              emit({ type: "agent:stream", agentId: "worker", chunk, messageId: `${jobId}-stream` });
+              emit({ type: "agent:stream", agentId: visibleAgentForRole("worker"), chunk, messageId: `${jobId}-stream` });
             }
           } else if (chunk.startsWith("[任务接收确认]")) {
-            const agentId = chunk.includes("调研") ? "researcher"
+            const agentRole = chunk.includes("调研") ? "researcher"
               : chunk.includes("润色") || chunk.includes("整合") ? "refiner"
               : "worker";
-            emit({ type: "agent:stream", agentId, chunk, messageId: `${jobId}-receipt` });
+            emit({ type: "agent:stream", agentId: visibleAgentForRole(agentRole), chunk, messageId: `${jobId}-receipt` });
           } else if (chunk.startsWith("## ") && chunk.includes("工作报告")) {
-            const agentId = chunk.includes("调研") ? "researcher"
+            const agentRole = chunk.includes("调研") ? "researcher"
               : chunk.includes("审查") ? "critic"
               : chunk.includes("优化") || chunk.includes("润色") ? "refiner"
               : "worker";
-            emit({ type: "agent:stream", agentId, chunk, messageId: `${jobId}-report` });
+            emit({ type: "agent:stream", agentId: visibleAgentForRole(agentRole), chunk, messageId: `${jobId}-report` });
           } else if (chunk.startsWith("## ") && chunk.includes("评审结果")) {
-            emit({ type: "agent:stream", agentId: "critic", chunk, messageId: `${jobId}-critic` });
+            emit({ type: "agent:stream", agentId: visibleAgentForRole("critic"), chunk, messageId: `${jobId}-critic` });
           } else if (chunk.startsWith("## 任务拆解") || chunk.startsWith("## 任务分配")) {
-            emit({ type: "agent:stream", agentId: "planner", chunk, messageId: `${jobId}-plan-detail` });
+            emit({ type: "agent:stream", agentId: visibleAgentForRole("planner"), chunk, messageId: `${jobId}-plan-detail` });
           } else {
-            emit({ type: "agent:stream", agentId: "worker", chunk, messageId: `${jobId}-stream` });
+            emit({ type: "agent:stream", agentId: visibleAgentForRole("worker"), chunk, messageId: `${jobId}-stream` });
           }
           break;
         }
@@ -337,12 +340,12 @@ export class MemoryQueue implements IJobQueue {
 
         case "research": {
           const r = String((msg as unknown) ?? msg);
-          emit({ type: "agent:stream", agentId: "researcher", chunk: r, messageId: `${jobId}-research` });
+          emit({ type: "agent:stream", agentId: visibleAgentForRole("researcher"), chunk: r, messageId: `${jobId}-research` });
           break;
         }
 
         case "refine": {
-          emit({ type: "agent:stream", agentId: "refiner", chunk: String((msg as unknown) ?? msg), messageId: `${jobId}-refine` });
+          emit({ type: "agent:stream", agentId: visibleAgentForRole("refiner"), chunk: String((msg as unknown) ?? msg), messageId: `${jobId}-refine` });
           break;
         }
 
@@ -380,7 +383,7 @@ export class MemoryQueue implements IJobQueue {
             emit({ type: "artifact:created", artifact: persistedArtifact });
             if (!payload.conversationId) return;
 
-            const sender = artifactSender(persistedArtifact);
+            const sender = visibleAgentForRole(artifactSender(persistedArtifact));
             const artifactMsg = await messageRepo.createAndUpdateConv({
               conversationId: payload.conversationId,
               type: "agent_message",
@@ -489,14 +492,16 @@ export class MemoryQueue implements IJobQueue {
 
           if (payload.conversationId) {
             if (final.summary) {
+              const summarySender = visibleAgentForRole("refiner");
               const summaryMsg = await messageRepo.createAndUpdateConv({
                 conversationId: payload.conversationId,
                 type: "agent_message",
-                sender: "refiner",
+                sender: summarySender,
+                senderId: summarySender,
                 content: String(final.summary).slice(0, 2000),
                 payload: { ...(final as Record<string, unknown>), kind: "final_summary", jobId, workflowRef: payload.workflowRef },
               });
-              emit({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, content: summaryMsg.content, payload: { ...(final as Record<string, unknown>), kind: "final_summary", jobId, workflowRef: payload.workflowRef }, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
+              emit({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, senderId: summaryMsg.senderId ?? undefined, content: summaryMsg.content, payload: { ...(final as Record<string, unknown>), kind: "final_summary", jobId, workflowRef: payload.workflowRef }, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
             }
           }
 
