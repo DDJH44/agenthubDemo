@@ -147,7 +147,8 @@ export class Orchestrator {
     predefinedPlan?: PlanNode[],
     edges?: Array<{ source: string; target: string; label?: string }>,
     conversationId?: string,
-    signal?: AbortSignal
+    signal?: AbortSignal,
+    runtimePrompt?: string
   ) {
     if (signal?.aborted) return { task, plan: [], stepResults: [], summary: "" };
     if (conversationId) {
@@ -173,6 +174,9 @@ export class Orchestrator {
       } catch (err) {
         logger.warn(`Failed to load conversation messages: ${err}`, 'Orchestrator');
       }
+    }
+    if (runtimePrompt?.trim()) {
+      this.memoryPrompt = [runtimePrompt.trim(), this.memoryPrompt].filter(Boolean).join("\n\n");
     }
 
     onStream({ type: "system", msg: formatTaskConfirmation(task) });

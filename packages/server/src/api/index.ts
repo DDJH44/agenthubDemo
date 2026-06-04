@@ -1122,6 +1122,7 @@ registerRoute("PUT", "/api/user-agents/:id", async (req, res) => {
   const body = await readJsonBody(req) as Record<string, unknown>;
   const updates: Record<string, string> = {};
   if (body.name) updates.name = String(body.name);
+  if (body.type) updates.type = String(body.type);
   if (body.config) updates.config = JSON.stringify(body.config);
   if (body.permissions) updates.permissions = JSON.stringify(body.permissions);
   if (body.status) updates.status = String(body.status);

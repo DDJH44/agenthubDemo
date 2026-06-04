@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type { UserAgent } from "@agenthub/shared";
 import { MAIN_AGENT, MAIN_AGENT_ID, AVATAR_COLORS } from "@agenthub/shared";
+import { api } from "@/lib/api-client";
 
 const STORAGE_KEY = "agenthub-user-agents";
 
@@ -24,29 +25,102 @@ function getAuthToken(): string | null {
   return localStorage.getItem("agenthub-auth-token");
 }
 
-// 将服务端 DB 记录映射为前端 UserAgent 格式
-function mapServerAgent(raw: {
-  id: string; name: string; type: string; config: string; permissions: string;
-  status?: string; createdAt?: string | Date; updatedAt?: string | Date;
-}): UserAgent {
-  let config: { model?: string; systemPrompt?: string; apiKeyRef?: string; baseURL?: string } = {};
-  try { config = JSON.parse(raw.config); } catch {}
+type ServerAgentRecord = {
+  id: string;
+  name: string;
+  type: string;
+  config: string;
+  permissions: string;
+  status?: string;
+  createdAt?: string | Date;
+  updatedAt?: string | Date;
+};
 
-  const agentTypes = ["planner", "worker", "critic", "researcher", "refiner", "coder", "reviewer", "browser"];
+function parseJsonObject(raw: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseJsonArray(raw: string): string[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function toServerPayload(agent: UserAgent) {
+  return {
+    name: agent.name,
+    type: agent.role,
+    config: {
+      model: agent.model,
+      systemPrompt: agent.systemPrompt,
+      avatar: agent.avatar,
+      avatarBg: agent.avatarBg,
+      tools: agent.tools,
+    },
+    permissions: agent.tools,
+  };
+}
+
+// 将服务端 DB 记录映射为前端 UserAgent 格式
+function mapServerAgent(raw: ServerAgentRecord): UserAgent {
+  const config = parseJsonObject(raw.config) as {
+    model?: string;
+    systemPrompt?: string;
+    avatar?: string;
+    avatarBg?: string;
+    tools?: string[];
+  };
+  const permissions = parseJsonArray(raw.permissions);
+
+  const agentTypes = ["planner", "worker", "critic", "researcher", "refiner", "coder", "reviewer", "browser", "frontend", "backend", "design", "custom"];
   const role = agentTypes.includes(raw.type) ? raw.type as UserAgent["role"] : "custom" as UserAgent["role"];
+  const tools = Array.isArray(config.tools) && config.tools.length > 0 ? config.tools : permissions;
 
   return {
     id: raw.id,
     name: raw.name,
-    avatar: "",
-    avatarBg: AVATAR_COLORS[raw.name.charCodeAt(0) % AVATAR_COLORS.length],
+    avatar: config.avatar || "",
+    avatarBg: config.avatarBg || AVATAR_COLORS[raw.name.charCodeAt(0) % AVATAR_COLORS.length],
     role,
     model: (config.model || "gpt-4o-mini") as UserAgent["model"],
     systemPrompt: config.systemPrompt || `我是 ${raw.name}`,
-    tools: [],
+    tools: tools as UserAgent["tools"],
     createdAt: raw.createdAt ? new Date(raw.createdAt).getTime() : Date.now(),
     updatedAt: raw.updatedAt ? new Date(raw.updatedAt).getTime() : Date.now(),
   };
+}
+
+async function syncCreateAgent(agent: UserAgent, replaceAgent: (oldId: string, next: UserAgent) => void) {
+  if (!getAuthToken()) return;
+  try {
+    const data = await api.post<{ agent: ServerAgentRecord }>("/api/user-agents", toServerPayload(agent));
+    replaceAgent(agent.id, mapServerAgent(data.agent));
+  } catch {
+    // Keep local optimistic copy; hydrate will reconcile when the server is available.
+  }
+}
+
+async function syncUpdateAgent(agent: UserAgent, replaceAgent: (oldId: string, next: UserAgent) => void) {
+  if (!getAuthToken()) return;
+  try {
+    const data = await api.put<{ agent: ServerAgentRecord }>(`/api/user-agents/${agent.id}`, toServerPayload(agent));
+    replaceAgent(agent.id, mapServerAgent(data.agent));
+  } catch {
+    await syncCreateAgent(agent, replaceAgent);
+  }
+}
+
+async function syncDeleteAgent(agentId: string) {
+  if (!getAuthToken()) return;
+  try { await api.delete<{ ok: boolean }>(`/api/user-agents/${agentId}`); } catch {}
 }
 
 interface UserAgentStore {
@@ -70,20 +144,39 @@ export const useUserAgentStore = create<UserAgentStore>((set, get) => ({
     const now = Date.now();
     const agent: UserAgent = { ...input, id: crypto.randomUUID(), createdAt: now, updatedAt: now };
     set((s) => { const next = [...s.agents, agent]; saveToStorage(next); return { agents: next }; });
+    void syncCreateAgent(agent, (oldId, synced) => {
+      set((s) => {
+        const next = s.agents.map((item) => item.id === oldId ? synced : item);
+        saveToStorage(next);
+        return { agents: next };
+      });
+    });
     return agent;
   },
 
   updateAgent: (id, updates) => {
+    let updatedAgent: UserAgent | undefined;
     set((s) => {
       const next = s.agents.map((a) => a.id === id ? { ...a, ...updates, updatedAt: Date.now() } : a);
+      updatedAgent = next.find((agent) => agent.id === id);
       saveToStorage(next);
       return { agents: next };
     });
+    if (updatedAgent) {
+      void syncUpdateAgent(updatedAgent, (oldId, synced) => {
+        set((s) => {
+          const next = s.agents.map((item) => item.id === oldId ? synced : item);
+          saveToStorage(next);
+          return { agents: next };
+        });
+      });
+    }
   },
 
   removeAgent: (id) => {
     if (id === MAIN_AGENT_ID) return;
     set((s) => { const next = s.agents.filter((a) => a.id !== id); saveToStorage(next); return { agents: next }; });
+    void syncDeleteAgent(id);
   },
 
   getAgent: (id) => {
@@ -106,13 +199,7 @@ export const useUserAgentStore = create<UserAgentStore>((set, get) => ({
       const token = getAuthToken();
       if (!token) { set({ hydrated: true, loading: false }); return; }
 
-      const baseUrl = `${window.location.protocol}//${window.location.hostname}:3002`;
-      const res = await fetch(`${baseUrl}/api/user-agents`, {
-        headers: { "Authorization": `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch");
-
-      const data = await res.json() as { agents: Array<{ id: string; name: string; type: string; config: string; permissions: string; status?: string; createdAt?: string; updatedAt?: string }> };
+      const data = await api.get<{ agents: ServerAgentRecord[] }>("/api/user-agents");
       const serverAgents = (data.agents || []).map(mapServerAgent);
 
       set({ agents: serverAgents, hydrated: true, loading: false });

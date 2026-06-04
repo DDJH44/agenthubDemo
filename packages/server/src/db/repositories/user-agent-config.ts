@@ -24,7 +24,7 @@ export const userAgentConfigRepo = {
     return prisma.userAgentConfig.findUnique({ where: { id } });
   },
 
-  async update(id: string, data: { name?: string; config?: string; permissions?: string; status?: string }) {
+  async update(id: string, data: { name?: string; type?: string; config?: string; permissions?: string; status?: string }) {
     return prisma.userAgentConfig.update({ where: { id }, data });
   },
 

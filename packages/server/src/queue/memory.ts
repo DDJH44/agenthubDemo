@@ -6,6 +6,7 @@ import { jobRepo } from "../db/repositories/job";
 import { messageRepo } from "../db/repositories/message";
 import { logger } from "../utils/logger";
 import { resolveVisibleAgentForRole } from "../agents/conversation-routing";
+import { buildAgentRuntimePrompt, chooseRuntimeModel, resolveAgentRuntimeProfiles } from "../agents/runtime-profile";
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
 const DEFAULT_TIMEOUT = 300_000;
@@ -213,8 +214,6 @@ export class MemoryQueue implements IJobQueue {
     const controller = new AbortController();
     this.controllers.set(jobId, controller);
 
-    const adapter = createAdapterFromEnv();
-    const orchestrator = createOrchestrator(adapter);
     const steps: Array<{ id: string; task: string; result: string }> = [];
     const b = payload.broadcast;
     const timeout = payload.timeoutMs ?? DEFAULT_TIMEOUT;
@@ -230,6 +229,25 @@ export class MemoryQueue implements IJobQueue {
     };
     const activeAgents = payload.mentions.length > 0 ? payload.mentions : ["planner"];
     const visibleAgentForRole = (role: string) => resolveVisibleAgentForRole(role, activeAgents);
+    let runtimeProfiles: Awaited<ReturnType<typeof resolveAgentRuntimeProfiles>> = [];
+    try {
+      runtimeProfiles = await resolveAgentRuntimeProfiles(payload.userId, activeAgents);
+    } catch (err) {
+      logger.warn(`Failed to load agent runtime profiles: ${err}`, 'MemoryQueue');
+    }
+    const runtimePrompt = buildAgentRuntimePrompt(runtimeProfiles);
+    const runtimeModel = chooseRuntimeModel(runtimeProfiles);
+    const adapter = createAdapterFromEnv(runtimeModel ? { model: runtimeModel } : undefined);
+    const orchestrator = createOrchestrator(adapter);
+
+    if (runtimeProfiles.some((profile) => profile.configured)) {
+      emit({
+        type: "agent:status",
+        agentId: activeAgents.find((name) => name !== "planner") ?? activeAgents[0] ?? "planner",
+        status: "acting",
+        lastOutput: `已加载 ${runtimeProfiles.filter((profile) => profile.configured).length} 个自建智能体配置${runtimeModel ? `，模型偏好：${runtimeModel}` : ""}`,
+      });
+    }
 
     let timedOut = false;
     const timeoutHandle = setTimeout(() => {
@@ -517,7 +535,7 @@ export class MemoryQueue implements IJobQueue {
           break;
         }
       }
-        }, payload.plan, payload.edges, payload.conversationId, controller.signal
+        }, payload.plan, payload.edges, payload.conversationId, controller.signal, runtimePrompt
         ),
         new Promise<never>((_, reject) => controller.signal.addEventListener("abort", () => {
           reject(new DOMException("Job cancelled", "AbortError"));
