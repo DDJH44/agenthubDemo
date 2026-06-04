@@ -142,6 +142,99 @@ interface TaskPanelItem {
   subTasks?: string[];
 }
 
+interface ConversationStepItem {
+  id?: string;
+  step: string;
+  status: "pending" | "running" | "done";
+  result?: string;
+}
+
+function messagePayload(message: Message | undefined): Record<string, unknown> {
+  if (!message?.payload || typeof message.payload !== "object" || Array.isArray(message.payload)) return {};
+  return message.payload;
+}
+
+function latestTaskStatusMessage(messages: Message[]) {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    const payload = messagePayload(message);
+    if (message.type === "task_card" || payload.kind === "task_status") return message;
+  }
+  return undefined;
+}
+
+function taskPanelStatus(status: string | undefined) {
+  if (status === "done" || status === "completed" || status === "success") return "done";
+  if (status === "running" || status === "deploying") return "running";
+  if (status === "failed" || status === "error") return "failed";
+  return "waiting";
+}
+
+function taskPanelProgress(status: string) {
+  if (status === "done") return 100;
+  if (status === "running") return 64;
+  if (status === "failed") return 100;
+  return 0;
+}
+
+function taskItemsFromPayload(payload: Record<string, unknown>): TaskPanelItem[] {
+  const activeAgent = typeof payload.activeAgentId === "string" ? payload.activeAgentId : typeof payload.agentId === "string" ? payload.agentId : "agent";
+  if (!Array.isArray(payload.items)) return [];
+  return payload.items
+    .filter((item): item is { label?: unknown; status?: unknown } => Boolean(item) && typeof item === "object")
+    .map((item, index) => {
+      const status = taskPanelStatus(typeof item.status === "string" ? item.status : undefined);
+      return {
+        id: `task-payload-${index}`,
+        taskName: typeof item.label === "string" ? item.label : "任务步骤",
+        taskDescription: "来自当前会话任务状态",
+        agentName: activeAgent,
+        status,
+        progress: taskPanelProgress(status),
+      };
+    });
+}
+
+function taskItemsFromConversationSteps(steps: ConversationStepItem[] | undefined): TaskPanelItem[] {
+  return (steps ?? []).map((step, index) => {
+    const status = taskPanelStatus(step.status);
+    return {
+      id: step.id || `conversation-step-${index}`,
+      taskName: step.step,
+      taskDescription: step.result ? step.result.slice(0, 180) : "来自当前会话任务拆解",
+      agentName: "agent",
+      status,
+      progress: taskPanelProgress(status),
+    };
+  });
+}
+
+function scopedMessagesForTask(messages: Message[], taskMessage: Message | undefined) {
+  if (!taskMessage) return messages;
+  const taskPayload = messagePayload(taskMessage);
+  const jobId = typeof taskPayload.jobId === "string" ? taskPayload.jobId : "";
+  return messages.filter((message) => {
+    if (message.id === taskMessage.id) return true;
+    const payload = messagePayload(message);
+    if (jobId && payload.jobId === jobId) return true;
+    return message.timestamp >= taskMessage.timestamp;
+  });
+}
+
+function progressFromItems(items: TaskPanelItem[]) {
+  const completed = items.filter((item) => item.status === "done").length;
+  const inProgress = items.filter((item) => item.status === "running").length;
+  const waiting = items.filter((item) => item.status !== "done" && item.status !== "running").length;
+  const total = items.length;
+  return {
+    completed,
+    inProgress,
+    waiting,
+    total,
+    percentage: total ? Math.round((completed / total) * 100) : 0,
+  };
+}
+
 function getArtifactLanguage(artifact: Artifact) {
   const ext = artifact.filename?.split(".").pop()?.toLowerCase();
   return LANG_MAP[ext ?? ""] ?? LANG_MAP[artifact.type] ?? "plaintext";
@@ -405,41 +498,62 @@ function OrchestrationBoard({
 }
 
 function TaskPanel({ messages }: { messages: Message[] }) {
+  const activeConversationId = useChatStore((state) => state.activeConversationId);
+  const conversationTasks = useChatStore((state) => state.conversationTasks);
   const taskFlow = useChatStore((state) => state.taskFlow);
   const taskProgress = useChatStore((state) => state.taskProgress);
   const sessionAgentStatuses = useChatStore((state) => state.sessionAgentStatuses);
   const workspace = useWorkspaceStore();
-  const items = taskFlow.length > 0 ? taskFlow : workspace.plan.map((node) => {
+  const latestTaskMessage = latestTaskStatusMessage(messages);
+  const latestTaskPayload = messagePayload(latestTaskMessage);
+  const currentTaskState = activeConversationId ? conversationTasks[activeConversationId] : undefined;
+  const payloadItems = taskItemsFromPayload(latestTaskPayload);
+  const conversationItems = taskItemsFromConversationSteps(currentTaskState?.steps);
+  const workspaceItems = workspace.plan.map((node) => {
     const dagNode = workspace.dagNodes.find((item) => item.id === node.id);
+    const status = dagNode?.status === "done" ? "done" : dagNode?.status === "running" ? "running" : "waiting";
     return {
       id: node.id,
       taskName: node.task,
       taskDescription: node.dependsOn.length ? `依赖：${node.dependsOn.join("、")}` : "无前置依赖",
       agentName: node.agentRole ?? "agent",
-      status: dagNode?.status === "done" ? "done" : dagNode?.status === "running" ? "running" : "waiting",
-      progress: dagNode?.status === "done" ? 100 : dagNode?.status === "running" ? 60 : 0,
+      status,
+      progress: taskPanelProgress(status),
     };
   });
+  const hasCurrentTask = Boolean(latestTaskMessage || currentTaskState?.isStreaming || currentTaskState?.steps.length);
+  const items = payloadItems.length > 0
+    ? payloadItems
+    : conversationItems.length > 0
+      ? conversationItems
+      : hasCurrentTask
+        ? []
+        : workspaceItems.length > 0
+          ? workspaceItems
+          : taskFlow;
+  const scopedMessages = scopedMessagesForTask(messages, latestTaskMessage);
+  const derivedProgress = progressFromItems(items);
+  const displayProgress = hasCurrentTask || items !== taskFlow ? derivedProgress : taskProgress;
 
   if (items.length === 0) {
-    return <EmptyState title="暂无任务" desc="启动验收演示后，这里会展示 PMO 的拆解步骤。" mascot="working" />;
+    return <EmptyState title={hasCurrentTask ? "等待任务同步" : "暂无任务"} desc={hasCurrentTask ? "PMO 已收到新任务，任务拆解生成后会自动同步到这里。" : "启动任务后，这里会展示 PMO 的拆解步骤。"} mascot="working" />;
   }
 
   return (
     <div>
       <SectionHeader title="任务拆解" desc="主 Agent 的计划、子 Agent 分工与执行状态。" />
-      <OrchestrationBoard items={items} messages={messages} sessionAgentStatuses={sessionAgentStatuses} />
-      {taskProgress && (
+      <OrchestrationBoard items={items} messages={scopedMessages} sessionAgentStatuses={sessionAgentStatuses} />
+      {displayProgress && (
         <div className="mb-3 rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
           <div className="mb-2 flex items-center justify-between text-xs">
             <span style={{ color: "var(--fg-secondary)" }}>总进度</span>
-            <span className="font-semibold" style={{ color: "#174ea6" }}>{taskProgress.percentage}%</span>
+            <span className="font-semibold" style={{ color: "#174ea6" }}>{displayProgress.percentage}%</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-sm" style={{ background: "var(--surface-low)" }}>
-            <div className="h-full" style={{ width: `${taskProgress.percentage}%`, background: "#174ea6" }} />
+            <div className="h-full" style={{ width: `${displayProgress.percentage}%`, background: "#174ea6" }} />
           </div>
           <div className="mt-2 text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
-            已完成 {taskProgress.completed} / {taskProgress.total}，进行中 {taskProgress.inProgress}，等待 {taskProgress.waiting}
+            已完成 {displayProgress.completed} / {displayProgress.total}，进行中 {displayProgress.inProgress}，等待 {displayProgress.waiting}
           </div>
         </div>
       )}

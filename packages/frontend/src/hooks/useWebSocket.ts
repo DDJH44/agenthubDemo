@@ -210,7 +210,11 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         case "task:created": {
           const conversationId = eventConversationId(msg);
           if (conversationId) {
-            useChatStore.getState().setConversationStreaming(conversationId, true);
+            useChatStore.getState().addConversationPlan(conversationId, []);
+            if (isActiveConversation(conversationId)) {
+              useWorkspaceStore.getState().setPlan([]);
+              useTaskTreeStore.getState().buildFromPlan([]);
+            }
             upsertTaskStatusMessage(conversationId, taskLifecycleMessageId(msg.jobId), {
               title: "PMO 已收到任务",
               body: "正在理解目标，并准备拆解给合适的 Agent。",
