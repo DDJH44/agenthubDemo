@@ -6,6 +6,7 @@ import { AnalyzeAndAssignFlow } from "./AnalyzeAndAssignFlow";
 import { AgentStepList } from "./AgentStepList";
 import { ConversationNavBar } from "./ConversationNavBar";
 import { ContextBasket } from "./ContextBasket";
+import { CurrentTaskStatusBar } from "./CurrentTaskStatusBar";
 import { MentionSuggestions } from "./MentionSuggestions";
 import { MessageList } from "./MessageList";
 import { QuickReplyBar } from "./QuickReplyBar";
@@ -275,6 +276,13 @@ export function AgentChatPanel({
           产物
         </button>
       </div>
+      <CurrentTaskStatusBar
+        messages={messages}
+        steps={steps}
+        isStreaming={isStreaming}
+        taskSummary={taskSummary}
+        onJumpToLatest={() => scrollToLatest()}
+      />
 
       <div className="flex min-h-0 flex-1" style={{ background: "var(--surface-white)" }}>
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
