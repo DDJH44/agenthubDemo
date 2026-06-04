@@ -146,6 +146,10 @@ function parseArtifactMetadata(metadata: unknown, fallback?: Record<string, unkn
   }
 }
 
+function hasInlineCodeArtifact(result: string) {
+  return /```[^\r\n`]*[ \t]*(?:\r?\n)[\s\S]*?```|<!doctype html|<html[\s>]/i.test(result);
+}
+
 export class MemoryQueue implements IJobQueue {
   private handlers: Array<(result: JobResult) => void> = [];
   private statuses = new Map<string, "pending" | "running" | "completed" | "failed">();
@@ -445,8 +449,9 @@ export class MemoryQueue implements IJobQueue {
           };
 
           for (const sr of stepResults) {
-            if (sr.toolUsed === "code" || sr.toolUsed === "search") {
-              const codeArtifacts = sr.toolUsed === "code"
+            const hasCodeArtifact = sr.toolUsed === "code" || hasInlineCodeArtifact(sr.result);
+            if (hasCodeArtifact || sr.toolUsed === "search") {
+              const codeArtifacts = hasCodeArtifact
                 ? extractCodeArtifacts(sr.result, sr.id)
                 : [{ type: "markdown" as const, filename: `research-${sr.id}.md`, content: sr.result }];
               let artifactIndex = 0;

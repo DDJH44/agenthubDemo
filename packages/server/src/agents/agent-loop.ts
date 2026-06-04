@@ -274,6 +274,40 @@ function stringifyToolInput(input: unknown): string {
   try { return JSON.stringify(input); } catch { return String(input); }
 }
 
+const ARTIFACT_FILE_RE = /\.(html|css|js|jsx|ts|tsx|json|md|py|sh)$/i;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function languageFromPath(filePath: string) {
+  const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+  const languageMap: Record<string, string> = {
+    css: "css",
+    html: "html",
+    js: "javascript",
+    jsx: "jsx",
+    json: "json",
+    md: "markdown",
+    py: "python",
+    sh: "bash",
+    ts: "typescript",
+    tsx: "tsx",
+  };
+  return languageMap[ext] ?? ext;
+}
+
+export function artifactAnswerFromTool(toolName: string, toolInput: unknown): string | undefined {
+  if (toolName !== "write_file" || !isRecord(toolInput)) return undefined;
+
+  const filePath = asString(toolInput.path ?? toolInput.file);
+  const content = asString(toolInput.content ?? toolInput.text);
+  if (!filePath || !content || content.length < 40 || !ARTIFACT_FILE_RE.test(filePath)) return undefined;
+
+  const language = languageFromPath(filePath) || "text";
+  return `Generated artifact: ${filePath}\n\n\`\`\`${language}\n${content}\n\`\`\``;
+}
+
 async function buildFallbackAnswer(
   adapter: IAdapter,
   task: string,
@@ -368,6 +402,13 @@ export async function runAgentLoop(
         if (result.success) {
           consecutiveFailures = 0;
           step.observation = typeof result.data === "string" ? result.data : JSON.stringify(result.data, null, 2).slice(0, 4000);
+          const artifactAnswer = artifactAnswerFromTool(toolName, toolInput);
+          if (artifactAnswer) {
+            steps.push(step);
+            onStep?.(step);
+            logger.info(`Agent Loop completed after writing artifact in ${i + 1} iterations`, "AgentLoop");
+            return { steps, finalAnswer: artifactAnswer, iterations: i + 1, toolCalls };
+          }
         } else {
           consecutiveFailures++;
           step.observation = `错误: ${result.error}`;

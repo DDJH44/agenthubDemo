@@ -106,10 +106,11 @@ export class WorkerAgent extends BaseAgent {
 
       onStream?.(result.finalAnswer);
       this.memory.set(`result:${task.slice(0, 50)}`, result.finalAnswer);
+      const toolUsed = /```[\s\S]*?```|<!doctype html|<html[\s>]/i.test(result.finalAnswer) ? "code" : "agent-loop";
       return {
         task,
         result: result.finalAnswer,
-        toolUsed: "agent-loop",
+        toolUsed,
         toolResult: { iterations: result.iterations, toolCalls: result.toolCalls },
       };
     }

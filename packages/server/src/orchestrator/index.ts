@@ -288,6 +288,7 @@ export class Orchestrator {
     signal?: AbortSignal
   ) {
     const results = new Map<string, string>();
+    const toolUsedByStep = new Map<string, string | null | undefined>();
     const completed = new Set<string>();
     const remaining = new Map(steps.map((s) => [s.id, s]));
 
@@ -317,12 +318,13 @@ export class Orchestrator {
 
       for (let i = 0; i < wave.length; i++) {
         results.set(wave[i].id, waveResults[i].result);
+        toolUsedByStep.set(wave[i].id, waveResults[i].toolUsed);
         completed.add(wave[i].id);
         remaining.delete(wave[i].id);
       }
     }
 
-    return steps.map((s) => ({ id: s.id, task: s.task, result: results.get(s.id) ?? "" }));
+    return steps.map((s) => ({ id: s.id, task: s.task, result: results.get(s.id) ?? "", toolUsed: toolUsedByStep.get(s.id) }));
   }
 
   private async executeStep(
@@ -330,7 +332,7 @@ export class Orchestrator {
     results: Map<string, string>,
     onStream: (e: StreamEvent) => void,
     signal?: AbortSignal
-  ): Promise<{ result: string }> {
+  ): Promise<{ result: string; toolUsed?: string | null }> {
     const nodeType = step.type ?? "agent";
     const agentRole = step.agentRole ?? "worker";
 
@@ -349,7 +351,7 @@ export class Orchestrator {
           : `代码执行失败: ${execResult.error}`;
         const outputs = extractOutputInfo(output);
         onStream({ type: "stream", msg: `\n${formatWorkerReport(step.task, agentRole, `在 ${language} 沙箱中执行代码`, outputs)}` });
-        return { result: output };
+        return { result: output, toolUsed: "code" };
       }
 
       case "variable": {
@@ -420,7 +422,7 @@ export class Orchestrator {
         const outputs = extractOutputInfo(output);
         onStream({ type: "stream", msg: `\n${formatWorkerReport(step.task, agentRole, "已完成任务执行", outputs)}` });
 
-        return { result: output };
+        return { result: output, toolUsed: (workerResult as { toolUsed?: string | null }).toolUsed };
       }
     }
   }
