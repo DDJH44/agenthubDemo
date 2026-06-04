@@ -163,7 +163,7 @@ export function CommandPalette() {
                 runCommand(filtered[activeIndex]);
               }
             }}
-            placeholder="搜索页面、演示点或操作"
+            placeholder="搜索页面或操作"
             className="min-w-0 flex-1 bg-transparent text-sm outline-none"
             style={{ color: "var(--fg-primary)" }}
           />

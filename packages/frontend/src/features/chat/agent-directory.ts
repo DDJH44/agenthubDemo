@@ -27,7 +27,7 @@ export interface AgentConnection {
 export const CONNECTION_STATE_META: Record<AgentConnectionState, { label: string; shortLabel: string; color: string; bg: string; border: string }> = {
   local: { label: "内置可用", shortLabel: "内置", color: "#174ea6", bg: "rgba(23, 78, 166, 0.07)", border: "rgba(23, 78, 166, 0.16)" },
   live: { label: "真实适配器", shortLabel: "真实", color: "var(--success)", bg: "var(--success-subtle)", border: "var(--success-border)" },
-  demo: { label: "沙盒适配器", shortLabel: "沙盒", color: "#7c3aed", bg: "rgba(124, 58, 237, 0.08)", border: "rgba(124, 58, 237, 0.18)" },
+  demo: { label: "内置适配器", shortLabel: "内置", color: "#7c3aed", bg: "rgba(124, 58, 237, 0.08)", border: "rgba(124, 58, 237, 0.18)" },
   fallback: { label: "降级接管", shortLabel: "降级", color: "#9a6700", bg: "rgba(154, 103, 0, 0.10)", border: "rgba(154, 103, 0, 0.18)" },
   unconfigured: { label: "待配置", shortLabel: "待配", color: "var(--fg-tertiary)", bg: "var(--surface-low)", border: "var(--border)" },
 };
@@ -103,9 +103,9 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
     capabilities: ["构建部署", "发布回调", "日志诊断"],
     connection: {
       state: "demo",
-      label: "内置部署沙盒",
+      label: "内置部署通道",
       adapter: "deploy sandbox adapter",
-      boundary: "当前通过内置部署沙盒完成状态卡片、日志回写和预览链接；真实 Open Code 执行器按同一 adapter 接口接入。",
+      boundary: "当前通过内置部署通道完成状态卡片、日志回写和预览链接；真实 Open Code 执行器按同一 adapter 接口接入。",
       lastChecked: "部署面板执行时",
     },
   },

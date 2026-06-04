@@ -633,7 +633,7 @@ function buildWorkflowSlidesArtifact(output: WorkflowOutput) {
     "## 下一步",
     "- 在会话中引用关键段落继续追问",
     "- 对网页或代码产物进行预览、编辑和部署",
-    "- 将最终结果纳入版本历史与答辩演示",
+    "- 将最终结果纳入版本历史与项目汇报",
   ].filter(Boolean).join("\n");
 }
 
@@ -1396,7 +1396,7 @@ export function WorkflowsView() {
           <p className="text-[11px] font-semibold uppercase tracking-normal" style={{ color: "var(--accent)" }}>Workflow Studio</p>
           <h2 className="mt-1 text-lg font-bold" style={{ color: "var(--fg-primary)", fontFamily: "var(--font-heading)" }}>工作流</h2>
           <p className="mt-1 text-xs leading-5" style={{ color: "var(--fg-tertiary)" }}>
-            把常见多 Agent 协作沉淀为可复用流程，适合演示任务拆解、并行调度和失败降级。
+            把常见多 Agent 协作沉淀为可复用流程，用于固化任务拆解、并行调度和失败降级。
           </p>
         </div>
 

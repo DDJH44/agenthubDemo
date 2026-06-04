@@ -40,7 +40,7 @@ const CONNECTED_AGENTS = [
   { name: "Codex", tag: "代码", desc: "生成网页、代码和版本产物" },
   { name: "Claude Code", tag: "冲突", desc: "接管失败任务与 Diff 合并" },
   { name: "Open Code", tag: "部署", desc: "处理第三方平台部署状态" },
-  { name: "UX Reviewer", tag: "自建", desc: "复核演示路径与体验问题" },
+  { name: "UX Reviewer", tag: "自建", desc: "复核体验路径与交互问题" },
 ];
 
 function PlusIcon() {
