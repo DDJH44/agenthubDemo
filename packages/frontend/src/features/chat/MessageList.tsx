@@ -726,6 +726,14 @@ const MessageBubble = memo(function MessageBubble({
     !hasFencedCode &&
     isStandaloneHtmlContent(trimmedDisplayContent);
   const parts = useMemo(() => splitMessageContent(displayContent), [displayContent]);
+  const hasInlineCode = parts.some((part) => part.type === "code");
+  const isArtifactBubble = Boolean(
+    artifactType ||
+    htmlLike ||
+    hasInlineCode ||
+    ["diff_card", "deploy_card", "preview_card"].includes(message.type),
+  );
+  const bubbleMaxWidth = isUser ? (isArtifactBubble ? "82%" : "72%") : (isArtifactBubble ? "min(920px, 92%)" : "86%");
 
   const showAvatar = !prevMessage || prevMessage.sender !== message.sender || prevMessage.senderId !== message.senderId || message.timestamp - prevMessage.timestamp > 5 * 60 * 1000;
   const showDate = prevMessage && message.timestamp - prevMessage.timestamp > 30 * 60 * 1000;
@@ -765,7 +773,7 @@ const MessageBubble = memo(function MessageBubble({
           )
         )}
 
-        <div className="min-w-0" style={{ maxWidth: isUser ? "72%" : "86%" }}>
+        <div className="min-w-0" style={{ maxWidth: bubbleMaxWidth, width: isArtifactBubble ? "100%" : undefined }}>
           {showAvatar && (
             <div className={`mb-1 flex items-center gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
               <span className="text-xs font-bold" style={{ color: isUser ? "var(--accent)" : "var(--fg-secondary)" }}>

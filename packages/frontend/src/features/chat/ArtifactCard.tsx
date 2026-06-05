@@ -71,6 +71,9 @@ const HANDOFF_AGENTS = [
   { id: "ux-reviewer", label: "UX", sender: "refiner" },
 ];
 
+const CODE_CARD_COLLAPSED_HEIGHT = 360;
+const CODE_CARD_EXPANDED_HEIGHT = "min(68vh, 680px)";
+
 function currentTime() {
   return Date.now();
 }
@@ -151,6 +154,7 @@ function CodeView({
   const [editContent, setEditContent] = useState(content);
   const lang = getLanguage(type, language, filename);
   const langLabel = LANG_LABEL[lang] ?? lang.toUpperCase();
+  const codeHeight = expanded || editing ? CODE_CARD_EXPANDED_HEIGHT : CODE_CARD_COLLAPSED_HEIGHT;
 
   const handleSave = () => {
     onEdit?.(editContent);
@@ -205,7 +209,10 @@ function CodeView({
         </>
       }
     >
-      <div className="min-w-0" style={{ height: expanded || editing ? 420 : 220, width: "100%" }}>
+      <div
+        className="min-w-0 overflow-hidden"
+        style={{ height: codeHeight, width: "100%", minWidth: 0 }}
+      >
         {expanded || editing ? (
           <MonacoEditor
             height="100%"
@@ -243,13 +250,14 @@ function CodeView({
           <pre
             className="m-0 overflow-auto p-3 custom-scrollbar"
             style={{
-              height: 220,
-              maxHeight: 220,
+              height: CODE_CARD_COLLAPSED_HEIGHT,
+              maxHeight: CODE_CARD_COLLAPSED_HEIGHT,
               color: "var(--fg-secondary)",
               fontFamily: "var(--font-mono)",
-              fontSize: 11,
+              fontSize: 12,
               lineHeight: 1.6,
               minWidth: "100%",
+              overscrollBehavior: "contain",
               tabSize: 2,
               whiteSpace: "pre",
               wordBreak: "normal",

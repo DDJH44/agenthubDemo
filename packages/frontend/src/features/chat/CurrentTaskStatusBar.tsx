@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { Message } from "@agenthub/shared";
 
@@ -69,6 +69,14 @@ function findLatestTaskMessage(messages: Message[]) {
 function findLatestDeployMessage(messages: Message[]) {
   for (let index = messages.length - 1; index >= 0; index--) {
     if (messages[index].type === "deploy_card") return messages[index];
+  }
+  return undefined;
+}
+
+function findLatestUserMessage(messages: Message[]) {
+  for (let index = messages.length - 1; index >= 0; index--) {
+    const message = messages[index];
+    if (message.type === "user_message" || message.sender === "user") return message;
   }
   return undefined;
 }
@@ -174,11 +182,14 @@ export const CurrentTaskStatusBar = memo(function CurrentTaskStatusBar({
   taskSummary,
   onJumpToLatest,
 }: CurrentTaskStatusBarProps) {
+  const [dismissedStatusVersion, setDismissedStatusVersion] = useState("");
+
   const state = useMemo(() => {
     const taskMessage = findLatestTaskMessage(messages);
     const taskPayload = getPayload(taskMessage);
     const deployMessage = findLatestDeployMessage(messages);
     const deployPayload = getPayload(deployMessage);
+    const latestUserMessage = findLatestUserMessage(messages);
     const items = normalizeItems(taskPayload, steps);
     const taskStatus = String(taskPayload.status || (taskSummary ? "done" : isStreaming ? "running" : ""));
     const phase = normalizePhase(taskPayload, taskStatus, items, isStreaming, Boolean(taskSummary));
@@ -190,9 +201,22 @@ export const CurrentTaskStatusBar = memo(function CurrentTaskStatusBar({
     const deployUrl = typeof deployPayload.url === "string" ? deployPayload.url : "";
     const title = String(taskPayload.title || (taskSummary ? "任务结果已整理" : isStreaming ? "Agent 正在处理" : ""));
     const meta = statusMeta(taskStatus, phase, isStreaming);
+    const statusTimestamp = Math.max(taskMessage?.timestamp || 0, deployMessage?.timestamp || 0);
+    const statusVersion = [
+      taskMessage?.id || "task:none",
+      deployMessage?.id || "deploy:none",
+      phase,
+      taskStatus,
+      deployStatus,
+      String(artifactCount),
+      taskSummary ? "summary" : "no-summary",
+    ].join(":");
 
     return {
       hasTask: Boolean(taskMessage || steps.length > 0 || isStreaming || taskSummary || artifactCount > 0),
+      statusVersion,
+      statusTimestamp,
+      latestUserTimestamp: latestUserMessage?.timestamp || 0,
       title,
       meta,
       phase,
@@ -207,7 +231,24 @@ export const CurrentTaskStatusBar = memo(function CurrentTaskStatusBar({
     };
   }, [isStreaming, messages, steps, taskSummary]);
 
-  if (!state.hasTask) return null;
+  const isCompletedStatus = state.phase === "completed" && !deployNeedsAttention(state.deployStatus);
+  const isFailedStatus = state.phase === "failed" || state.deployStatus.toLowerCase() === "failed";
+
+  useEffect(() => {
+    if (!state.hasTask || !isCompletedStatus) return undefined;
+    const timer = window.setTimeout(() => {
+      setDismissedStatusVersion(state.statusVersion);
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [isCompletedStatus, state.hasTask, state.statusVersion]);
+
+  const shouldHideCompleted = isCompletedStatus && dismissedStatusVersion === state.statusVersion;
+  const shouldHideFailed =
+    isFailedStatus &&
+    state.statusTimestamp > 0 &&
+    state.latestUserTimestamp > state.statusTimestamp;
+
+  if (!state.hasTask || shouldHideCompleted || shouldHideFailed) return null;
 
   const totalSteps = state.items.length;
   const deployLabel = state.deployStatus === "done" || state.deployStatus === "success"
@@ -224,7 +265,7 @@ export const CurrentTaskStatusBar = memo(function CurrentTaskStatusBar({
     state.artifactCount ? `产物 ${state.artifactCount}` : "",
     deployLabel !== "未部署" ? deployLabel : "",
   ].filter(Boolean);
-  const shouldCompact = state.phase === "completed" && !deployNeedsAttention(state.deployStatus);
+  const shouldCompact = isCompletedStatus;
 
   if (shouldCompact) {
     return (
