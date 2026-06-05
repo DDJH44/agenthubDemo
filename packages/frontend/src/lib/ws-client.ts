@@ -15,14 +15,15 @@ export function getGlobalSend(): (msg: WSClientMessage) => void {
 }
 
 function getDefaultWsUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_WS_URL;
+  const configured = process.env.NEXT_PUBLIC_WS_URL?.trim();
   if (configured) return configured;
 
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const host = window.location.port === "3000"
-    ? `${window.location.hostname}:3002`
-    : window.location.host;
-  return `${protocol}://${host}/api/ws`;
+  const { hostname, host, port } = window.location;
+  const isLocalDevHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
+  const localDevPort = isLocalDevHost && port && port !== "3002";
+  const wsHost = localDevPort ? `${hostname}:3002` : host;
+  return `${protocol}://${wsHost}/api/ws`;
 }
 
 export function createAgentSocket(serverUrl?: string, token?: string) {
