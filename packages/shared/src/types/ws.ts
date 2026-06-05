@@ -45,7 +45,7 @@ export type WSClientMessage =
   | { type: "agent:disable"; conversationId: string; agentName: string }
   | { type: "agent:list"; conversationId: string }
   // Member management
-  | { type: "member:invite"; conversationId: string; userId: string }
+  | { type: "member:invite"; conversationId: string; userId?: string; email?: string; invitee?: string }
   | { type: "member:remove"; conversationId: string; userId: string }
   | { type: "member:list"; conversationId: string }
   // File management

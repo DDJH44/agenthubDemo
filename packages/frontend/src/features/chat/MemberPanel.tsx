@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useConversationAgentStore } from "@/stores/conversation-agent-store";
+import { useConversationMemberStore } from "@/stores/conversation-member-store";
 import { AGENT_COLORS } from "@agenthub/shared";
 
 interface MemberPanelProps {
@@ -11,8 +12,8 @@ interface MemberPanelProps {
 
 export function MemberPanel({ conversationId, onSendMessage }: MemberPanelProps) {
   const { agentsByConversation, toggleAgent } = useConversationAgentStore();
-  const [members, _setMembers] = useState<Array<{ userId: string; userName: string; role: string }>>([]);
-  const [inviteEmail, setInviteEmail] = useState("");
+  const members = useConversationMemberStore((state) => state.membersByConversation[conversationId]) ?? [];
+  const [inviteInput, setInviteInput] = useState("");
   const agents = agentsByConversation[conversationId] ?? [];
 
   useEffect(() => {
@@ -30,10 +31,10 @@ export function MemberPanel({ conversationId, onSendMessage }: MemberPanelProps)
   };
 
   const handleInvite = () => {
-    if (!inviteEmail.trim()) return;
-    // Send invite via WS - the backend will resolve email to userId
-    onSendMessage?.("member:invite", { conversationId, userId: inviteEmail.trim() });
-    setInviteEmail("");
+    const invitee = inviteInput.trim();
+    if (!invitee) return;
+    onSendMessage?.("member:invite", { conversationId, invitee, email: invitee, userId: invitee });
+    setInviteInput("");
   };
 
   const handleRemoveMember = (userId: string) => {
@@ -41,86 +42,108 @@ export function MemberPanel({ conversationId, onSendMessage }: MemberPanelProps)
   };
 
   return (
-    <div className="flex flex-col h-full" style={{ background: "var(--surface-white)" }}>
-      {/* Agent Controls */}
-      <div className="p-4 border-b" style={{ borderColor: "var(--border)" }}>
-        <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--text-primary)" }}>智能体控制</h3>
+    <div className="flex h-full flex-col" style={{ background: "var(--surface-white)" }}>
+      <section className="border-b p-4" style={{ borderColor: "var(--border)" }}>
+        <h3 className="mb-3 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>智能体控制</h3>
         <div className="flex flex-col gap-2">
           {agents.map((agent) => (
-            <div key={agent.agentName} className="flex items-center justify-between py-1.5 px-2 rounded-lg"
-              style={{ background: "var(--surface-low)" }}>
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full" style={{ background: AGENT_COLORS[agent.agentName] ?? "var(--accent)" }} />
-                <span className="text-xs font-medium capitalize" style={{ color: "var(--text-primary)" }}>
+            <div
+              key={agent.agentName}
+              className="flex items-center justify-between rounded-lg px-2 py-1.5"
+              style={{ background: "var(--surface-low)" }}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <div
+                  className="h-2 w-2 shrink-0 rounded-full"
+                  style={{ background: AGENT_COLORS[agent.agentName] ?? "var(--accent)" }}
+                />
+                <span className="truncate text-xs font-medium capitalize" style={{ color: "var(--text-primary)" }}>
                   {agent.agentName}
                 </span>
               </div>
               <button
+                type="button"
+                aria-label={agent.enabled ? `禁用 ${agent.agentName}` : `启用 ${agent.agentName}`}
                 onClick={() => handleToggleAgent(agent.agentName, agent.enabled)}
-                className="relative w-9 h-5 rounded-full transition-colors"
+                className="relative h-5 w-9 shrink-0 rounded-full transition-colors"
                 style={{ background: agent.enabled ? "var(--accent)" : "var(--border)" }}
               >
-                <div
-                  className="absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform"
+                <span
+                  className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform"
                   style={{ left: agent.enabled ? "18px" : "2px" }}
                 />
               </button>
             </div>
           ))}
           {agents.length === 0 && (
-            <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>加载中...</p>
+            <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>暂无可控制的智能体</p>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* Members List */}
-      <div className="flex-1 overflow-y-auto p-4">
-        <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--text-primary)" }}>成员</h3>
+      <section className="flex-1 overflow-y-auto p-4">
+        <h3 className="mb-3 text-sm font-semibold" style={{ color: "var(--text-primary)" }}>成员</h3>
         <div className="flex flex-col gap-1">
-          {members.map((m) => (
-            <div key={m.userId} className="flex items-center justify-between py-1.5 px-2 rounded-lg"
-              style={{ background: "var(--surface-low)" }}>
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center text-white text-xs"
-                  style={{ background: "var(--accent)" }}>
-                  {m.userName.charAt(0).toUpperCase()}
+          {members.map((member) => (
+            <div
+              key={member.userId}
+              className="flex items-center justify-between rounded-lg px-2 py-1.5"
+              style={{ background: "var(--surface-low)" }}
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <div
+                  className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs text-white"
+                  style={{ background: member.role === "agent" ? "var(--accent)" : "var(--accent-strong)" }}
+                >
+                  {member.userName.charAt(0).toUpperCase()}
                 </div>
-                <span className="text-xs" style={{ color: "var(--text-primary)" }}>{m.userName}</span>
-                <span className="text-xs px-1 rounded" style={{ background: "var(--accent-container)", color: "var(--accent)", fontSize: 9 }}>
-                  {m.role}
+                <span className="truncate text-xs" style={{ color: "var(--text-primary)" }}>{member.userName}</span>
+                <span
+                  className="rounded px-1 text-[9px]"
+                  style={{ background: "var(--accent-container)", color: "var(--accent)" }}
+                >
+                  {member.role === "agent" ? "Agent" : "成员"}
                 </span>
               </div>
-              {m.role !== "agent" && (
-                <button onClick={() => handleRemoveMember(m.userId)}
-                  className="text-xs px-1.5 py-0.5 rounded"
-                  style={{ color: "#ba1a1a", fontSize: 9 }}>
+              {member.role !== "agent" && (
+                <button
+                  type="button"
+                  onClick={() => handleRemoveMember(member.userId)}
+                  className="shrink-0 rounded px-1.5 py-0.5 text-[9px]"
+                  style={{ color: "#ba1a1a" }}
+                >
                   移除
                 </button>
               )}
             </div>
           ))}
+          {members.length === 0 && (
+            <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>暂无成员信息</p>
+          )}
         </div>
-      </div>
+      </section>
 
-      {/* Invite */}
-      <div className="p-4 border-t" style={{ borderColor: "var(--border)" }}>
+      <section className="border-t p-4" style={{ borderColor: "var(--border)" }}>
         <div className="flex gap-2">
           <input
             type="text"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            placeholder="输入用户ID邀请..."
-            className="flex-1 px-2 py-1.5 rounded-lg text-xs outline-none"
+            value={inviteInput}
+            onChange={(event) => setInviteInput(event.target.value)}
+            placeholder="输入邮箱或用户 ID"
+            className="flex-1 rounded-lg px-2 py-1.5 text-xs outline-none"
             style={{ background: "var(--surface-low)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
-            onKeyDown={(e) => e.key === "Enter" && handleInvite()}
+            onKeyDown={(event) => event.key === "Enter" && handleInvite()}
           />
-          <button onClick={handleInvite}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium text-white"
-            style={{ background: "var(--accent)" }}>
+          <button
+            type="button"
+            onClick={handleInvite}
+            className="rounded-lg px-3 py-1.5 text-xs font-medium text-white"
+            style={{ background: "var(--accent)" }}
+          >
             邀请
           </button>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

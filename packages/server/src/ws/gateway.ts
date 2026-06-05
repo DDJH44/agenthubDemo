@@ -262,6 +262,29 @@ function normalizeString(value: unknown, fallback = "", maxLength = 300) {
   return typeof value === "string" ? value.slice(0, maxLength) : fallback;
 }
 
+function normalizeInviteIdentifier(raw: unknown) {
+  if (!isObjectRecord(raw)) return "";
+  const candidates = [raw.email, raw.userId, raw.invitee];
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return "";
+}
+
+async function resolveInvitee(raw: unknown) {
+  const invitee = normalizeInviteIdentifier(raw);
+  if (!invitee) return null;
+
+  if (invitee.includes("@")) {
+    const exact = await userRepo.getByEmail(invitee);
+    if (exact) return exact;
+    const lowered = invitee.toLowerCase();
+    return lowered === invitee ? null : userRepo.getByEmail(lowered);
+  }
+
+  return userRepo.getById(invitee);
+}
+
 function normalizeStringArray(value: unknown, limit = 12) {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string").slice(0, limit);
@@ -1320,11 +1343,15 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
           // ══�?Member Management ══�?
           case "member:invite": {
             if (!await checkConversationAccess(ws, msg.conversationId, userId)) break;
-            const invitedUser = await userRepo.getById(msg.userId);
+            const invitedUser = await resolveInvitee(msg);
+            if (!normalizeInviteIdentifier(msg)) {
+              sendError(ws, "VALIDATION", "User email or user id is required");
+              break;
+            }
             if (!invitedUser) { sendError(ws, "NOT_FOUND", "User not found"); break; }
-            const added = await conversationRepo.addParticipant(msg.conversationId, msg.userId);
+            const added = await conversationRepo.addParticipant(msg.conversationId, invitedUser.id);
             if (!added) { sendError(ws, "ALREADY_MEMBER", "User is already a member or conversation not found"); break; }
-            broadcast(msg.conversationId, { type: "member:added", conversationId: msg.conversationId, userId: msg.userId, userName: invitedUser.name, timestamp: Date.now() });
+            broadcast(msg.conversationId, { type: "member:added", conversationId: msg.conversationId, userId: invitedUser.id, userName: invitedUser.name, timestamp: Date.now() });
             break;
           }
 

@@ -5,6 +5,7 @@ import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useConversationAgentStore } from "@/stores/conversation-agent-store";
+import { useConversationMemberStore } from "@/stores/conversation-member-store";
 import { useFileStore } from "@/stores/file-store";
 import { useConversationGroupStore } from "@/stores/conversation-group-store";
 import { useMcpStore } from "@/stores/mcp-store";
@@ -674,13 +675,25 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         }
 
         // ═══ Members ═══
-        case "member:added":
-        case "member:removed": {
+        case "member:added": {
+          useConversationMemberStore.getState().upsertMember(msg.conversationId, {
+            userId: msg.userId,
+            userName: msg.userName,
+            role: "member",
+            joinedAt: Date.now(),
+          });
           socketRef.current?.send({ type: "member:list", conversationId: msg.conversationId } as WSClientMessage);
+          socketRef.current?.send({ type: "conversation:list" } as WSClientMessage);
+          break;
+        }
+        case "member:removed": {
+          useConversationMemberStore.getState().removeMember(msg.conversationId, msg.userId);
+          socketRef.current?.send({ type: "member:list", conversationId: msg.conversationId } as WSClientMessage);
+          socketRef.current?.send({ type: "conversation:list" } as WSClientMessage);
           break;
         }
         case "member:list:results": {
-          // Store in chat store for now
+          useConversationMemberStore.getState().setMembers(msg.conversationId, msg.members);
           break;
         }
 
