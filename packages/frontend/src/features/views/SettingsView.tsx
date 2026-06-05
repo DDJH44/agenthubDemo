@@ -13,6 +13,7 @@ import {
   subscribeTeamInvites,
   type TeamInvite,
 } from "@/features/team/team-invites";
+import { getContacts, subscribeContacts, upsertContact, type ContactEntry } from "@/features/team/contact-book";
 
 type SettingsTab = "general" | "model" | "deployment" | "team" | "export";
 
@@ -97,6 +98,9 @@ export function SettingsView() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [selectedContactEmail, setSelectedContactEmail] = useState("");
+  const [contacts, setContacts] = useState<ContactEntry[]>([]);
   const [pendingInvites, setPendingInvites] = useState<TeamInvite[]>([]);
   const [inviteMsg, setInviteMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [notificationPermission, setNotificationPermission] = useState(() =>
@@ -105,11 +109,16 @@ export function SettingsView() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    const timeoutId = window.setTimeout(() => setPendingInvites(getPendingTeamInvites()), 0);
+    const timeoutId = window.setTimeout(() => {
+      setPendingInvites(getPendingTeamInvites());
+      setContacts(getContacts());
+    }, 0);
     const unsubscribe = subscribeTeamInvites(setPendingInvites);
+    const unsubscribeContacts = subscribeContacts(setContacts);
     return () => {
       window.clearTimeout(timeoutId);
       unsubscribe();
+      unsubscribeContacts();
     };
   }, []);
 
@@ -176,17 +185,33 @@ export function SettingsView() {
     }
   };
 
-  const handleInviteMember = () => {
-    const result = addPendingTeamInvite(inviteEmail, "settings");
+  const handleInviteMember = (emailValue = inviteEmail, nameValue = inviteName) => {
+    const contact = upsertContact({
+      email: emailValue,
+      name: nameValue,
+      role: "成员",
+      source: "invite",
+      invitedAt: Date.now(),
+    });
+    if (!contact.ok) {
+      setInviteMsg({ ok: false, text: "请输入有效邮箱" });
+      return;
+    }
+    const result = addPendingTeamInvite(contact.contact.email, "settings", {
+      name: contact.contact.name,
+      contactId: contact.contact.id,
+    });
     if (!result.ok) {
       setInviteMsg({ ok: false, text: "请输入有效邮箱" });
       return;
     }
     setInviteMsg({
       ok: true,
-      text: result.duplicate ? "该邮箱已在待确认邀请中" : `已添加 ${result.invite.email}`,
+      text: result.duplicate ? "该联系人已在待确认邀请中" : `已邀请 ${contact.contact.name}`,
     });
     setInviteEmail("");
+    setInviteName("");
+    setSelectedContactEmail("");
   };
 
   const handleNotification = async () => {
@@ -437,6 +462,42 @@ export function SettingsView() {
         ) : null}
 
         {tab === "team" ? (
+          <TeamSettingsPanel
+            userName={user?.name || "当前用户"}
+            userEmail={user?.email || "未登录"}
+            contacts={contacts}
+            pendingInvites={pendingInvites}
+            selectedContactEmail={selectedContactEmail}
+            inviteName={inviteName}
+            inviteEmail={inviteEmail}
+            inviteMsg={inviteMsg}
+            onSelectContact={(value) => {
+              setSelectedContactEmail(value);
+              setInviteMsg(null);
+            }}
+            onInviteNameChange={(value) => {
+              setInviteName(value);
+              setInviteMsg(null);
+            }}
+            onInviteEmailChange={(value) => {
+              setInviteEmail(value);
+              setInviteMsg(null);
+            }}
+            onInviteContact={() => {
+              const contact = contacts.find((item) => item.email === selectedContactEmail);
+              if (!contact) {
+                setInviteMsg({ ok: false, text: "请先选择联系人" });
+                return;
+              }
+              handleInviteMember(contact.email, contact.name);
+            }}
+            onInviteManual={() => handleInviteMember()}
+            onOpenContacts={() => navigateTo("contacts")}
+            onRemoveInvite={removePendingTeamInvite}
+          />
+        ) : null}
+
+        {false ? (
           <div className="max-w-5xl">
             <Header title="团队管理" desc="管理本地待确认邀请，用于演示多人协作流程。" />
             <Panel>
@@ -455,10 +516,10 @@ export function SettingsView() {
                   className="h-9 min-w-[240px] flex-1 rounded-lg px-3 text-sm outline-none"
                   style={{ border: "1px solid var(--border)", background: "var(--surface-low)", color: "var(--fg-primary)" }}
                 />
-                <button type="button" onClick={handleInviteMember} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: "var(--accent)" }}>
+                <button type="button" onClick={() => handleInviteMember()} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: "var(--accent)" }}>
                   添加邀请
                 </button>
-                {inviteMsg ? <span className="text-xs" style={{ color: inviteMsg.ok ? "var(--success)" : "var(--danger)" }}>{inviteMsg.text}</span> : null}
+                {inviteMsg ? <span className="text-xs" style={{ color: inviteMsg?.ok ? "var(--success)" : "var(--danger)" }}>{inviteMsg?.text}</span> : null}
               </div>
             </Panel>
             <Panel className="mt-3">
@@ -498,6 +559,126 @@ function Header({ title, desc }: { title: string; desc: string }) {
     <div className="mb-5">
       <h1 className="text-xl font-bold" style={{ color: "var(--fg-primary)", fontFamily: "var(--font-heading)" }}>{title}</h1>
       <p className="mt-1 text-sm" style={{ color: "var(--fg-tertiary)" }}>{desc}</p>
+    </div>
+  );
+}
+
+function TeamSettingsPanel({
+  userName,
+  userEmail,
+  contacts,
+  pendingInvites,
+  selectedContactEmail,
+  inviteName,
+  inviteEmail,
+  inviteMsg,
+  onSelectContact,
+  onInviteNameChange,
+  onInviteEmailChange,
+  onInviteContact,
+  onInviteManual,
+  onOpenContacts,
+  onRemoveInvite,
+}: {
+  userName: string;
+  userEmail: string;
+  contacts: ContactEntry[];
+  pendingInvites: TeamInvite[];
+  selectedContactEmail: string;
+  inviteName: string;
+  inviteEmail: string;
+  inviteMsg: { ok: boolean; text: string } | null;
+  onSelectContact: (value: string) => void;
+  onInviteNameChange: (value: string) => void;
+  onInviteEmailChange: (value: string) => void;
+  onInviteContact: () => void;
+  onInviteManual: () => void;
+  onOpenContacts: () => void;
+  onRemoveInvite: (id: string) => void;
+}) {
+  return (
+    <div className="max-w-5xl">
+      <Header title="团队管理" desc="从通讯录选择成员或手动输入邮箱，邀请会同步沉淀到通讯录。" />
+      <Panel>
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+          <MemberCard name={userName} email={userEmail} role="所有者" />
+          <MemberCard name="PMO 主 Agent" email="system@agenthub.local" role="系统智能体" />
+        </div>
+
+        <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
+          <div className="rounded-lg p-3" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+            <p className="mb-2 text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>从通讯录邀请</p>
+            <div className="flex gap-2">
+              <select
+                value={selectedContactEmail}
+                onChange={(event) => onSelectContact(event.target.value)}
+                className="h-9 min-w-0 flex-1 rounded-lg px-3 text-sm outline-none"
+                style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}
+              >
+                <option value="">选择联系人</option>
+                {contacts.map((contact) => (
+                  <option key={contact.id} value={contact.email}>{contact.name} · {contact.email}</option>
+                ))}
+              </select>
+              <button type="button" onClick={onInviteContact} className="rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ background: "var(--accent)" }}>
+                邀请
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={onOpenContacts}
+              className="mt-2 rounded-lg px-3 py-1.5 text-xs font-semibold"
+              style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}
+            >
+              打开通讯录
+            </button>
+          </div>
+
+          <div className="rounded-lg p-3" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+            <p className="mb-2 text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>手动邀请</p>
+            <div className="grid gap-2">
+              <input
+                value={inviteName}
+                onChange={(event) => onInviteNameChange(event.target.value)}
+                placeholder="姓名，如 张三"
+                className="h-9 rounded-lg px-3 text-sm outline-none"
+                style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}
+              />
+              <div className="flex gap-2">
+                <input
+                  value={inviteEmail}
+                  onChange={(event) => onInviteEmailChange(event.target.value)}
+                  placeholder="member@example.com"
+                  className="h-9 min-w-0 flex-1 rounded-lg px-3 text-sm outline-none"
+                  style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}
+                />
+                <button type="button" onClick={onInviteManual} className="rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ background: "var(--accent)" }}>
+                  添加邀请
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {inviteMsg ? <p className="mt-3 text-xs" style={{ color: inviteMsg.ok ? "var(--success)" : "var(--danger)" }}>{inviteMsg.text}</p> : null}
+      </Panel>
+
+      <Panel className="mt-3">
+        <h2 className="mb-3 text-sm font-bold" style={{ color: "var(--fg-primary)" }}>待确认邀请</h2>
+        <div className="space-y-2">
+          {pendingInvites.length > 0 ? pendingInvites.map((invite) => (
+            <div key={invite.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: "var(--surface-low)" }}>
+              <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--fg-primary)" }}>
+                {invite.name ? `${invite.name} · ` : ""}{invite.email}
+              </span>
+              <StatusPill tone="warning">待确认</StatusPill>
+              <button type="button" onClick={() => onRemoveInvite(invite.id)} className="rounded-lg px-2 py-1 text-xs font-semibold" style={{ color: "var(--danger)" }}>
+                移除
+              </button>
+            </div>
+          )) : <p className="text-sm" style={{ color: "var(--fg-tertiary)" }}>暂无待确认邀请</p>}
+        </div>
+      </Panel>
     </div>
   );
 }
