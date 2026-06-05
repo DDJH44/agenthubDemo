@@ -22,7 +22,7 @@ import { createAdapterFromEnv } from "@agenthub/adapter";
 import { logger } from "../utils/logger";
 import { prisma } from "../db/index";
 import { deployManager } from "../deploy/index";
-import type { DeployConfig } from "../deploy/index";
+import type { DeployArtifact, DeployConfig } from "../deploy/index";
 import { deploymentTargetRepo } from "../db/repositories/deployment-target";
 import { decryptSecret } from "../deploy/credentials";
 import { validateConversationId, validateWorkspaceId, validateMessageText, validateConversationTitle, validateConversationType, validateParticipants, validateSearchQuery, validateString } from "../utils/validators";
@@ -259,6 +259,357 @@ async function resolveDeployConfig(rawConfig: Record<string, unknown>, providerI
     selfHostedPublicUrl: target.publicUrl,
     selfHostedPostDeployCommand: target.postDeployCommand || undefined,
   };
+}
+
+type DeployCardStatus = "deploying" | "done" | "failed";
+
+interface DeployIntent {
+  providerId: string;
+}
+
+interface DeployCardState {
+  status: DeployCardStatus;
+  providerId: string;
+  url?: string;
+  error?: string;
+  deployId: string;
+  artifactId?: string;
+  files?: string[];
+  progress?: number;
+  verified?: boolean;
+  verificationStatus?: number;
+}
+
+function getDeployProviderLabel(providerId: string) {
+  const labels: Record<string, string> = {
+    "self-hosted": "静态站点部署",
+    "mock-preview": "预览 URL",
+    "static-download": "源码打包下载",
+    "container-package": "容器化部署包",
+    vercel: "Vercel",
+    miaoda: "Miaoda",
+  };
+  return labels[providerId] ?? providerId;
+}
+
+function deployCardMessageId(deployId: string) {
+  return `deploy-card-${deployId}`;
+}
+
+function deployCardContent(state: DeployCardState) {
+  const label = getDeployProviderLabel(state.providerId);
+  if (state.status === "done") {
+    return `部署完成。${label} 已返回访问链接${state.url ? `：${state.url}` : "。"}`;
+  }
+  if (state.status === "failed") {
+    return `部署失败。${label} 返回错误：${state.error || "未知错误"}`;
+  }
+  return `已向 ${label} 提交部署任务，正在准备产物与发布环境。`;
+}
+
+async function upsertDeployCardMessage(conversationId: string, state: DeployCardState) {
+  const content = deployCardContent(state);
+  const platformLabel = getDeployProviderLabel(state.providerId);
+  const payload = {
+    status: state.status,
+    platform: state.providerId,
+    platformLabel,
+    url: state.url,
+    error: state.error,
+    deployId: state.deployId,
+    artifactId: state.artifactId,
+    verified: state.verified,
+    verificationStatus: state.verificationStatus,
+    progress: state.progress,
+    files: state.files,
+  };
+
+  return prisma.$transaction(async (tx) => {
+    await tx.conversation.upsert({
+      where: { id: conversationId },
+      create: {
+        id: conversationId,
+        workspaceId: DEFAULT_WORKSPACE,
+        title: content.slice(0, 40),
+        lastMessage: content.slice(0, 200),
+        lastMessageAt: new Date(),
+      },
+      update: {
+        lastMessage: content.slice(0, 200),
+        lastMessageAt: new Date(),
+      },
+    });
+
+    return tx.message.upsert({
+      where: { id: deployCardMessageId(state.deployId) },
+      create: {
+        id: deployCardMessageId(state.deployId),
+        conversationId,
+        type: "deploy_card",
+        sender: state.status === "deploying" ? "system" : "Open Code",
+        senderId: state.status === "deploying" ? "deploy" : "open-code",
+        content,
+        payload: JSON.stringify(payload),
+        mentions: "[]",
+      },
+      update: {
+        sender: state.status === "deploying" ? "system" : "Open Code",
+        senderId: state.status === "deploying" ? "deploy" : "open-code",
+        content,
+        payload: JSON.stringify(payload),
+      },
+    });
+  });
+}
+
+function extractDeployFilesFromConfig(rawConfig: Record<string, unknown>): DeployArtifact[] {
+  const files = Array.isArray(rawConfig.files) ? rawConfig.files : [];
+  const artifacts: DeployArtifact[] = [];
+  for (const file of files) {
+    if (!isObjectRecord(file)) continue;
+    const path = typeof file.path === "string" ? file.path : "";
+    const content = typeof file.content === "string" ? file.content : "";
+    if (!path || !content.trim()) continue;
+    artifacts.push({ path: safeDeployPath(path), content });
+  }
+  return artifacts;
+}
+
+function filePathWithSuffix(path: string, suffix: number) {
+  if (suffix <= 1) return path;
+  const slashIndex = path.lastIndexOf("/");
+  const dir = slashIndex >= 0 ? path.slice(0, slashIndex + 1) : "";
+  const name = slashIndex >= 0 ? path.slice(slashIndex + 1) : path;
+  const dotIndex = name.lastIndexOf(".");
+  const stem = dotIndex > 0 ? name.slice(0, dotIndex) : name;
+  const ext = dotIndex > 0 ? name.slice(dotIndex) : "";
+  return `${dir}${stem}-${suffix}${ext}`;
+}
+
+function uniqueDeployPath(path: string, seen: Map<string, number>) {
+  let suffix = (seen.get(path) ?? 0) + 1;
+  let candidate = filePathWithSuffix(path, suffix);
+  while (seen.has(candidate)) {
+    suffix += 1;
+    candidate = filePathWithSuffix(path, suffix);
+  }
+  seen.set(path, suffix);
+  seen.set(candidate, 1);
+  return candidate;
+}
+
+function deployPathForArtifact(
+  artifact: { type: string; filename: string | null; metadata: string | null; content: string },
+  index: number
+) {
+  const metadata = parseJsonField<Record<string, unknown> | undefined>(artifact.metadata, undefined);
+  const metadataPath =
+    typeof metadata?.path === "string" ? metadata.path :
+    typeof metadata?.filename === "string" ? metadata.filename :
+    "";
+  const htmlLike = artifact.type === "html" || /<!doctype\s+html|<html[\s>]/i.test(artifact.content);
+  const fallback = htmlLike ? "index.html" : `${artifact.type || "artifact"}-${index + 1}.txt`;
+  let path = safeDeployPath(metadataPath || artifact.filename || fallback);
+  if (htmlLike && !/\.html?$/i.test(path)) path = "index.html";
+  return path;
+}
+
+async function collectLatestConversationDeployArtifacts(conversationId: string): Promise<DeployArtifact[]> {
+  const jobs = await prisma.job.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: "desc" },
+    take: 8,
+    include: {
+      artifacts: {
+        orderBy: { createdAt: "asc" },
+      },
+    },
+  });
+
+  const seen = new Map<string, number>();
+  for (const job of jobs) {
+    const deployable = job.artifacts
+      .filter((artifact) => artifact.content.trim().length > 0)
+      .filter((artifact) => !["deploy_url", "preview_url", "image"].includes(artifact.type));
+    if (deployable.length === 0) continue;
+
+    return deployable.map((artifact, index) => ({
+      path: uniqueDeployPath(deployPathForArtifact(artifact, index), seen),
+      content: artifact.content,
+    }));
+  }
+
+  return [];
+}
+
+function parseDeployIntent(text: string): DeployIntent | null {
+  const source = text.trim();
+  if (!source) return null;
+  const compact = source.replace(/\s+/g, "");
+  const lowered = source.toLowerCase();
+  const hasDeployWord = /(部署|发布|上线|预览|打包|下载|容器|镜像|deploy|publish|preview|docker|container|package|zip)/i.test(source);
+  if (!hasDeployWord) return null;
+
+  const commandLike =
+    /^(请)?(帮我)?(一键)?((把|将)(当前|这个|最新|刚生成的|产物|网站|源码|代码))?(部署|发布|上线|预览|打包|下载)/.test(compact) ||
+    /^(生成|一键生成).*(预览|URL|url|下载|部署包|容器包)/.test(compact) ||
+    /^(deploy|publish|preview|docker|container|package)\b/i.test(source);
+  const asksForAdvice = /(怎么|如何|为什么|是否|能不能|可以吗|方案|文档|教程|说明|配置|失败|问题|修复|实现|设计)/.test(source);
+  if (!commandLike || asksForAdvice) return null;
+
+  if (/vercel/i.test(source)) return { providerId: "vercel" };
+  if (/(miaoda|妙搭)/i.test(source)) return { providerId: "miaoda" };
+  if (/(容器|镜像|docker|container)/i.test(source)) return { providerId: "container-package" };
+  if (/(源码|源代码|打包|下载|压缩|zip|package)/i.test(source)) return { providerId: "static-download" };
+  if (/(预览|preview|url)/i.test(source)) return { providerId: "mock-preview" };
+  if (/(静态|站点|网站|服务器|上线|发布|部署|deploy|publish)/i.test(source) || lowered === "deploy") {
+    return { providerId: "self-hosted" };
+  }
+  return null;
+}
+
+async function runDeployRequest(options: {
+  conversationId: string;
+  ws: WebSocket;
+  providerId: string;
+  deployId: string;
+  rawConfig: Record<string, unknown>;
+  userId: string;
+  artifacts: DeployArtifact[];
+  artifactId?: string;
+  allowPlaceholder?: boolean;
+}) {
+  const projectName = typeof options.rawConfig.projectName === "string" && options.rawConfig.projectName.trim()
+    ? options.rawConfig.projectName.trim()
+    : `agenthub-${options.conversationId.slice(0, 8)}`;
+  const artifacts = options.artifacts.length > 0
+    ? options.artifacts
+    : await collectLatestConversationDeployArtifacts(options.conversationId);
+  const effectiveArtifacts = artifacts.length > 0
+    ? artifacts
+    : options.allowPlaceholder
+      ? [{ path: "index.html", content: "<!DOCTYPE html><html><body>AgentHub Deploy</body></html>" }]
+      : [];
+  const files = effectiveArtifacts.map((artifact) => artifact.path);
+
+  await upsertDeployCardMessage(options.conversationId, {
+    status: "deploying",
+    providerId: options.providerId,
+    deployId: options.deployId,
+    artifactId: options.artifactId,
+    files,
+    progress: 0,
+  });
+  emitToRequesterAndRoom(options.conversationId, options.ws, {
+    type: "deploy:progress",
+    deployId: options.deployId,
+    status: "deploying",
+    progress: 0,
+    providerId: options.providerId,
+    logs: ["初始化部署..."],
+    timestamp: Date.now(),
+  });
+
+  if (effectiveArtifacts.length === 0) {
+    const error = "当前会话还没有可部署产物，请先生成网页、代码或静态站点文件。";
+    await upsertDeployCardMessage(options.conversationId, {
+      status: "failed",
+      providerId: options.providerId,
+      deployId: options.deployId,
+      artifactId: options.artifactId,
+      files,
+      progress: 100,
+      error,
+    });
+    emitToRequesterAndRoom(options.conversationId, options.ws, {
+      type: "deploy:failed",
+      deployId: options.deployId,
+      error,
+      providerId: options.providerId,
+      timestamp: Date.now(),
+    });
+    return;
+  }
+
+  try {
+    const deployConfig = await resolveDeployConfig(options.rawConfig, options.providerId, projectName, options.userId);
+    const result = await deployManager.deploy(
+      options.providerId,
+      options.deployId,
+      effectiveArtifacts,
+      deployConfig,
+      (progress, log) => {
+        emitToRequesterAndRoom(options.conversationId, options.ws, {
+          type: "deploy:progress",
+          deployId: options.deployId,
+          status: "deploying",
+          progress,
+          providerId: options.providerId,
+          logs: [log],
+          timestamp: Date.now(),
+        });
+      }
+    );
+
+    if (result.success) {
+      await upsertDeployCardMessage(options.conversationId, {
+        status: "done",
+        providerId: options.providerId,
+        deployId: options.deployId,
+        artifactId: options.artifactId,
+        files,
+        progress: 100,
+        url: result.url || "",
+        verified: result.verified ?? options.providerId === "self-hosted",
+        verificationStatus: result.verificationStatus,
+      });
+      emitToRequesterAndRoom(options.conversationId, options.ws, {
+        type: "deploy:completed",
+        deployId: options.deployId,
+        url: result.url || "",
+        providerId: options.providerId,
+        verified: result.verified ?? options.providerId === "self-hosted",
+        verificationStatus: result.verificationStatus,
+        timestamp: Date.now(),
+      });
+    } else {
+      const error = result.error || "部署失败";
+      await upsertDeployCardMessage(options.conversationId, {
+        status: "failed",
+        providerId: options.providerId,
+        deployId: options.deployId,
+        artifactId: options.artifactId,
+        files,
+        progress: 100,
+        error,
+      });
+      emitToRequesterAndRoom(options.conversationId, options.ws, {
+        type: "deploy:failed",
+        deployId: options.deployId,
+        error,
+        providerId: options.providerId,
+        timestamp: Date.now(),
+      });
+    }
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    await upsertDeployCardMessage(options.conversationId, {
+      status: "failed",
+      providerId: options.providerId,
+      deployId: options.deployId,
+      artifactId: options.artifactId,
+      files,
+      progress: 100,
+      error,
+    });
+    emitToRequesterAndRoom(options.conversationId, options.ws, {
+      type: "deploy:failed",
+      deployId: options.deployId,
+      error,
+      providerId: options.providerId,
+      timestamp: Date.now(),
+    });
+  }
 }
 
 export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
@@ -521,6 +872,39 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               }
             } catch (err) {
               logger.warn(`Failed to parse conversation participants: ${err}`, 'WebSocket');
+            }
+
+            const deployIntent = !workflowRef ? parseDeployIntent(text) : null;
+            if (deployIntent) {
+              const userMsg = await messageRepo.createAndUpdateConv({
+                conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: [],
+                id: clientMsgId,
+              });
+              broadcast(conversationId, {
+                type: "message:created",
+                message: {
+                  id: userMsg.id,
+                  conversationId,
+                  type: userMsg.type,
+                  sender: userMsg.sender,
+                  senderId: userId,
+                  content: userMsg.content,
+                  mentions: [],
+                  timestamp: userMsg.timestamp.getTime(),
+                },
+              });
+
+              await runDeployRequest({
+                conversationId,
+                ws,
+                providerId: deployIntent.providerId,
+                deployId: `chat-deploy-${Date.now()}`,
+                rawConfig: { projectName: `agenthub-${conversationId.slice(0, 8)}` },
+                userId,
+                artifacts: [],
+                allowPlaceholder: false,
+              });
+              break;
             }
 
             const isDirectConv = convType === "direct";
@@ -984,50 +1368,18 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               ? msg.deployId
               : "";
             const deployId = requestedDeployId || msg.artifactId + "-" + Date.now();
-            emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:progress", deployId, status: "deploying", progress: 0, providerId: msg.providerId, logs: ["初始化部署..."], timestamp: Date.now() });
-            try {
-              const artifacts: Array<{ path: string; content: string }> = [];
-              const rawConfig = (msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>;
-              if (msg.config && typeof msg.config === "object") {
-                if (Array.isArray(rawConfig.files)) {
-                  for (const f of rawConfig.files as Array<{ path?: string; content?: string }>) {
-                    if (f.path && f.content) artifacts.push({ path: safeDeployPath(f.path), content: f.content });
-                  }
-                }
-              }
-              const deployConfig = await resolveDeployConfig(rawConfig, msg.providerId, targetConvId, userId);
-
-              if (artifacts.length === 0) {
-                const result = await deployManager.deploy(
-                  msg.providerId, deployId,
-                  [{ path: "index.html", content: "<!DOCTYPE html><html><body>AgentHub Deploy</body></html>" }],
-                  deployConfig,
-                  (progress, log) => {
-                    emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:progress", deployId, status: "deploying", progress, providerId: msg.providerId, logs: [log], timestamp: Date.now() });
-                  }
-                );
-                if (result.success) {
-                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:completed", deployId, url: result.url || "", providerId: msg.providerId, verified: result.verified ?? msg.providerId === "self-hosted", verificationStatus: result.verificationStatus, timestamp: Date.now() });
-                } else {
-                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:failed", deployId, error: result.error || "部署失败", providerId: msg.providerId, timestamp: Date.now() });
-                }
-              } else {
-                const result = await deployManager.deploy(
-                  msg.providerId, deployId, artifacts,
-                  deployConfig,
-                  (progress, log) => {
-                    emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:progress", deployId, status: "deploying", progress, providerId: msg.providerId, logs: [log], timestamp: Date.now() });
-                  }
-                );
-                if (result.success) {
-                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:completed", deployId, url: result.url || "", providerId: msg.providerId, verified: result.verified ?? msg.providerId === "self-hosted", verificationStatus: result.verificationStatus, timestamp: Date.now() });
-                } else {
-                  emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:failed", deployId, error: result.error || "部署失败", providerId: msg.providerId, timestamp: Date.now() });
-                }
-              }
-            } catch (err) {
-              emitToRequesterAndRoom(targetConvId, ws, { type: "deploy:failed", deployId, error: String(err), providerId: msg.providerId, timestamp: Date.now() });
-            }
+            const rawConfig = (msg.config && typeof msg.config === "object" ? msg.config : {}) as Record<string, unknown>;
+            await runDeployRequest({
+              conversationId: targetConvId,
+              ws,
+              providerId: msg.providerId,
+              deployId,
+              rawConfig,
+              userId,
+              artifacts: extractDeployFilesFromConfig(rawConfig),
+              artifactId: msg.artifactId,
+              allowPlaceholder: true,
+            });
             break;
           }
 

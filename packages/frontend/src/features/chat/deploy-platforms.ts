@@ -1,6 +1,8 @@
 const DEPLOY_PROVIDER_LABELS: Record<string, string> = {
-  "self-hosted": "服务器发布",
-  "mock-preview": "静态预览",
+  "self-hosted": "静态站点部署",
+  "mock-preview": "预览 URL",
+  "static-download": "源码打包下载",
+  "container-package": "容器化部署包",
   vercel: "Vercel",
   miaoda: "Miaoda",
 };

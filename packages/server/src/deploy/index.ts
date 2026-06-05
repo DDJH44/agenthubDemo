@@ -1,4 +1,4 @@
-import { createWriteStream, existsSync, mkdirSync } from "fs";
+import { createWriteStream, existsSync, mkdirSync, writeFileSync } from "fs";
 import { join, basename } from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -31,6 +31,7 @@ export interface DeployConfig {
   selfHostedScope?: "platform-default" | "user-target";
   deploymentUserId?: string;
   deploymentTargetId?: string;
+  containerImageName?: string;
 }
 
 export interface DeployProgressCallback {
@@ -332,6 +333,177 @@ class StaticDownloadProvider implements IDeployProvider {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "未知错误";
       logs.push(`错误: ${errorMsg}`);
+      return {
+        success: false,
+        deployId,
+        providerId: this.id,
+        logs,
+        error: errorMsg,
+      };
+    }
+  }
+}
+
+class ContainerPackageProvider implements IDeployProvider {
+  readonly id = "container-package";
+  readonly name = "容器化部署包";
+
+  private outputDir: string;
+
+  constructor(outputDir?: string) {
+    this.outputDir = outputDir || join(process.cwd(), "deploy-output");
+  }
+
+  private normalizeImageName(name?: string) {
+    return (name || "agenthub-static-site")
+      .toLowerCase()
+      .replace(/[^a-z0-9._/-]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 120) || "agenthub-static-site";
+  }
+
+  private async writeTextFile(filePath: string, content: string) {
+    const dirPath = join(filePath, "..");
+    if (!existsSync(dirPath)) {
+      mkdirSync(dirPath, { recursive: true });
+    }
+
+    const ws = createWriteStream(filePath, "utf-8");
+    ws.write(content);
+    ws.end();
+    await new Promise<void>((resolve, reject) => {
+      ws.on("finish", resolve);
+      ws.on("error", reject);
+    });
+  }
+
+  private async createBundle(deployDir: string, logs: string[]) {
+    if (process.platform === "win32") {
+      const zipPath = join(deployDir, "bundle.zip");
+      await execFileAsync(
+        "powershell",
+        [
+          "-NoProfile",
+          "-Command",
+          "Compress-Archive -Path (Join-Path $env:AGENTHUB_DEPLOY_DIR '*') -DestinationPath $env:AGENTHUB_BUNDLE_PATH -Force",
+        ],
+        {
+          env: {
+            ...process.env,
+            AGENTHUB_DEPLOY_DIR: deployDir,
+            AGENTHUB_BUNDLE_PATH: zipPath,
+          },
+          timeout: 60000,
+        }
+      );
+      logs.push("容器部署包已压缩为 bundle.zip");
+      return zipPath;
+    }
+
+    const tarPath = join(deployDir, "bundle.tar.gz");
+    await execFileAsync("tar", ["-czf", tarPath, "-C", deployDir, "."], { timeout: 60000 });
+    logs.push("容器部署包已压缩为 bundle.tar.gz");
+    return tarPath;
+  }
+
+  async deploy(
+    deployId: string,
+    artifacts: DeployArtifact[],
+    config: DeployConfig,
+    onProgress: DeployProgressCallback
+  ): Promise<DeployResult> {
+    const logs: string[] = [];
+
+    try {
+      onProgress(10, "准备容器化部署目录...");
+      logs.push("准备容器化部署目录...");
+
+      if (!existsSync(this.outputDir)) {
+        mkdirSync(this.outputDir, { recursive: true });
+      }
+
+      const deployDir = join(this.outputDir, deployId);
+      if (!existsSync(deployDir)) {
+        mkdirSync(deployDir, { recursive: true });
+      }
+
+      const totalFiles = Math.max(artifacts.length, 1);
+      for (let i = 0; i < artifacts.length; i++) {
+        const artifact = artifacts[i];
+        const progress = 15 + Math.round((i / totalFiles) * 35);
+        onProgress(progress, `写入站点文件: ${artifact.path}`);
+        logs.push(`写入: ${artifact.path}`);
+        await this.writeTextFile(join(deployDir, artifact.path), artifact.content);
+      }
+
+      const imageName = this.normalizeImageName(config.containerImageName || config.projectName);
+      onProgress(58, "生成 Dockerfile 与 Nginx 配置...");
+      writeFileSync(
+        join(deployDir, "Dockerfile"),
+        [
+          "FROM nginx:1.27-alpine",
+          "COPY nginx.conf /etc/nginx/conf.d/default.conf",
+          "COPY . /usr/share/nginx/html",
+          "EXPOSE 80",
+        ].join("\n") + "\n",
+        "utf-8"
+      );
+      writeFileSync(
+        join(deployDir, "nginx.conf"),
+        [
+          "server {",
+          "  listen 80;",
+          "  server_name _;",
+          "  root /usr/share/nginx/html;",
+          "  index index.html;",
+          "  location / {",
+          "    try_files $uri $uri/ /index.html;",
+          "  }",
+          "}",
+        ].join("\n") + "\n",
+        "utf-8"
+      );
+      writeFileSync(
+        join(deployDir, ".dockerignore"),
+        ["bundle.zip", "bundle.tar.gz", ".git", "node_modules"].join("\n") + "\n",
+        "utf-8"
+      );
+      writeFileSync(
+        join(deployDir, "README.md"),
+        [
+          "# AgentHub container deployment",
+          "",
+          "```bash",
+          `docker build -t ${imageName} .`,
+          `docker run --rm -p 8080:80 ${imageName}`,
+          "```",
+          "",
+          "Open http://localhost:8080 after the container starts.",
+        ].join("\n") + "\n",
+        "utf-8"
+      );
+      logs.push("Dockerfile、nginx.conf、README.md 已生成");
+
+      onProgress(82, "打包容器化部署源码...");
+      await this.createBundle(deployDir, logs);
+
+      const downloadUrl = `/api/download/${deployId}`;
+      onProgress(100, `容器化部署包已生成: ${downloadUrl}`);
+      logs.push(`下载地址: ${downloadUrl}`);
+
+      return {
+        success: true,
+        deployId,
+        url: downloadUrl,
+        providerId: this.id,
+        logs,
+        downloadPath: deployDir,
+      };
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "未知错误";
+      logs.push(`错误: ${errorMsg}`);
+      logger.warn(`Container package deploy failed: ${errorMsg}`, "Deploy");
       return {
         success: false,
         deployId,
@@ -750,6 +922,7 @@ class DeployManager {
     this.register(new VercelProvider());
     this.register(new MiaodaProvider());
     this.register(new StaticDownloadProvider());
+    this.register(new ContainerPackageProvider());
     this.register(new SelfHostedProvider());
   }
 

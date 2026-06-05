@@ -11,7 +11,7 @@ import { collectDeployFiles, pickDeployArtifact } from "./deploy-artifacts";
 import { upsertDeployCard } from "./deploy-card";
 import { getDeployProviderLabel } from "./deploy-platforms";
 
-type Platform = "mock-preview" | "vercel" | "miaoda" | "self-hosted";
+type Platform = "mock-preview" | "vercel" | "miaoda" | "self-hosted" | "static-download" | "container-package";
 
 interface PlatformOption {
   key: Platform;
@@ -49,19 +49,35 @@ interface DeploymentTargetsResponse {
 const PLATFORMS: PlatformOption[] = [
   {
     key: "self-hosted",
-    label: "服务器发布",
-    desc: "优先发布到 AgentHub 默认服务器，也支持用户添加自有服务器。",
-    hint: "默认服务器已配置时可直接发布",
-    tags: ["默认服务器", "SSH 发布"],
+    label: "静态站点部署",
+    desc: "发布到 AgentHub 默认服务器，或切换到用户自有服务器目标。",
+    hint: "适合把当前网页产物变成真实可访问站点",
+    tags: ["默认服务器", "静态站点"],
     icon: "M4 6h16v4H4z M4 14h16v4H4z M8 8h.01 M8 16h.01",
   },
   {
     key: "mock-preview",
-    label: "静态预览",
-    desc: "写入本地静态预览目录，快速获得可访问的预览链接。",
-    hint: "适合快速预览，不依赖第三方密钥",
-    tags: ["本地预览", "无需密钥"],
+    label: "预览 URL",
+    desc: "生成轻量预览链接，用于快速检查页面效果。",
+    hint: "适合先看效果，不依赖第三方密钥",
+    tags: ["快速预览", "无需密钥"],
     icon: "M4 5h16v12H4z M8 21h8 M12 17v4",
+  },
+  {
+    key: "container-package",
+    label: "容器化部署",
+    desc: "生成 Dockerfile、Nginx 配置和站点文件，打包为可下载部署包。",
+    hint: "适合交给服务器或运维环境继续运行",
+    tags: ["Docker", "部署包"],
+    icon: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M7.5 4.21 12 6.81l4.5-2.6 M7.5 19.79V14.6L3 12 M21 12l-4.5 2.6v5.19 M12 22v-8.5",
+  },
+  {
+    key: "static-download",
+    label: "源码打包下载",
+    desc: "把当前话题的产物源码打包，返回下载链接。",
+    hint: "适合答辩、备份或交给其他平台部署",
+    tags: ["源码包", "下载"],
+    icon: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M7 10l5 5 5-5 M12 15V3",
   },
   {
     key: "vercel",

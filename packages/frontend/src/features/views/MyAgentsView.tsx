@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { AgentLLMProvider, AgentRole, ModelId, ToolType, UserAgent } from "@agenthub/shared";
 import { useNavigationStore } from "@/stores/navigation-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
+import { api } from "@/lib/api-client";
 import { AgentCard } from "./AgentCard";
 
 const AVATAR_COLORS = ["#174ea6", "#0f766e", "#9a6700", "#a50e0e", "#7c3aed", "#0e7490", "#5f6368"];
@@ -88,6 +89,21 @@ interface AgentFormState {
   apiKeyHint?: string;
   systemPrompt: string;
   tools: ToolType[];
+}
+
+interface AgentConnectionTestResult {
+  ok: boolean;
+  provider: string;
+  model: string;
+  latencyMs: number;
+  sample?: string;
+  error?: string;
+}
+
+interface AgentConnectionStatus {
+  agentId: string;
+  ok: boolean;
+  text: string;
 }
 
 function emptyForm(): AgentFormState {
@@ -402,6 +418,8 @@ export function MyAgentsView() {
   const [editingAgent, setEditingAgent] = useState<UserAgent | null>(null);
   const [form, setForm] = useState<AgentFormState>(() => emptyForm());
   const [description, setDescription] = useState("");
+  const [testingAgentId, setTestingAgentId] = useState<string | null>(null);
+  const [connectionStatus, setConnectionStatus] = useState<AgentConnectionStatus | null>(null);
 
   const stats = useMemo(() => {
     const toolCount = new Set(agents.flatMap((agent) => agent.tools)).size;
@@ -449,6 +467,27 @@ export function MyAgentsView() {
     setFormOpen(false);
     setEditingAgent(null);
     setForm(emptyForm());
+  };
+
+  const testAgentConnection = async (agent: UserAgent) => {
+    setTestingAgentId(agent.id);
+    setConnectionStatus(null);
+    try {
+      const result = await api.post<AgentConnectionTestResult>(`/api/user-agents/${agent.id}/test`, {});
+      setConnectionStatus({
+        agentId: agent.id,
+        ok: true,
+        text: `连接正常 · ${result.model || agent.model} · ${result.latencyMs}ms`,
+      });
+    } catch (error) {
+      setConnectionStatus({
+        agentId: agent.id,
+        ok: false,
+        text: error instanceof Error ? error.message : "连接测试失败",
+      });
+    } finally {
+      setTestingAgentId(null);
+    }
   };
 
   const applyDescription = () => {
@@ -557,7 +596,15 @@ export function MyAgentsView() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {agents.map((agent) => (
-                <AgentCard key={agent.id} agent={agent} onEdit={startEdit} onDelete={removeAgent} />
+                <AgentCard
+                  key={agent.id}
+                  agent={agent}
+                  onEdit={startEdit}
+                  onDelete={removeAgent}
+                  onTest={testAgentConnection}
+                  testing={testingAgentId === agent.id}
+                  connectionStatus={connectionStatus?.agentId === agent.id ? connectionStatus : null}
+                />
               ))}
             </div>
           )}

@@ -36,6 +36,30 @@ describe("agent runtime profiles", () => {
     });
   });
 
+  it("ignores incomplete private llm config and falls back to system model selection", () => {
+    expect(chooseRuntimeAdapterOverrides([
+      {
+        id: "ux",
+        name: "UX Reviewer",
+        type: "reviewer",
+        provider: "custom",
+        baseURL: "https://example.com/v1",
+        model: "custom-model",
+        tools: ["file_read"],
+        configured: true,
+      },
+      {
+        id: "fe",
+        name: "Frontend Agent",
+        type: "frontend",
+        provider: "inherit",
+        model: "gpt-4o",
+        tools: ["code_execution"],
+        configured: true,
+      },
+    ])).toEqual({ model: "gpt-4o" });
+  });
+
   it("builds a runtime prompt from configured agents", () => {
     const prompt = buildAgentRuntimePrompt([
       {

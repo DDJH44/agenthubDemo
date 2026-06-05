@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "http";
 import type { ChatCompletionContentPart, ChatCompletionMessageParam } from "openai/resources/chat/completions";
 import { parseMentions, type PlanNode } from "@agenthub/shared";
 import { createOrchestrator, type StreamEvent } from "../orchestrator/index";
-import { createAdapterFromEnv } from "@agenthub/adapter";
+import { createAdapterFromEnv, type AdapterConfig } from "@agenthub/adapter";
 import { hashPassword, verifyPassword, createSession, deleteSession } from "../auth/session";
 import { requireAuth } from "../auth/middleware";
 import { userRepo } from "../db/repositories/user";
@@ -1118,6 +1118,73 @@ function sanitizeUserAgentRecord<T extends { config: string }>(agent: T): T {
   };
 }
 
+function stringConfigValue(config: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = config[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function savedAgentApiKey(config: Record<string, unknown>) {
+  const plain = stringConfigValue(config, "apiKey");
+  if (plain) return plain;
+  const encrypted = stringConfigValue(config, "apiKeyEncrypted");
+  if (!encrypted) return "";
+  try {
+    return decryptSecret(encrypted);
+  } catch {
+    return "";
+  }
+}
+
+function userAgentProvider(config: Record<string, unknown>) {
+  return stringConfigValue(config, "provider") || "inherit";
+}
+
+function userAgentBaseURL(config: Record<string, unknown>) {
+  return stringConfigValue(config, "baseURL", "baseUrl");
+}
+
+function userAgentModel(config: Record<string, unknown>) {
+  return stringConfigValue(config, "model") || process.env.LLM_MODEL || "gpt-4o-mini";
+}
+
+function providerNeedsBaseURL(provider: string) {
+  return provider !== "inherit" && provider !== "openai";
+}
+
+function adapterOverridesFromAgentConfig(config: Record<string, unknown>): Partial<AdapterConfig> | undefined {
+  const provider = userAgentProvider(config);
+  const model = userAgentModel(config);
+
+  if (provider === "inherit") {
+    const inheritedType = (process.env.ADAPTER_TYPE ?? "openai") as AdapterConfig["type"];
+    if ((inheritedType === "openai" || inheritedType === "generic-openai") && (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY === "sk-missing")) {
+      throw new Error("系统 LLM 未配置，请填写系统 OPENAI_API_KEY，或为这个智能体单独配置 API Key。");
+    }
+    if (inheritedType === "generic-openai" && !process.env.OPENAI_BASE_URL) {
+      throw new Error("系统 OpenAI 兼容接口缺少 OPENAI_BASE_URL。");
+    }
+    return model ? { model } : undefined;
+  }
+
+  const apiKey = savedAgentApiKey(config);
+  const baseURL = userAgentBaseURL(config);
+  if (!apiKey) throw new Error("请先保存 API Key。");
+  if (providerNeedsBaseURL(provider) && !baseURL) throw new Error("请填写 Base URL。");
+  if (!model) throw new Error("请填写模型名称。");
+
+  return {
+    type: provider === "openai" ? "openai" : "generic-openai",
+    apiKey,
+    baseURL: baseURL || undefined,
+    model,
+    temperature: 0,
+    maxTokens: 48,
+  };
+}
+
 registerRoute("GET", "/api/user-agents", async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
@@ -1198,6 +1265,70 @@ registerRoute("PUT", "/api/user-agents/:id", async (req, res) => {
   const agent = await userAgentConfigRepo.update(agentId, updates);
   res.writeHead(200, { "Content-Type": "application/json" });
   res.end(JSON.stringify({ agent: sanitizeUserAgentRecord(agent) }));
+});
+
+/* ── POST /api/user-agents/:id/test ── */
+registerRoute("POST", "/api/user-agents/:id/test", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const agentId = (req as RequestWithParams).params?.id;
+  if (!agentId) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Agent ID required" }));
+    return;
+  }
+
+  const existing = await userAgentConfigRepo.getById(agentId);
+  if (!existing || existing.userId !== user.id) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "Agent not found" }));
+    return;
+  }
+
+  const configObject = parseAgentConfig(existing.config);
+  const provider = userAgentProvider(configObject);
+  const model = userAgentModel(configObject);
+  const baseURL = userAgentBaseURL(configObject);
+  let adapter: ReturnType<typeof createAdapterFromEnv> | null = null;
+  const startedAt = Date.now();
+
+  try {
+    const overrides = adapterOverridesFromAgentConfig(configObject);
+    adapter = createAdapterFromEnv(overrides);
+    await adapter.connect();
+    const sample = await adapter.sendMessage("Reply exactly: AgentHub connection ok.", {
+      systemPrompt: "You are checking whether an AgentHub custom agent LLM connection works. Reply briefly.",
+      temperature: 0,
+      maxTokens: 32,
+    });
+    await userAgentConfigRepo.update(agentId, { status: "idle" }).catch(() => undefined);
+
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      ok: true,
+      provider,
+      model,
+      baseURL: baseURL || null,
+      latencyMs: Date.now() - startedAt,
+      sample: sample.slice(0, 160),
+    }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "连接测试失败";
+    logger.warn(`User agent connection test failed for ${existing.name}: ${message}`, "API");
+    await userAgentConfigRepo.update(agentId, { status: "error" }).catch(() => undefined);
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({
+      ok: false,
+      provider,
+      model,
+      baseURL: baseURL || null,
+      latencyMs: Date.now() - startedAt,
+      error: message,
+    }));
+  } finally {
+    if (adapter) await adapter.disconnect().catch(() => undefined);
+  }
 });
 
 /* ── DELETE /api/user-agents/:id ── */

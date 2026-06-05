@@ -132,7 +132,7 @@ export function chooseRuntimeModel(profiles: AgentRuntimeProfile[], options: Run
     ?? profiles.find((profile) => isUsableRuntimeModel(profile.model, options))?.model;
 }
 
-function isInheritedProvider(provider: string | undefined) {
+export function isInheritedProvider(provider: string | undefined) {
   return !provider || provider === "inherit";
 }
 
@@ -142,13 +142,25 @@ function adapterTypeFromProvider(provider: string | undefined): AdapterConfig["t
   return "generic-openai";
 }
 
-function hasOwnLLMConfig(profile: AgentRuntimeProfile) {
-  return !isInheritedProvider(profile.provider) || Boolean(profile.apiKey || profile.baseURL);
+function providerRequiresBaseURL(provider: string | undefined) {
+  return !isInheritedProvider(provider) && provider !== "openai";
+}
+
+export function getPrivateLLMConfigIssue(profile: AgentRuntimeProfile): string | undefined {
+  if (isInheritedProvider(profile.provider)) return undefined;
+  if (!profile.apiKey) return "API Key missing";
+  if (providerRequiresBaseURL(profile.provider) && !profile.baseURL) return "Base URL missing";
+  if (!profile.model?.trim()) return "Model missing";
+  return undefined;
+}
+
+function hasReadyPrivateLLMConfig(profile: AgentRuntimeProfile) {
+  return !isInheritedProvider(profile.provider) && !getPrivateLLMConfigIssue(profile);
 }
 
 export function chooseRuntimeAdapterOverrides(profiles: AgentRuntimeProfile[]): Partial<AdapterConfig> | undefined {
-  const preferred = profiles.find((profile) => !isCoordinatorAgent(profile.name) && hasOwnLLMConfig(profile))
-    ?? profiles.find(hasOwnLLMConfig);
+  const preferred = profiles.find((profile) => !isCoordinatorAgent(profile.name) && hasReadyPrivateLLMConfig(profile))
+    ?? profiles.find(hasReadyPrivateLLMConfig);
 
   if (preferred) {
     const override: Partial<AdapterConfig> = {};
@@ -160,7 +172,7 @@ export function chooseRuntimeAdapterOverrides(profiles: AgentRuntimeProfile[]): 
     return override;
   }
 
-  const runtimeModel = chooseRuntimeModel(profiles);
+  const runtimeModel = chooseRuntimeModel(profiles.filter((profile) => isInheritedProvider(profile.provider)));
   return runtimeModel ? { model: runtimeModel } : undefined;
 }
 

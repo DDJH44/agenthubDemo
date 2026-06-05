@@ -23,7 +23,21 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     }
     throw new Error("Unauthorized");
   }
-  if (!res.ok) throw new Error(`API error ${res.status}`);
+  if (!res.ok) {
+    let message = `API error ${res.status}`;
+    try {
+      const data = await res.json() as { error?: unknown; message?: unknown };
+      const detail = typeof data.error === "string"
+        ? data.error
+        : typeof data.message === "string"
+        ? data.message
+        : "";
+      if (detail) message = detail;
+    } catch {
+      // Keep the generic status message when the response body is not JSON.
+    }
+    throw new Error(message);
+  }
   return res.json();
 }
 

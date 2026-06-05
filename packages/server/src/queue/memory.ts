@@ -6,7 +6,7 @@ import { jobRepo } from "../db/repositories/job";
 import { messageRepo } from "../db/repositories/message";
 import { logger } from "../utils/logger";
 import { resolveVisibleAgentForRole } from "../agents/conversation-routing";
-import { buildAgentRuntimePrompt, chooseRuntimeAdapterOverrides, resolveAgentRuntimeProfiles } from "../agents/runtime-profile";
+import { buildAgentRuntimePrompt, chooseRuntimeAdapterOverrides, getPrivateLLMConfigIssue, isInheritedProvider, resolveAgentRuntimeProfiles } from "../agents/runtime-profile";
 
 const PRIORITY_ORDER: Record<string, number> = { urgent: 0, high: 1, normal: 2, low: 3 };
 const DEFAULT_TIMEOUT = 300_000;
@@ -245,12 +245,26 @@ export class MemoryQueue implements IJobQueue {
     const adapter = createAdapterFromEnv(runtimeAdapterOverrides);
     const orchestrator = createOrchestrator(adapter);
 
-    if (runtimeProfiles.some((profile) => profile.configured)) {
+    const configuredProfiles = runtimeProfiles.filter((profile) => profile.configured);
+    const readyPrivateProfiles = configuredProfiles.filter((profile) => !isInheritedProvider(profile.provider) && !getPrivateLLMConfigIssue(profile));
+    const incompletePrivateProfiles = configuredProfiles.filter((profile) => !isInheritedProvider(profile.provider) && getPrivateLLMConfigIssue(profile));
+
+    if (configuredProfiles.length > 0) {
+      const loadedNames = configuredProfiles.map((profile) => profile.name).join("、");
+      const privateNames = readyPrivateProfiles.map((profile) => `${profile.name}:${profile.model}`).join("、");
+      const incompleteNames = incompletePrivateProfiles
+        .map((profile) => `${profile.name}(${getPrivateLLMConfigIssue(profile)})`)
+        .join("、");
+      const statusParts = [
+        `已加载自建 Agent：${loadedNames}`,
+        privateNames ? `私有 LLM：${privateNames}` : runtimeModel ? `模型偏好：${runtimeModel}` : "继承系统模型",
+        incompleteNames ? `配置不完整，已回退系统模型：${incompleteNames}` : "",
+      ].filter(Boolean);
       emit({
         type: "agent:status",
         agentId: activeAgents.find((name) => name !== "planner") ?? activeAgents[0] ?? "planner",
         status: "acting",
-        lastOutput: `已加载 ${runtimeProfiles.filter((profile) => profile.configured).length} 个自建智能体配置${runtimeModel ? `，模型偏好：${runtimeModel}` : ""}`,
+        lastOutput: statusParts.join("；"),
       });
     }
 

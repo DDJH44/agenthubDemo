@@ -40,6 +40,9 @@ interface AgentCardProps {
   agent: UserAgent;
   onEdit?: (agent: UserAgent) => void;
   onDelete?: (id: string) => void;
+  onTest?: (agent: UserAgent) => void;
+  testing?: boolean;
+  connectionStatus?: { ok: boolean; text: string } | null;
 }
 
 function formatTime(ts: number) {
@@ -47,7 +50,7 @@ function formatTime(ts: number) {
   return `${date.getMonth() + 1}/${date.getDate()} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
 }
 
-export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
+export function AgentCard({ agent, onEdit, onDelete, onTest, testing = false, connectionStatus }: AgentCardProps) {
   const connectionMeta = getConnectionStateMeta("local");
 
   return (
@@ -84,6 +87,17 @@ export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
           <p className="mt-2 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>
             {agent.systemPrompt || "暂无系统提示词"}
           </p>
+          {connectionStatus && (
+            <div
+              className="mt-2 rounded-md px-2 py-1 text-[10px]"
+              style={{
+                color: connectionStatus.ok ? "var(--success)" : "var(--danger)",
+                background: connectionStatus.ok ? "var(--success-subtle)" : "var(--danger-subtle)",
+              }}
+            >
+              {connectionStatus.text}
+            </div>
+          )}
         </div>
       </div>
 
@@ -100,6 +114,20 @@ export function AgentCard({ agent, onEdit, onDelete }: AgentCardProps) {
       <div className="mt-3 flex items-center justify-between border-t pt-3" style={{ borderColor: "var(--divider)" }}>
         <span className="text-[10px]" style={{ color: "var(--fg-disabled)" }}>更新于 {formatTime(agent.updatedAt)}</span>
         <div className="flex gap-2">
+          {onTest && (
+            <button
+              type="button"
+              onClick={() => onTest(agent)}
+              disabled={testing}
+              className="rounded-md px-2 py-1 text-xs font-semibold"
+              style={{
+                color: testing ? "var(--fg-disabled)" : "var(--accent)",
+                background: testing ? "var(--surface-mid)" : "var(--accent-subtle)",
+              }}
+            >
+              {testing ? "测试中" : "测试"}
+            </button>
+          )}
           <button type="button" onClick={() => onEdit?.(agent)} className="rounded-md px-2 py-1 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
             编辑
           </button>
