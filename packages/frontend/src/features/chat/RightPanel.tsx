@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import type { OnMount } from "@monaco-editor/react";
 import type { Artifact, Message, ResourceItem, SessionAgentStatus, StepResult } from "@agenthub/shared";
 import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
+import { createId } from "@/lib/id";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { DeployPanel as DeployWorkflowPanel } from "./DeployPanel";
@@ -243,7 +244,7 @@ function getArtifactLanguage(artifact: Artifact) {
 
 function addLocalMessage(conversationId: string, message: Omit<Message, "id" | "conversationId" | "timestamp">) {
   useChatStore.getState().addMessage(conversationId, {
-    id: crypto.randomUUID(),
+    id: createId(),
     conversationId,
     timestamp: Date.now(),
     ...message,

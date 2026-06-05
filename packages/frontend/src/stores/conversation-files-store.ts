@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { createId } from "@/lib/id";
 
 export interface ConversationFile {
   id: string;
@@ -46,7 +47,7 @@ export const useConversationFilesStore = create<ConversationFilesStore>((set, ge
     set((state) => {
       const newFile: ConversationFile = {
         ...file,
-        id: crypto.randomUUID(),
+        id: createId(),
         timestamp: Date.now(),
       };
       const next = [...state.files, newFile];

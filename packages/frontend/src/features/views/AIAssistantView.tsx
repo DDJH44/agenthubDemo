@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useConversationFilesStore } from "../../stores/conversation-files-store";
 import { useAuthStore } from "../../stores/auth-store";
+import { createId } from "../../lib/id";
 import { buildApiUrl } from "../../lib/runtime-config";
 import { renderMarkdown } from "../../lib/markdown-utils";
 import { isDocument, isDocumentRequest, shouldRenderDocumentCompletion } from "./assistant-intent";
@@ -249,7 +250,7 @@ function createImagePreview(file: File, dataUrl: string): Promise<string> {
 
 async function createAssistantAttachment(file: File, kind: AssistantAttachment["kind"]): Promise<AssistantAttachment> {
   const base = {
-    id: crypto.randomUUID(),
+    id: createId(),
     name: file.name,
     kind,
     mime: file.type || "unknown",
@@ -867,7 +868,7 @@ export function AIAssistantView() {
     }
 
     const userMsg: ChatMessage = {
-      id: crypto.randomUUID(),
+      id: createId(),
       role: "user",
       content: outgoingText,
       displayContent: displayText,
@@ -934,7 +935,7 @@ export function AIAssistantView() {
 
       // Save full response as chat message
       if (fullText.trim()) {
-        const aiMsg: ChatMessage = { id: crypto.randomUUID(), role: "assistant", content: fullText, timestamp: Date.now() };
+        const aiMsg: ChatMessage = { id: createId(), role: "assistant", content: fullText, timestamp: Date.now() };
         setMessages((prev) => [...prev, aiMsg]);
 
         // Auto-save to files if user requested a document
@@ -952,7 +953,7 @@ export function AIAssistantView() {
       }
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: `请求失败：${(err as Error).message}`, timestamp: Date.now() }]);
+      setMessages((prev) => [...prev, { id: createId(), role: "assistant", content: `请求失败：${(err as Error).message}`, timestamp: Date.now() }]);
     } finally {
       isStreamingRef.current = false;
       setIsStreaming(false);
@@ -968,14 +969,14 @@ export function AIAssistantView() {
     abortRef.current?.abort();
     if (streamBuffer) {
       const content = streamBuffer + "\n\n*(已停止生成)*";
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content, timestamp: Date.now() }]);
+      setMessages((prev) => [...prev, { id: createId(), role: "assistant", content, timestamp: Date.now() }]);
       if (isDocRequestRef.current && isDocument(streamBuffer)) {
         const topic = detectTopic(streamBuffer, lastUserQueryRef.current);
         addFile({
           title: generateFileName(topic, files.filter((f) => f.topic === topic).length),
           content: streamBuffer,
           topic,
-          messageId: crypto.randomUUID(),
+          messageId: createId(),
           starred: false,
         });
       }

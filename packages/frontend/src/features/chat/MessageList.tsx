@@ -4,6 +4,7 @@ import { memo, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { Message } from "@agenthub/shared";
 import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
+import { createId } from "@/lib/id";
 import { useChatStore } from "@/stores/chat-store";
 import { ArtifactCard, type ArtifactCardType } from "./ArtifactCard";
 import { getCodeFilename, inferCodeLanguage, splitMessageContent } from "./message-content-parser";
@@ -501,7 +502,7 @@ function MessageActions({
     const meta = getSenderMeta(message);
     addToContext();
     addMessage(message.conversationId, {
-      id: crypto.randomUUID(),
+      id: createId(),
       conversationId: message.conversationId,
       type: "user_message",
       sender: "user",
@@ -515,7 +516,7 @@ function MessageActions({
       timestamp: Date.now(),
     });
     addMessage(message.conversationId, {
-      id: crypto.randomUUID(),
+      id: createId(),
       conversationId: message.conversationId,
       type: "agent_message",
       sender: "planner",
@@ -533,7 +534,7 @@ function MessageActions({
     const meta = getSenderMeta(message);
     addToContext();
     addMessage(message.conversationId, {
-      id: crypto.randomUUID(),
+      id: createId(),
       conversationId: message.conversationId,
       type: "user_message",
       sender: "user",
@@ -547,7 +548,7 @@ function MessageActions({
       timestamp: Date.now(),
     });
     addMessage(message.conversationId, {
-      id: crypto.randomUUID(),
+      id: createId(),
       conversationId: message.conversationId,
       type: "agent_message",
       sender,

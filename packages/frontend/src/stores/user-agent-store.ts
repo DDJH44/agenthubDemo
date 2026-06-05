@@ -4,6 +4,7 @@ import { create } from "zustand";
 import type { UserAgent } from "@agenthub/shared";
 import { MAIN_AGENT, MAIN_AGENT_ID, AVATAR_COLORS } from "@agenthub/shared";
 import { api } from "@/lib/api-client";
+import { createId } from "@/lib/id";
 
 const STORAGE_KEY = "agenthub-user-agents";
 
@@ -154,7 +155,7 @@ export const useUserAgentStore = create<UserAgentStore>((set, get) => ({
 
   addAgent: (input) => {
     const now = Date.now();
-    const agent: UserAgent = { ...input, id: crypto.randomUUID(), createdAt: now, updatedAt: now };
+    const agent: UserAgent = { ...input, id: createId(), createdAt: now, updatedAt: now };
     set((s) => { const next = [...s.agents, agent]; saveToStorage(next); return { agents: next }; });
     void syncCreateAgent(agent, (oldId, synced) => {
       set((s) => {

@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Conversation, Message, AgentState, TaskFlowItem, SessionAgentStatus, TaskProgress, ResourceItem, Member } from "@agenthub/shared";
 import type { SessionStatus, TaskPriority } from "@agenthub/shared";
+import { createId } from "@/lib/id";
 import { buildApiUrl } from "@/lib/runtime-config";
 
 // ── localStorage 持久化 ──
@@ -722,7 +723,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       const alreadyHasSummary = existing.some(m => m.type === "agent_message" && m.sender === "refiner");
       if (!alreadyHasSummary) {
         const streamMsg: Message = {
-          id: crypto.randomUUID(),
+          id: createId(),
           conversationId: legacyConvId,
           type: "agent_message",
           sender: "assistant",
@@ -924,7 +925,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({ aiIsStreaming: true, aiStreamBuffer: "", activeAiAbort: controller, isSending: true });
 
     const userMsg: Message = {
-      id: crypto.randomUUID(), conversationId: state.activeConversationId ?? "ai-assistant",
+      id: createId(), conversationId: state.activeConversationId ?? "ai-assistant",
       type: "user_message", sender: "user", content: text, mentions: [], timestamp: Date.now(),
     };
 
@@ -980,7 +981,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // 响应完成后添加助手消息
       if (fullText) {
         const assistantMsg: Message = {
-          id: crypto.randomUUID(), conversationId: cid,
+          id: createId(), conversationId: cid,
           type: "agent_message", sender: "assistant", content: fullText, mentions: [], timestamp: Date.now(),
         };
         set((s) => {
@@ -991,7 +992,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     } catch (err) {
       if ((err as Error).name === "AbortError") return;
       const errorMsg: Message = {
-        id: crypto.randomUUID(), conversationId: cid,
+        id: createId(), conversationId: cid,
         type: "system", sender: "system", content: `❌ ${(err as Error).message}`, mentions: [], timestamp: Date.now(),
       };
       set((s) => {
@@ -1069,7 +1070,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }
       const nextRef: ContextReference = {
         ...ref,
-        id: ref.id ?? crypto.randomUUID(),
+        id: ref.id ?? createId(),
         createdAt: ref.createdAt ?? Date.now(),
       };
       const contextReferences = {
@@ -1119,7 +1120,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       
       // 保存当前状态到历史记录
       const historyEntry = {
-        id: crypto.randomUUID(),
+        id: createId(),
         messages: [...messages],
         timestamp: Date.now()
       };

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import type { AgentExecutionRequest, Artifact, Conversation, Message, WorkflowReferencePayload } from "@agenthub/shared";
+import { MAIN_AGENT_ID, type AgentExecutionRequest, type Artifact, type Conversation, type Message, type WorkflowReferencePayload } from "@agenthub/shared";
 import { useWebSocket } from "../../packages/frontend/src/hooks/useWebSocket";
 import { useChatStore } from "../../packages/frontend/src/stores/chat-store";
 import { useSettingsStore } from "../../packages/frontend/src/stores/settings-store";
@@ -12,6 +12,8 @@ import { useWorkspaceStore } from "../../packages/frontend/src/stores/workspace-
 import { useNavigationStore, type NavKey } from "../../packages/frontend/src/stores/navigation-store";
 import { useUserAgentStore } from "../../packages/frontend/src/stores/user-agent-store";
 import { useAuthStore } from "../../packages/frontend/src/stores/auth-store";
+import { createId } from "../../packages/frontend/src/lib/id";
+import { MobileRemoteView } from "../../packages/frontend/src/features/mobile/MobileRemoteView";
 import { SidebarNav } from "../../packages/frontend/src/features/views/SidebarNav";
 import { CommandPalette } from "../../packages/frontend/src/features/views/CommandPalette";
 import {
@@ -388,6 +390,23 @@ export default function Page() {
     if (isMobile) setShowMobileConvList(false);
   }, [ws, isMobile, setActiveNav]);
 
+  const handleCreateMobileConversation = useCallback(() => {
+    const now = Date.now();
+    handleCreateConversation({
+      id: createId(),
+      workspaceId: "default",
+      title: "手机遥控会话",
+      type: "group",
+      status: "active",
+      pinned: false,
+      pinnedAt: null,
+      participants: [MAIN_AGENT_ID],
+      createdAt: now,
+      updatedAt: now,
+      lastMessageAt: now,
+    });
+  }, [handleCreateConversation]);
+
   const handleSelect = useCallback((id: string) => {
     useChatStore.getState().setActiveConversation(id);
     useWorkspaceStore.getState().switchConversation(id);
@@ -415,7 +434,7 @@ export default function Page() {
       : undefined;
 
     if (convId) {
-      const msgId = crypto.randomUUID();
+      const msgId = createId();
       const userMsg: Message = {
         id: msgId,
         conversationId: convId,
@@ -729,6 +748,26 @@ export default function Page() {
       <div className="flex items-center justify-center h-screen" style={{ background: "var(--bg-root)" }}>
         <div style={{ color: "var(--fg-secondary)" }}>跳转中...</div>
       </div>
+    );
+  }
+
+  if (isMobile) {
+    const activeTaskState = chat.activeConversationId
+      ? chat.conversationTasks[chat.activeConversationId]
+      : undefined;
+
+    return (
+      <MobileRemoteView
+        connected={chat.connected}
+        conversations={chat.conversations}
+        activeConversationId={chat.activeConversationId}
+        messages={activeMessages}
+        isStreaming={activeTaskState?.isStreaming ?? chat.isStreaming}
+        taskSummary={activeTaskState?.taskSummary || chat.taskSummary}
+        onSelectConversation={handleSelect}
+        onSend={handleSend}
+        onCreateConversation={handleCreateMobileConversation}
+      />
     );
   }
 

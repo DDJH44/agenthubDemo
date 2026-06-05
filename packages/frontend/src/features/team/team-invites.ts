@@ -1,3 +1,5 @@
+import { createId } from "@/lib/id";
+
 export interface TeamInvite {
   id: string;
   email: string;
@@ -47,7 +49,7 @@ export function addPendingTeamInvite(
   if (existing) return { ok: true, invite: existing, duplicate: true };
 
   const invite: TeamInvite = {
-    id: crypto.randomUUID(),
+    id: createId(),
     email,
     invitedAt: Date.now(),
     source,

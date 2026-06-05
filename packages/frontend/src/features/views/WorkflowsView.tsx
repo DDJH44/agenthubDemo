@@ -21,6 +21,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import type { Artifact, Message } from "@agenthub/shared";
 import { buildApiUrl } from "@/lib/runtime-config";
+import { createId } from "@/lib/id";
 import { useChatStore } from "@/stores/chat-store";
 import { useNavigationStore } from "@/stores/navigation-store";
 import {
@@ -297,7 +298,7 @@ function serializeWorkflowOutput(output: WorkflowOutput) {
 
 function createRunId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
+    ? createId()
     : `workflow-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
@@ -1349,7 +1350,7 @@ export function WorkflowsView() {
     };
 
     const message: Message = {
-      id: crypto.randomUUID(),
+      id: createId(),
       conversationId,
       type: "agent_message",
       sender: kind === "html" ? "coder" : "planner",

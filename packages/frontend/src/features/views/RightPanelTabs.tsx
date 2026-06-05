@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { useNavigationStore } from "@/stores/navigation-store";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
+import { createId } from "@/lib/id";
 import { timeAgo } from "@/lib/utils";
 import { addPendingTeamInvite } from "@/features/team/team-invites";
 import { OPEN_ARTIFACT_EVENT, panelTabForArtifact } from "@/features/chat/open-artifact";
@@ -180,7 +181,7 @@ export function RightPanelTabs() {
   const handleAddMemory = useCallback(() => {
     const text = memoryInput.trim();
     if (!text) return;
-    const entry: MemoryEntry = { id: crypto.randomUUID(), text, createdAt: Date.now() };
+    const entry: MemoryEntry = { id: createId(), text, createdAt: Date.now() };
     const next = [entry, ...memories];
     setMemories(next);
     saveMemory(next);

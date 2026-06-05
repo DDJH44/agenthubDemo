@@ -3,6 +3,7 @@
 import { useCallback, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import type { Artifact } from "@agenthub/shared";
+import { createId } from "@/lib/id";
 import { renderMarkdown } from "@/lib/markdown-utils";
 import { useChatStore } from "@/stores/chat-store";
 import { downloadSlidesAsPptx, getPptxFilename } from "./pptx-export";
@@ -334,7 +335,7 @@ function DocumentView({
     if (!conversationId) return;
     referenceParagraph(text, index);
     addMessage(conversationId, {
-      id: crypto.randomUUID(),
+      id: createId(),
       conversationId,
       type: "user_message",
       sender: "user",
@@ -350,7 +351,7 @@ function DocumentView({
       timestamp: currentTime(),
     });
     addMessage(conversationId, {
-      id: crypto.randomUUID(),
+      id: createId(),
       conversationId,
       type: "agent_message",
       sender: agent.sender,
@@ -659,7 +660,7 @@ function DeployView({
     if (!conversationId) return;
     const detail = error || "部署失败，请检查构建日志、平台配置和入口文件。";
     addMessage(conversationId, {
-      id: crypto.randomUUID(),
+      id: createId(),
       conversationId,
       type: "user_message",
       sender: "user",
@@ -673,7 +674,7 @@ function DeployView({
       timestamp: Date.now(),
     });
     addMessage(conversationId, {
-      id: crypto.randomUUID(),
+      id: createId(),
       conversationId,
       type: "agent_message",
       sender: "coder",

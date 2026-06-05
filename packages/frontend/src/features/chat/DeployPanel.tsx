@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
 import { api } from "@/lib/api-client";
+import { createId } from "@/lib/id";
 import { getGlobalSend } from "@/lib/ws-client";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
@@ -412,7 +413,7 @@ export function DeployPanel() {
     if (!activeConversationId) return;
     const errorText = deployError || deployLogs.slice(-3).join("\n") || "部署失败，缺少错误日志。";
     useChatStore.getState().addMessage(activeConversationId, {
-      id: crypto.randomUUID(),
+      id: createId(),
       conversationId: activeConversationId,
       type: "user_message",
       sender: "user",
@@ -426,7 +427,7 @@ export function DeployPanel() {
       timestamp: Date.now(),
     });
     useChatStore.getState().addMessage(activeConversationId, {
-      id: crypto.randomUUID(),
+      id: createId(),
       conversationId: activeConversationId,
       type: "agent_message",
       sender: "coder",

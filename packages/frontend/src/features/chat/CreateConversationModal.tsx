@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import type { Conversation } from "@agenthub/shared";
 import { MAIN_AGENT, MAIN_AGENT_ID } from "@agenthub/shared";
+import { createId } from "@/lib/id";
 import { useChatStore } from "@/stores/chat-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
 import { AgentSelectList } from "./AgentSelectList";
@@ -61,7 +62,7 @@ export function CreateConversationModal({ open, onClose, onCreate }: CreateConve
     const allParticipants = [...selectedAgentNames, ...selectedContacts];
     const participants = mode === "group" ? [MAIN_AGENT_ID, ...allParticipants] : allParticipants;
     const convTitle = title.trim() || (mode === "direct" ? `与 ${allParticipants[0] || "成员"} 的对话` : `群聊 (${participants.length} 人)`);
-    const convId = crypto.randomUUID();
+    const convId = createId();
     setConversationMode(convId, mode === "direct" ? "single" : "group");
     onCreate({
       id: convId,
