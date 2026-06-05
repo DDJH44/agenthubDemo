@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useChatStore } from "@/stores/chat-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
 import { useNavigationStore } from "@/stores/navigation-store";
-import { getAgentMeta } from "./agent-directory";
+import { getAgentMeta, getConversationAgents } from "./agent-directory";
 import { ContextWindowIndicator } from "./ContextWindowIndicator";
 
 function Icon({ path, size = 14 }: { path: string; size?: number }) {
@@ -27,9 +28,11 @@ export function ConversationNavBar() {
   const [showMembers, setShowMembers] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [moreStatus, setMoreStatus] = useState<string | null>(null);
+  const currentUserId = useAuthStore((state) => state.user?.id);
   const userAgents = useUserAgentStore((state) => state.agents);
   const hydrateUserAgents = useUserAgentStore((state) => state.hydrate);
   const setActiveNav = useNavigationStore((state) => state.setActiveNav);
+  const excludeParticipantIds = useMemo(() => currentUserId ? [currentUserId] : [], [currentUserId]);
 
   useEffect(() => {
     void hydrateUserAgents();
@@ -38,11 +41,19 @@ export function ConversationNavBar() {
   const activeConv = conversations.find((conversation) => conversation.id === activeConversationId);
   const title = conversationDetail?.title ?? activeConv?.title ?? "未选择会话";
   const isGroup = activeConversationId ? (conversationMode[activeConversationId] ?? (activeConv?.type !== "direct")) : false;
-  const participants = conversationDetail?.participants ?? (activeConv?.participants ?? []).map((name, index) => ({ id: String(index), name, role: "editor" as const }));
-  const participantAgents = participants.map((participant) => ({ participant, meta: getAgentMeta(participant.name, userAgents) }));
-  const memberAvatars = participants.slice(0, 5);
+  const rawParticipants = conversationDetail?.participants ?? (activeConv?.participants ?? []).map((name, index) => ({ id: String(index), name, role: "editor" as const }));
+  const participantAgents = activeConv
+    ? getConversationAgents(activeConv, userAgents, { excludeParticipantIds }).map((meta, index) => ({
+        participant: { id: meta.id, name: meta.name, role: index === 0 ? "owner" as const : "editor" as const },
+        meta,
+      }))
+    : rawParticipants
+        .filter((participant) => !excludeParticipantIds.includes(participant.name))
+        .map((participant) => ({ participant, meta: getAgentMeta(participant.name, userAgents) }));
+  const participants = participantAgents.map(({ participant }) => participant);
+  const memberAvatars = participantAgents.slice(0, 5);
   const extraMembers = Math.max(0, participants.length - memberAvatars.length);
-  const primaryAgent = getAgentMeta(participants[0]?.name ?? title, userAgents);
+  const primaryAgent = participantAgents[0]?.meta ?? getAgentMeta(title, userAgents);
 
   const contextData = useMemo(() => {
     const convMessages = activeConversationId ? (messages[activeConversationId] ?? []) : [];
@@ -192,8 +203,7 @@ export function ConversationNavBar() {
 
         {isGroup && memberAvatars.length > 0 && (
           <div className="hidden -space-x-2 2xl:flex">
-            {memberAvatars.map((participant, index) => {
-              const agent = getAgentMeta(participant.name, userAgents);
+            {memberAvatars.map(({ participant, meta: agent }, index) => {
               return (
                 <div
                   key={participant.id}

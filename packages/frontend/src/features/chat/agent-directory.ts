@@ -24,6 +24,10 @@ export interface AgentConnection {
   lastChecked: string;
 }
 
+interface ConversationAgentOptions {
+  excludeParticipantIds?: string[];
+}
+
 export const CONNECTION_STATE_META: Record<AgentConnectionState, { label: string; shortLabel: string; color: string; bg: string; border: string }> = {
   local: { label: "内置可用", shortLabel: "内置", color: "#174ea6", bg: "rgba(23, 78, 166, 0.07)", border: "rgba(23, 78, 166, 0.16)" },
   live: { label: "真实适配器", shortLabel: "真实", color: "var(--success)", bg: "var(--success-subtle)", border: "var(--success-border)" },
@@ -229,6 +233,23 @@ function findUserAgent(nameOrId: string, userAgents: UserAgent[]): AgentDirector
   return found ? userAgentToDirectoryEntry(found) : null;
 }
 
+function isKnownDirectoryAgent(nameOrId: string) {
+  const key = normalize(nameOrId);
+  return AGENT_DIRECTORY.some((agent) => agent.id === key || agent.aliases.some((alias) => normalize(alias) === key));
+}
+
+function shouldHideParticipant(nameOrId: string, userAgents: UserAgent[], options: ConversationAgentOptions) {
+  const key = normalize(nameOrId);
+  if (!key) return true;
+
+  const excludedIds = new Set((options.excludeParticipantIds ?? []).map(normalize));
+  if (excludedIds.has(key)) return true;
+  if (isKnownDirectoryAgent(nameOrId)) return false;
+  if (findUserAgent(nameOrId, userAgents)) return false;
+
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nameOrId.trim());
+}
+
 export function getAgentMeta(nameOrId: string, userAgents: UserAgent[] = []): AgentDirectoryEntry {
   const key = normalize(nameOrId);
   const userAgentById = userAgents.find((agent) => normalize(agent.id) === key);
@@ -243,8 +264,10 @@ export function getAgentMeta(nameOrId: string, userAgents: UserAgent[] = []): Ag
   return fallbackAgent(nameOrId);
 }
 
-export function getConversationAgents(conversation: Conversation, userAgents: UserAgent[] = []): AgentDirectoryEntry[] {
-  const names = conversation.participants.length > 0 ? conversation.participants : [conversation.title];
+export function getConversationAgents(conversation: Conversation, userAgents: UserAgent[] = [], options: ConversationAgentOptions = {}): AgentDirectoryEntry[] {
+  const names = conversation.participants.length > 0
+    ? conversation.participants.filter((name) => !shouldHideParticipant(name, userAgents, options))
+    : [conversation.title];
   const inferred = [...names];
   const title = conversation.title.toLowerCase();
   for (const agent of AGENT_DIRECTORY) {
@@ -263,9 +286,9 @@ export function getConversationAgents(conversation: Conversation, userAgents: Us
     });
 }
 
-export function getConversationCapabilityTags(conversation: Conversation, max = 4, userAgents: UserAgent[] = []): string[] {
+export function getConversationCapabilityTags(conversation: Conversation, max = 4, userAgents: UserAgent[] = [], options: ConversationAgentOptions = {}): string[] {
   const tags: string[] = [];
-  for (const agent of getConversationAgents(conversation, userAgents)) {
+  for (const agent of getConversationAgents(conversation, userAgents, options)) {
     if (agent.id === "pmo") tags.push("主 Agent");
     if (agent.isCustom) tags.push("自建 Agent");
     tags.push(...agent.capabilities);
