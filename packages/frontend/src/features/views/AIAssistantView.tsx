@@ -5,13 +5,11 @@ import type { ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useConversationFilesStore } from "../../stores/conversation-files-store";
 import { useAuthStore } from "../../stores/auth-store";
+import { buildApiUrl } from "../../lib/runtime-config";
 import { renderMarkdown } from "../../lib/markdown-utils";
 import { isDocument, isDocumentRequest, shouldRenderDocumentCompletion } from "./assistant-intent";
 import { DocumentPreviewPanel } from "./DocumentPreviewPanel";
 
-const API_BASE = typeof window !== "undefined"
-  ? `${window.location.protocol}//${window.location.hostname}:3002`
-  : "http://localhost:3002";
 const ASSISTANT_AVATAR_URL = "/brand/assistant-avatar-simple.png";
 const ASSISTANT_STORAGE_PREFIX = "agenthub-assistant-";
 const ASSISTANT_USER_STORAGE_PREFIX = `${ASSISTANT_STORAGE_PREFIX}user-`;
@@ -884,7 +882,7 @@ export function AIAssistantView() {
 
     try {
       const token = getToken();
-      const res = await fetch(`${API_BASE}/api/assistant`, {
+      const res = await fetch(buildApiUrl("/api/assistant"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({

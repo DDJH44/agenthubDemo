@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Conversation, Message, AgentState, TaskFlowItem, SessionAgentStatus, TaskProgress, ResourceItem, Member } from "@agenthub/shared";
 import type { SessionStatus, TaskPriority } from "@agenthub/shared";
+import { buildApiUrl } from "@/lib/runtime-config";
 
 // ── localStorage 持久化 ──
 const PERSIST_KEY = "agenthub-chat-messages";
@@ -936,7 +937,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("agenthub-auth-token") : null;
-      const res = await fetch(`${window.location.protocol}//${window.location.hostname}:3002/api/assistant`, {
+      const res = await fetch(buildApiUrl("/api/assistant"), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ text, history }),

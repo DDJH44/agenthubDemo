@@ -1,9 +1,6 @@
 import { create } from "zustand";
 import type { FileInfo } from "@agenthub/shared";
-
-const API_URL = typeof window !== "undefined"
-  ? `${window.location.protocol}//${window.location.hostname}:3002`
-  : "http://localhost:3002";
+import { buildApiUrl } from "@/lib/runtime-config";
 
 interface FileStore {
   filesByConversation: Record<string, FileInfo[]>;
@@ -48,7 +45,7 @@ export const useFileStore = create<FileStore>((set, get) => ({
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await fetch(`${API_URL}/api/conversations/${conversationId}/files`, {
+      const res = await fetch(buildApiUrl(`/api/conversations/${conversationId}/files`), {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
@@ -67,7 +64,7 @@ export const useFileStore = create<FileStore>((set, get) => ({
 
   async downloadFile(fileId, fileName) {
     const token = localStorage.getItem("agenthub-auth-token");
-    const res = await fetch(`${API_URL}/api/files/${fileId}/download`, {
+    const res = await fetch(buildApiUrl(`/api/files/${fileId}/download`), {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (res.ok) {
@@ -83,7 +80,7 @@ export const useFileStore = create<FileStore>((set, get) => ({
 
   async deleteFile(conversationId, fileId) {
     const token = localStorage.getItem("agenthub-auth-token");
-    const res = await fetch(`${API_URL}/api/files/${fileId}`, {
+    const res = await fetch(buildApiUrl(`/api/files/${fileId}`), {
       method: "DELETE",
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });

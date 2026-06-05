@@ -20,6 +20,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { Artifact, Message } from "@agenthub/shared";
+import { buildApiUrl } from "@/lib/runtime-config";
 import { useChatStore } from "@/stores/chat-store";
 import { useNavigationStore } from "@/stores/navigation-store";
 import {
@@ -94,10 +95,6 @@ const WORKFLOW_HISTORY_KEY = "agenthub-workflow-run-history";
 const MAX_WORKFLOW_HISTORY = 12;
 const CHAT_MESSAGES_KEY = "agenthub-chat-messages";
 const CHAT_CONVERSATIONS_KEY = "agenthub-conversations";
-
-const API_BASE = typeof window !== "undefined"
-  ? `${window.location.protocol}//${window.location.hostname}:3002`
-  : "http://localhost:3002";
 
 const AGENT_TEMPLATES: AgentNodeData[] = [
   { agentId: "planner", label: "PMO 规划", color: "var(--accent)", status: "idle", config: { model: "default", tools: ["plan", "context"] } },
@@ -1222,7 +1219,7 @@ export function WorkflowsView() {
 
     try {
       const token = typeof window !== "undefined" ? localStorage.getItem("agenthub-auth-token") : null;
-      const response = await fetch(`${API_BASE}/api/run`, {
+      const response = await fetch(buildApiUrl("/api/run"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

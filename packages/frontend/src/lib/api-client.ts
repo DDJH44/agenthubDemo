@@ -1,6 +1,4 @@
-const BASE_URL = typeof window !== "undefined"
-  ? `${window.location.protocol}//${window.location.hostname}:3002`
-  : "http://localhost:3002";
+import { buildApiUrl } from "./runtime-config";
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
@@ -15,7 +13,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  const res = await fetch(buildApiUrl(path), { ...options, headers });
   if (res.status === 401) {
     if (typeof window !== "undefined") {
       localStorage.removeItem("agenthub-auth-token");
@@ -46,7 +44,7 @@ async function upload<T>(path: string, formData: FormData): Promise<T> {
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetch(buildApiUrl(path), {
     method: "POST",
     headers,
     body: formData,

@@ -1,4 +1,5 @@
 import type { WSServerMessage, WSClientMessage } from "@agenthub/shared";
+import { getWebSocketUrl } from "./runtime-config";
 import { useAuthStore } from "../stores/auth-store";
 
 export type WSEventHandler = (msg: WSServerMessage) => void;
@@ -14,18 +15,6 @@ export function getGlobalSend(): (msg: WSClientMessage) => void {
   return _globalSend ?? (() => { console.warn("[WS] No global send registered"); });
 }
 
-function getDefaultWsUrl(): string {
-  const configured = process.env.NEXT_PUBLIC_WS_URL?.trim();
-  if (configured) return configured;
-
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const { hostname, host, port } = window.location;
-  const isLocalDevHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "0.0.0.0";
-  const localDevPort = isLocalDevHost && port && port !== "3002";
-  const wsHost = localDevPort ? `${hostname}:3002` : host;
-  return `${protocol}://${wsHost}/api/ws`;
-}
-
 export function createAgentSocket(serverUrl?: string, token?: string) {
   if (typeof window === "undefined") {
     const noop = () => {};
@@ -37,7 +26,7 @@ export function createAgentSocket(serverUrl?: string, token?: string) {
       onReady: (_cb: () => void) => {},
     };
   }
-  const url = serverUrl ?? getDefaultWsUrl();
+  const url = serverUrl ?? getWebSocketUrl();
   const ws = new WebSocket(url);
   const handlers: WSEventHandler[] = [];
   const sendQueue: WSClientMessage[] = [];

@@ -1,11 +1,8 @@
 import { create } from "zustand";
 import type { AuthUser } from "@agenthub/shared";
+import { buildApiUrl } from "@/lib/runtime-config";
 import { useChatStore } from "./chat-store";
 import { useWorkspaceStore } from "./workspace-store";
-
-const API_URL = typeof window !== "undefined"
-  ? `${window.location.protocol}//${window.location.hostname}:3002`
-  : "http://localhost:3002";
 
 const TOKEN_KEY = "agenthub-auth-token";
 
@@ -53,7 +50,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
     const timeoutId = setTimeout(() => controller.abort(), 3000);
 
     try {
-      const res = await fetch(`${API_URL}/api/auth/me`, {
+      const res = await fetch(buildApiUrl("/api/auth/me"), {
         headers: { Authorization: `Bearer ${token}` },
         signal: controller.signal,
       });
@@ -75,7 +72,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   async login(email: string, password: string) {
     set({ isLoading: true, error: null });
     try {
-      const res = await fetch(`${API_URL}/api/auth/login`, {
+      const res = await fetch(buildApiUrl("/api/auth/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -95,7 +92,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   async register(name: string, email: string, password: string) {
     set({ isLoading: true, error: null });
     try {
-      const res = await fetch(`${API_URL}/api/auth/register`, {
+      const res = await fetch(buildApiUrl("/api/auth/register"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, email, password }),
@@ -115,7 +112,7 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
   logout() {
     const { token } = get();
     if (token) {
-      fetch(`${API_URL}/api/auth/logout`, {
+      fetch(buildApiUrl("/api/auth/logout"), {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
       }).catch(() => {});
