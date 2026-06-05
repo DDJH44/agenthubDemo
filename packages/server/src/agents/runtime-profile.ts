@@ -31,7 +31,7 @@ interface RawAgentConfig {
   tools?: unknown;
 }
 
-const PLACEHOLDER_MODELS = new Set(["gpt-4o-mini"]);
+const PLACEHOLDER_MODELS = new Set(["gpt-4o-mini", "your-volcengine-endpoint-id"]);
 
 function parseJsonObject(raw: string | null | undefined): Record<string, unknown> {
   if (!raw) return {};

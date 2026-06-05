@@ -42,7 +42,7 @@ SESSION_SECRET=replace-with-a-long-random-secret
 ADAPTER_TYPE=openai
 OPENAI_API_KEY=your-platform-llm-key
 OPENAI_BASE_URL=https://ark.cn-beijing.volces.com/api/v3
-LLM_MODEL=ep-20260508214225-g6x7g
+LLM_MODEL=your-volcengine-endpoint-id
 
 UPLOAD_DIR=/var/lib/agenthub/files
 MAX_FILE_SIZE_MB=100

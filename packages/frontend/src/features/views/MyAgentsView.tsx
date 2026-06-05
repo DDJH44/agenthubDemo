@@ -30,7 +30,7 @@ const MODEL_OPTIONS: Array<{ value: ModelId; label: string }> = [
 
 const LLM_PROVIDER_OPTIONS: Array<{ value: AgentLLMProvider; label: string; baseURL: string; model: string }> = [
   { value: "inherit", label: "继承系统配置", baseURL: "", model: "gpt-4o-mini" },
-  { value: "volc-ark", label: "火山方舟 / 豆包", baseURL: "https://ark.cn-beijing.volces.com/api/v3", model: "ep-20260508214225-g6x7g" },
+  { value: "volc-ark", label: "火山方舟 / 豆包", baseURL: "https://ark.cn-beijing.volces.com/api/v3", model: "your-volcengine-endpoint-id" },
   { value: "openai", label: "OpenAI", baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini" },
   { value: "deepseek", label: "DeepSeek", baseURL: "https://api.deepseek.com/v1", model: "deepseek-chat" },
   { value: "custom", label: "OpenAI 兼容接口", baseURL: "", model: "" },

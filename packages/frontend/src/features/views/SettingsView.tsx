@@ -33,7 +33,7 @@ interface ConfigStatus {
 }
 
 const LLM_PRESETS = [
-  { key: "volc-doubao", label: "火山引擎 · 豆包", baseURL: "https://ark.cn-beijing.volces.com/api/v3", model: "ep-20260508214225-g6x7g" },
+  { key: "volc-doubao", label: "火山引擎 · 豆包", baseURL: "https://ark.cn-beijing.volces.com/api/v3", model: "your-volcengine-endpoint-id" },
   { key: "openai", label: "OpenAI", baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini" },
   { key: "deepseek", label: "DeepSeek", baseURL: "https://api.deepseek.com/v1", model: "deepseek-chat" },
   { key: "mimo", label: "MiMo", baseURL: "https://token-plan-cn.xiaomimimo.com/v1", model: "mimo" },

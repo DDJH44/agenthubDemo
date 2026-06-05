@@ -11,7 +11,7 @@ describe("agent runtime profiles", () => {
   it("ignores the sample model when the server has a different default model", () => {
     expect(chooseRuntimeModel([
       { id: "fe", name: "Frontend Agent", type: "frontend", model: "gpt-4o-mini", tools: ["code_execution"], configured: true },
-    ], { fallbackModel: "ep-20260508214225-g6x7g" })).toBeUndefined();
+    ], { fallbackModel: "platform-default-model" })).toBeUndefined();
   });
 
   it("prefers private llm config from a selected custom agent", () => {
