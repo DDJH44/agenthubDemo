@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Message, WorkflowReferencePayload } from "@agenthub/shared";
+import type { AgentExecutionContextSummary, AgentExecutionRequest, Message, WorkflowReferencePayload } from "@agenthub/shared";
 import { AnalyzeAndAssignFlow } from "./AnalyzeAndAssignFlow";
 import { AgentStepList } from "./AgentStepList";
 import { ConversationNavBar } from "./ConversationNavBar";
@@ -9,11 +9,14 @@ import { ContextBasket } from "./ContextBasket";
 import { CurrentTaskStatusBar } from "./CurrentTaskStatusBar";
 import { MentionSuggestions } from "./MentionSuggestions";
 import { MessageList } from "./MessageList";
+import { MultiUserExecutionGate } from "./MultiUserExecutionGate";
 import { QuickReplyBar } from "./QuickReplyBar";
 import { RightPanel } from "./RightPanel";
 import { TaskSteps } from "./TaskSteps";
 import { BrandMascot } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
+import { useUserAgentStore } from "@/stores/user-agent-store";
+import { isMultiUserConversation } from "./agent-directory";
 import {
   stripWorkflowReferencePrompt,
   toWorkflowReferencePayload,
@@ -37,7 +40,7 @@ interface Props {
   isStreaming: boolean;
   taskSummary: string;
   messages: Message[];
-  onSend: (text: string, options?: { workflowRef?: WorkflowReferencePayload }) => void;
+  onSend: (text: string, options?: { workflowRef?: WorkflowReferencePayload; agentExecution?: AgentExecutionRequest }) => void;
   onAssignAgent?: (conversationId: string, agentId: string, content: string) => void;
   onBackToList?: () => void;
   isMobile?: boolean;
@@ -96,11 +99,13 @@ export function AgentChatPanel({
 }: Props) {
   const {
     activeConversationId,
+    conversations,
     conversationMode,
     contextReferences,
     undoMessage,
     setConversationStreaming,
   } = useChatStore();
+  const userAgents = useUserAgentStore((state) => state.agents);
   const [text, setText] = useState("");
   const [workflowReferenceState, setWorkflowReferenceState] = useState<{ conversationId: string | null; workflow: SavedWorkflowSnapshot | null }>({
     conversationId: null,
@@ -116,6 +121,8 @@ export function AgentChatPanel({
   const lastAutoScrollConvRef = useRef<string | null | undefined>(undefined);
   const convId = activeConversationId ?? activeConversationIdProp;
   const currentMode = convId ? (conversationMode[convId] ?? "single") : "single";
+  const activeConversation = convId ? conversations.find((conversation) => conversation.id === convId) : null;
+  const showMultiUserExecutionGate = isMultiUserConversation(activeConversation, userAgents);
   const contextCount = convId ? (contextReferences[convId]?.length ?? 0) : 0;
   const workflowReference = workflowReferenceState.conversationId === convId ? workflowReferenceState.workflow : null;
   const latestMessage = messages[messages.length - 1];
@@ -215,6 +222,20 @@ export function AgentChatPanel({
     setWorkflowReferenceState({ conversationId: convId, workflow: null });
     window.requestAnimationFrame(() => scrollToLatest("auto"));
   }, [convId, isStreaming, onSend, scrollToLatest, text, workflowReference]);
+
+  const handleConfirmExecution = useCallback((summary: AgentExecutionContextSummary) => {
+    const taskText = `确认执行：${summary.goal}`;
+    onSend(taskText, {
+      agentExecution: {
+        mode: "execute",
+        task: summary.goal,
+        contextSummary: summary,
+      },
+    });
+    setText("");
+    setWorkflowReferenceState({ conversationId: convId, workflow: null });
+    window.requestAnimationFrame(() => scrollToLatest("auto"));
+  }, [convId, onSend, scrollToLatest]);
 
   const handleAssignAgent = useCallback((agentId: string, content: string) => {
     if (convId && onAssignAgent) onAssignAgent(convId, agentId, content);
@@ -346,6 +367,15 @@ export function AgentChatPanel({
 
             <div className="shrink-0" style={{ borderTop: "1px solid var(--divider)" }}>
               <ContextBasket conversationId={convId} onOpenContextPanel={handleOpenContextPanel} />
+              {showMultiUserExecutionGate && (
+                <MultiUserExecutionGate
+                  messages={messages}
+                  draft={text}
+                  disabled={!connected}
+                  isStreaming={isStreaming}
+                  onConfirm={handleConfirmExecution}
+                />
+              )}
               <QuickReplyBar
                 value={text}
                 onChange={setText}

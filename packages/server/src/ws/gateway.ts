@@ -1,7 +1,7 @@
 import type { Server as HTTPServer, IncomingMessage } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { IAdapter } from "@agenthub/adapter";
-import type { AgentRole, ConversationListItem, PlanNode, WorkflowNodeType, WorkflowReferencePayload } from "@agenthub/shared";
+import type { AgentExecutionContextSummary, AgentExecutionRequest, AgentRole, ConversationListItem, PlanNode, WorkflowNodeType, WorkflowReferencePayload } from "@agenthub/shared";
 import { parseMentions } from "@agenthub/shared";
 import { messageRepo } from "../db/repositories/message";
 import { conversationRepo } from "../db/repositories/conversation";
@@ -110,6 +110,128 @@ function getParticipants(conv: { participants: string | string[] }): string[] {
 function parseJsonField<T>(raw: unknown, fallback: T): T {
   if (typeof raw !== "string" || raw.length === 0) return fallback;
   try { return JSON.parse(raw) as T; } catch { return fallback; }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function compactSummaryLine(value: unknown, maxLength = 140) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, maxLength) : "";
+}
+
+function sanitizeSummaryList(value: unknown, maxItems = 6) {
+  return Array.isArray(value)
+    ? value.map((item) => compactSummaryLine(item)).filter(Boolean).slice(0, maxItems)
+    : [];
+}
+
+function normalizeAgentExecution(value: unknown): AgentExecutionRequest | null {
+  if (!isObjectRecord(value) || value.mode !== "execute") return null;
+  const rawSummary = isObjectRecord(value.contextSummary) ? value.contextSummary : null;
+  const contextSummary = rawSummary ? {
+    goal: compactSummaryLine(rawSummary.goal, 180),
+    confirmed: sanitizeSummaryList(rawSummary.confirmed),
+    constraints: sanitizeSummaryList(rawSummary.constraints),
+    references: sanitizeSummaryList(rawSummary.references),
+    openQuestions: sanitizeSummaryList(rawSummary.openQuestions),
+    sourceMessageCount: typeof rawSummary.sourceMessageCount === "number" ? Math.max(0, Math.min(200, rawSummary.sourceMessageCount)) : 0,
+    generatedAt: typeof rawSummary.generatedAt === "number" ? rawSummary.generatedAt : Date.now(),
+  } satisfies AgentExecutionContextSummary : undefined;
+
+  return {
+    mode: "execute",
+    task: compactSummaryLine(value.task, 220) || contextSummary?.goal,
+    contextSummary,
+  };
+}
+
+async function countRealUsers(participants: string[]) {
+  const userIds = participants.filter((participant) => UUID_RE.test(participant));
+  if (userIds.length === 0) return 0;
+  const users = await userRepo.getByIds(userIds);
+  return users.length;
+}
+
+function isConstraintLine(text: string) {
+  return /必须|需要|不要|不能|支持|轻量|简洁|简约|移动端|响应式|部署|导出|权限|本地|数据库/i.test(text);
+}
+
+function isQuestionLine(text: string) {
+  return /[?？]$/.test(text.trim()) || /是否|还是|要不要|能不能|可以吗|怎么/.test(text);
+}
+
+function pushUnique(list: string[], item: string, maxItems = 6) {
+  const value = compactSummaryLine(item, 140);
+  if (!value || list.includes(value) || list.length >= maxItems) return;
+  list.push(value);
+}
+
+function buildExecutionSummaryFromMessages(
+  messages: Array<{ type: string; sender: string; content: string }>,
+  fallbackTask: string,
+  clientSummary?: AgentExecutionContextSummary,
+): AgentExecutionContextSummary {
+  const humanLines = messages
+    .filter((message) => message.type === "user_message" || message.sender === "user")
+    .slice(-16)
+    .map((message) => compactSummaryLine(message.content, 160))
+    .filter(Boolean);
+  const confirmed = [...(clientSummary?.confirmed ?? [])].map((item) => compactSummaryLine(item)).filter(Boolean);
+  const constraints = [...(clientSummary?.constraints ?? [])].map((item) => compactSummaryLine(item)).filter(Boolean);
+  const references = [...(clientSummary?.references ?? [])].map((item) => compactSummaryLine(item)).filter(Boolean);
+  const openQuestions = [...(clientSummary?.openQuestions ?? [])].map((item) => compactSummaryLine(item)).filter(Boolean);
+
+  for (const line of humanLines) {
+    if (line.includes("附件") || line.includes("图片") || line.includes("文件") || line.includes("工作流")) pushUnique(references, line);
+    if (isQuestionLine(line)) {
+      pushUnique(openQuestions, line);
+      continue;
+    }
+    if (isConstraintLine(line)) pushUnique(constraints, line);
+    pushUnique(confirmed, line);
+  }
+
+  const goal = compactSummaryLine(clientSummary?.goal, 180)
+    || compactSummaryLine(fallbackTask, 180)
+    || humanLines.at(-1)
+    || "根据群聊讨论继续执行当前任务";
+
+  return {
+    goal,
+    confirmed: confirmed.slice(-4),
+    constraints: constraints.slice(-4),
+    references: references.slice(-4),
+    openQuestions: openQuestions.slice(-4),
+    sourceMessageCount: humanLines.length,
+    generatedAt: Date.now(),
+  };
+}
+
+function formatSummarySection(title: string, items: string[], empty: string) {
+  const lines = items.length > 0 ? items : [empty];
+  return [`- ${title}：`, ...lines.map((item) => `  - ${item}`)].join("\n");
+}
+
+function formatExecutionSummaryMessage(summary: AgentExecutionContextSummary, realUserCount: number) {
+  return [
+    `PMO 已整理多人讨论上下文（${realUserCount} 位成员）：`,
+    `- 目标：${summary.goal}`,
+    formatSummarySection("已确认", summary.confirmed, "暂无明确确认项"),
+    formatSummarySection("约束", summary.constraints, "暂无额外约束"),
+    formatSummarySection("引用", summary.references, "暂无引用资料"),
+    formatSummarySection("待确认", summary.openQuestions, "暂无冲突问题"),
+    "已进入执行模式，Agent 将基于以上摘要处理任务。",
+  ].join("\n");
+}
+
+function formatExecutionTask(summary: AgentExecutionContextSummary) {
+  return [
+    "请基于以下多人群聊过滤后的上下文执行任务。",
+    `目标：${summary.goal}`,
+    summary.confirmed.length ? `已确认：${summary.confirmed.join("；")}` : "",
+    summary.constraints.length ? `约束：${summary.constraints.join("；")}` : "",
+    summary.references.length ? `引用：${summary.references.join("；")}` : "",
+    summary.openQuestions.length ? `待确认但不阻塞：${summary.openQuestions.join("；")}` : "",
+  ].filter(Boolean).join("\n");
 }
 
 async function checkConversationAccess(ws: WebSocket, conversationId: string, userId: string): Promise<boolean> {
@@ -716,6 +838,8 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const participants = msg.participants ?? [];
             // Ensure creator is in participants
             if (!participants.includes(userId)) participants.push(userId);
+            const initialRealUserCount = convType === "group" ? await countRealUsers(participants) : 0;
+            const startAgentsEnabled = !(convType === "group" && initialRealUserCount >= 2);
 
             const newConv = await prisma.$transaction(async (tx) => {
               const conv = await tx.conversation.create({
@@ -733,7 +857,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               if (convType === "group" || convType === "task_room") {
                 for (const agentName of buildInitialConversationAgentNames(participants, convType)) {
                   await tx.conversationAgent.create({
-                    data: { conversationId: conv.id, agentName, enabled: true },
+                    data: { conversationId: conv.id, agentName, enabled: startAgentsEnabled },
                   });
                 }
                 await tx.message.create({
@@ -744,6 +868,16 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                     content: "群聊已创建，智能体团队已就绪",
                   },
                 });
+                if (!startAgentsEnabled) {
+                  await tx.message.create({
+                    data: {
+                      conversationId: conv.id,
+                      type: "system",
+                      sender: "system",
+                      content: "群聊已进入讨论模式，Agent 已静音。点击确认执行后，PMO 将读取过滤后的上下文。",
+                    },
+                  });
+                }
               }
 
               return conv;
@@ -854,6 +988,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const conversationId: string = msg.conversationId ?? "default";
             const clientMsgId: string | undefined = (msg as { clientMsgId?: string }).clientMsgId;
             const workflowRef = normalizeWorkflowReference((msg as { workflowRef?: unknown }).workflowRef);
+            const agentExecution = normalizeAgentExecution((msg as { agentExecution?: unknown }).agentExecution);
 
             let convType = "group";
             let agentName = "planner";
@@ -872,6 +1007,37 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               }
             } catch (err) {
               logger.warn(`Failed to parse conversation participants: ${err}`, 'WebSocket');
+            }
+
+            const realUserCount = convType === "group" ? await countRealUsers(convParticipants) : 0;
+            const isMultiUserGroup = convType === "group" && realUserCount >= 2;
+
+            if (isMultiUserGroup && !agentExecution) {
+              const userMsg = await messageRepo.createAndUpdateConv({
+                conversationId,
+                type: "user_message",
+                sender: userName,
+                senderId: userId,
+                content: text,
+                mentions: [],
+                id: clientMsgId,
+                payload: { kind: "human_discussion", agentMuted: true, realUserCount },
+              });
+              broadcast(conversationId, {
+                type: "message:created",
+                message: {
+                  id: userMsg.id,
+                  conversationId,
+                  type: userMsg.type,
+                  sender: userMsg.sender,
+                  senderId: userId,
+                  content: userMsg.content,
+                  mentions: [],
+                  payload: { kind: "human_discussion", agentMuted: true, realUserCount },
+                  timestamp: userMsg.timestamp.getTime(),
+                },
+              });
+              break;
             }
 
             const deployIntent = !workflowRef ? parseDeployIntent(text) : null;
@@ -912,10 +1078,12 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const artifactTask = isArtifactGenerationTask(text);
 
             const convAgents = await conversationAgentRepo.listByConversation(conversationId);
-            const enabledAgentNames = getEffectiveEnabledAgentNames(convParticipants, convType, convAgents);
+            const enabledAgentNames = agentExecution
+              ? buildInitialConversationAgentNames(convParticipants, convType)
+              : getEffectiveEnabledAgentNames(convParticipants, convType, convAgents);
             const hasEnabledAgents = enabledAgentNames.length > 0;
 
-            if (simpleChat || ((!hasEnabledAgents || isDirectConv) && !artifactTask)) {
+            if (!agentExecution && (simpleChat || ((!hasEnabledAgents || isDirectConv) && !artifactTask))) {
               const userMsg = await messageRepo.createAndUpdateConv({
                 conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: [],
                 id: clientMsgId,
@@ -959,19 +1127,39 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               break;
             }
 
+            let executionSummary: AgentExecutionContextSummary | null = null;
+            let routingText = text;
+            if (agentExecution) {
+              const recentMsgs = await messageRepo.listByConversation(conversationId, { take: 30 });
+              executionSummary = buildExecutionSummaryFromMessages(
+                recentMsgs,
+                agentExecution.task || text,
+                agentExecution.contextSummary,
+              );
+              routingText = formatExecutionTask(executionSummary);
+              for (const agentName of buildInitialConversationAgentNames(convParticipants, convType)) {
+                await conversationAgentRepo.setEnabled(conversationId, agentName, true);
+                broadcast(conversationId, { type: "agent:enabled", conversationId, agentName, timestamp: Date.now() });
+              }
+            }
+
             // Agents are enabled - proceed with orchestrator
-            const { agents, cleanText, isAllAgents } = parseMentions(text);
+            const { agents, cleanText, isAllAgents } = parseMentions(routingText);
 
             let matchedAgents = agents;
             let matchSummary = "";
-            if (workflowRef) {
+            if (executionSummary) {
+              const matched = matchByKeywords(executionSummary.goal || routingText);
+              matchedAgents = agents.length > 0 ? agents : matched.map((m) => m.agentId);
+              matchSummary = `多人讨论已确认 · 已过滤 ${executionSummary.sourceMessageCount} 条上下文`;
+            } else if (workflowRef) {
               matchedAgents = getWorkflowAgentMentions(workflowRef);
               matchSummary = `引用工作流「${workflowRef.name}」 · ${workflowRef.plan.length} 个节点`;
             } else if (isAllAgents) {
               matchedAgents = AGENT_NAMES;
               matchSummary = "已启用全部智能体";
             } else if (agents.length === 0) {
-              const matched = matchByKeywords(cleanText || text);
+              const matched = matchByKeywords(cleanText || routingText);
               matchedAgents = matched.map((m) => m.agentId);
               matchSummary = artifactTask
                 ? "产物型任务 · 已切换为 PMO 编排流程"
@@ -987,7 +1175,10 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const userMsg = await messageRepo.createAndUpdateConv({
               conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: matchedAgents,
               id: clientMsgId,
-              payload: workflowRef ? { workflowRef: compactWorkflowReference(workflowRef) } : undefined,
+              payload: {
+                ...(workflowRef ? { workflowRef: compactWorkflowReference(workflowRef) } : {}),
+                ...(executionSummary ? { agentExecution: { mode: "execute", task: executionSummary.goal, contextSummary: executionSummary } } : {}),
+              },
             });
 
             broadcast(conversationId, {
@@ -996,12 +1187,38 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                 id: userMsg.id, conversationId: userMsg.conversationId,
                 type: userMsg.type, sender: userMsg.sender, senderId: userId, content: userMsg.content,
                 mentions: matchedAgents,
-                payload: workflowRef ? { workflowRef: compactWorkflowReference(workflowRef) } : undefined,
+                payload: {
+                  ...(workflowRef ? { workflowRef: compactWorkflowReference(workflowRef) } : {}),
+                  ...(executionSummary ? { agentExecution: { mode: "execute", task: executionSummary.goal, contextSummary: executionSummary } } : {}),
+                },
                 timestamp: userMsg.timestamp.getTime(),
               },
             });
 
-            const queueTask = workflowRef?.task || cleanText || text;
+            if (executionSummary) {
+              const summaryMsg = await messageRepo.create({
+                conversationId,
+                type: "system",
+                sender: "system",
+                content: formatExecutionSummaryMessage(executionSummary, realUserCount),
+                payload: { kind: "context_filter_summary", contextSummary: executionSummary, realUserCount },
+              });
+              broadcast(conversationId, {
+                type: "message:created",
+                message: {
+                  id: summaryMsg.id,
+                  conversationId: summaryMsg.conversationId,
+                  type: summaryMsg.type,
+                  sender: summaryMsg.sender,
+                  content: summaryMsg.content,
+                  payload: { kind: "context_filter_summary", contextSummary: executionSummary, realUserCount },
+                  mentions: [],
+                  timestamp: summaryMsg.timestamp.getTime(),
+                },
+              });
+            }
+
+            const queueTask = workflowRef?.task || cleanText || routingText;
             const jobId = await queue.enqueue({
               workspaceId: DEFAULT_WORKSPACE,
               conversationId,

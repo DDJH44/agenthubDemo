@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import type { Artifact, Conversation, Message, WorkflowReferencePayload } from "@agenthub/shared";
+import type { AgentExecutionRequest, Artifact, Conversation, Message, WorkflowReferencePayload } from "@agenthub/shared";
 import { useWebSocket } from "../../packages/frontend/src/hooks/useWebSocket";
 import { useChatStore } from "../../packages/frontend/src/stores/chat-store";
 import { useSettingsStore } from "../../packages/frontend/src/stores/settings-store";
@@ -186,6 +186,7 @@ const CHAT_STARTERS = [
 
 type SendMessageOptions = {
   workflowRef?: WorkflowReferencePayload;
+  agentExecution?: AgentExecutionRequest;
 };
 
 function ChatEmptyState({
@@ -405,6 +406,13 @@ export default function Page() {
           nodeCount: options.workflowRef.plan.length,
         }
       : undefined;
+    const agentExecutionPayload = options?.agentExecution
+      ? {
+          mode: options.agentExecution.mode,
+          task: options.agentExecution.task,
+          contextSummary: options.agentExecution.contextSummary,
+        }
+      : undefined;
 
     if (convId) {
       const msgId = crypto.randomUUID();
@@ -415,11 +423,13 @@ export default function Page() {
         sender: "user",
         content: text,
         mentions: [],
-        payload: workflowPayload ? { workflowRef: workflowPayload } : undefined,
+        payload: workflowPayload || agentExecutionPayload
+          ? { ...(workflowPayload ? { workflowRef: workflowPayload } : {}), ...(agentExecutionPayload ? { agentExecution: agentExecutionPayload } : {}) }
+          : undefined,
         timestamp: Date.now(),
       };
       store.addMessage(convId, userMsg);
-      ws.send({ type: "message:send", conversationId: convId, text, clientMsgId: msgId, workflowRef: options?.workflowRef });
+      ws.send({ type: "message:send", conversationId: convId, text, clientMsgId: msgId, workflowRef: options?.workflowRef, agentExecution: options?.agentExecution });
     } else {
       store.setPendingMessage(text);
       ws.send({

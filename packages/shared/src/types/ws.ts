@@ -1,6 +1,22 @@
 import type { Message } from "./conversation";
 import type { PlanNode, JobStats, Artifact, WorkflowReferencePayload } from "./job";
 
+export interface AgentExecutionContextSummary {
+  goal: string;
+  confirmed: string[];
+  constraints: string[];
+  references: string[];
+  openQuestions: string[];
+  sourceMessageCount: number;
+  generatedAt?: number;
+}
+
+export interface AgentExecutionRequest {
+  mode: "execute";
+  task?: string;
+  contextSummary?: AgentExecutionContextSummary;
+}
+
 export interface OrchestratorEvent {
   type: "task:created" | "agent_update" | "stream:chunk" | "orchestrator:complete" | "agent:error";
   from?: string; agentId?: string; content?: string; payload?: unknown; timestamp: number;
@@ -9,8 +25,8 @@ export interface OrchestratorEvent {
 export type WSClientMessage =
   | { type: "conversation:subscribe"; conversationId: string }
   | { type: "conversation:unsubscribe"; conversationId: string }
-  | { type: "message:send"; conversationId: string; text: string; attachments?: string[]; clientMsgId?: string; workflowRef?: WorkflowReferencePayload }
-  | { type: "task:submit"; conversationId: string; input: string; mentions?: string[]; workflowRef?: WorkflowReferencePayload }
+  | { type: "message:send"; conversationId: string; text: string; attachments?: string[]; clientMsgId?: string; workflowRef?: WorkflowReferencePayload; agentExecution?: AgentExecutionRequest }
+  | { type: "task:submit"; conversationId: string; input: string; mentions?: string[]; workflowRef?: WorkflowReferencePayload; agentExecution?: AgentExecutionRequest }
   | { type: "conversation:create"; title?: string; convType?: string; participants?: string[]; workspaceId?: string; clientId?: string }
   | { type: "conversation:pin"; conversationId: string }
   | { type: "conversation:unpin"; conversationId: string }

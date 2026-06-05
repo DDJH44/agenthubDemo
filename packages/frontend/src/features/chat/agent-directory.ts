@@ -250,6 +250,23 @@ function shouldHideParticipant(nameOrId: string, userAgents: UserAgent[], option
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nameOrId.trim());
 }
 
+function isLikelyRealUserParticipant(nameOrId: string, userAgents: UserAgent[]) {
+  const key = normalize(nameOrId);
+  if (!key) return false;
+  if (isKnownDirectoryAgent(nameOrId)) return false;
+  if (findUserAgent(nameOrId, userAgents)) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(nameOrId.trim());
+}
+
+export function getRealParticipantIds(conversation: Conversation | null | undefined, userAgents: UserAgent[] = []): string[] {
+  if (!conversation) return [];
+  return conversation.participants.filter((participant) => isLikelyRealUserParticipant(participant, userAgents));
+}
+
+export function isMultiUserConversation(conversation: Conversation | null | undefined, userAgents: UserAgent[] = []) {
+  return conversation?.type === "group" && getRealParticipantIds(conversation, userAgents).length >= 2;
+}
+
 export function getAgentMeta(nameOrId: string, userAgents: UserAgent[] = []): AgentDirectoryEntry {
   const key = normalize(nameOrId);
   const userAgentById = userAgents.find((agent) => normalize(agent.id) === key);

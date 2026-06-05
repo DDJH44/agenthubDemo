@@ -12,7 +12,7 @@ import { useTaskTreeStore } from "@/stores/task-tree-store";
 import { upsertDeployCard } from "@/features/chat/deploy-card";
 import { getDeployProviderLabel } from "@/features/chat/deploy-platforms";
 import { createAgentSocket } from "@/lib/ws-client";
-import type { WSServerMessage, Conversation, WSClientMessage, Artifact, Message, WorkflowReferencePayload } from "@agenthub/shared";
+import type { AgentExecutionRequest, WSServerMessage, Conversation, WSClientMessage, Artifact, Message, WorkflowReferencePayload } from "@agenthub/shared";
 
 const _clientIdToServerId = new Map<string, string>();
 const _pendingClientConversationIds = new Set<string>();
@@ -901,8 +901,8 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
     socketRef.current?.send(msg);
   }, []);
 
-  const sendMessage = useCallback((conversationId: string, text: string, options?: { workflowRef?: WorkflowReferencePayload }) => {
-    send({ type: "message:send", conversationId, text, workflowRef: options?.workflowRef } as WSClientMessage);
+  const sendMessage = useCallback((conversationId: string, text: string, options?: { workflowRef?: WorkflowReferencePayload; agentExecution?: AgentExecutionRequest }) => {
+    send({ type: "message:send", conversationId, text, workflowRef: options?.workflowRef, agentExecution: options?.agentExecution } as WSClientMessage);
   }, [send]);
 
   const pinConversation = useCallback((id: string) => {
