@@ -205,10 +205,11 @@ function CodeView({
         </>
       }
     >
-      <div style={{ height: expanded || editing ? 420 : 220 }}>
+      <div className="min-w-0" style={{ height: expanded || editing ? 420 : 220, width: "100%" }}>
         {expanded || editing ? (
           <MonacoEditor
             height="100%"
+            width="100%"
             language={lang}
             value={editing ? editContent : content}
             onChange={editing ? (value) => setEditContent(value ?? "") : undefined}
@@ -218,28 +219,40 @@ function CodeView({
               minimap: { enabled: false },
               fontSize: 12,
               lineHeight: 18,
-              wordWrap: "on",
+              wordWrap: "off",
               tabSize: 2,
               scrollBeyondLastLine: false,
               automaticLayout: true,
               lineNumbers: "on",
               folding: true,
               glyphMargin: false,
+              fixedOverflowWidgets: true,
+              overviewRulerLanes: 0,
               overviewRulerBorder: false,
+              scrollbar: {
+                horizontal: "visible",
+                vertical: "visible",
+                horizontalScrollbarSize: 10,
+                verticalScrollbarSize: 10,
+                alwaysConsumeMouseWheel: false,
+              },
               padding: { top: 8 },
             }}
           />
         ) : (
           <pre
-            className="m-0 overflow-auto p-3"
+            className="m-0 overflow-auto p-3 custom-scrollbar"
             style={{
+              height: 220,
               maxHeight: 220,
               color: "var(--fg-secondary)",
               fontFamily: "var(--font-mono)",
               fontSize: 11,
               lineHeight: 1.6,
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
+              minWidth: "100%",
+              tabSize: 2,
+              whiteSpace: "pre",
+              wordBreak: "normal",
             }}
           >
             {content}
@@ -272,9 +285,9 @@ function MarkdownView({ content, filename }: { content: string; filename?: strin
         </>
       }
     >
-      <div className="max-h-[420px] overflow-auto p-3">
+      <div className="max-h-[420px] overflow-auto p-3 custom-scrollbar">
         {sourceMode ? (
-          <pre className="m-0 whitespace-pre-wrap" style={{ color: "var(--fg-secondary)", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.6 }}>
+          <pre className="m-0 min-w-max whitespace-pre" style={{ color: "var(--fg-secondary)", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.6, tabSize: 2 }}>
             {content}
           </pre>
         ) : (
@@ -395,9 +408,9 @@ function DocumentView({
         </>
       }
     >
-      <div className="max-h-[420px] overflow-auto p-3">
+      <div className="max-h-[420px] overflow-auto p-3 custom-scrollbar">
         {sourceMode ? (
-          <pre className="m-0 whitespace-pre-wrap" style={{ color: "var(--fg-secondary)", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.6 }}>
+          <pre className="m-0 min-w-max whitespace-pre" style={{ color: "var(--fg-secondary)", fontFamily: "var(--font-mono)", fontSize: 11, lineHeight: 1.6, tabSize: 2 }}>
             {content}
           </pre>
         ) : (
@@ -577,8 +590,18 @@ function DiffView({ content, original }: { content: string; original?: string })
               minimap: { enabled: false },
               fontSize: 12,
               lineHeight: 18,
+              wordWrap: "off",
               scrollBeyondLastLine: false,
               automaticLayout: true,
+              fixedOverflowWidgets: true,
+              overviewRulerLanes: 0,
+              scrollbar: {
+                horizontal: "visible",
+                vertical: "visible",
+                horizontalScrollbarSize: 10,
+                verticalScrollbarSize: 10,
+                alwaysConsumeMouseWheel: false,
+              },
             }}
           />
         </div>
@@ -603,7 +626,7 @@ function DiffView({ content, original }: { content: string; original?: string })
         </>
       }
     >
-      <pre className="m-0 max-h-[340px] overflow-auto p-2" style={{ fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.6 }}>
+      <pre className="m-0 max-h-[340px] overflow-auto whitespace-pre p-2 custom-scrollbar" style={{ fontFamily: "var(--font-mono)", fontSize: 10, lineHeight: 1.6, tabSize: 2 }}>
         {lines.map((line, index) => {
           const removed = line.startsWith("-") && !line.startsWith("---");
           const added = line.startsWith("+") && !line.startsWith("+++");
@@ -615,6 +638,8 @@ function DiffView({ content, original }: { content: string; original?: string })
                 background: removed ? "rgba(165, 14, 14, 0.07)" : added ? "rgba(24, 128, 56, 0.08)" : header ? "rgba(23, 78, 166, 0.07)" : "transparent",
                 color: removed ? "#a50e0e" : added ? "#188038" : header ? "#174ea6" : "var(--fg-secondary)",
                 padding: "0 6px",
+                minWidth: "100%",
+                width: "max-content",
               }}
             >
               {line || " "}

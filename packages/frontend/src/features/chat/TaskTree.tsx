@@ -212,7 +212,16 @@ function NodeDetail({ node }: { node: TaskNode }) {
               lineNumbers: "on",
               scrollBeyondLastLine: false,
               automaticLayout: true,
-              wordWrap: "on",
+              wordWrap: "off",
+              fixedOverflowWidgets: true,
+              overviewRulerLanes: 0,
+              scrollbar: {
+                horizontal: "visible",
+                vertical: "visible",
+                horizontalScrollbarSize: 10,
+                verticalScrollbarSize: 10,
+                alwaysConsumeMouseWheel: false,
+              },
             }}
           />
         </div>

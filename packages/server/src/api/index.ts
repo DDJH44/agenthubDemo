@@ -16,7 +16,7 @@ import { prisma } from "../db/index";
 import { mcpManager } from "../mcp/manager";
 import { workspaceFileRepo } from "../db/repositories/workspace-file";
 import { deploymentTargetRepo, type DeploymentTargetRecord } from "../db/repositories/deployment-target";
-import { config } from "../config";
+import { config, resolveCorsOrigin } from "../config";
 import { logger } from "../utils/logger";
 import { execFile } from "child_process";
 import { randomUUID } from "crypto";
@@ -120,7 +120,8 @@ registerRoute("POST", "/api/assistant", async (req, res) => {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
-    "Access-Control-Allow-Origin": config.cors.origin,
+    "Access-Control-Allow-Origin": resolveCorsOrigin(req.headers.origin),
+    Vary: "Origin",
   });
 
   const emit = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);
@@ -291,7 +292,8 @@ registerRoute("POST", "/api/run", async (req, res) => {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
     Connection: "keep-alive",
-    "Access-Control-Allow-Origin": config.cors.origin,
+    "Access-Control-Allow-Origin": resolveCorsOrigin(req.headers.origin),
+    Vary: "Origin",
   });
 
   const emit = (data: unknown) => res.write(`data: ${JSON.stringify(data)}\n\n`);

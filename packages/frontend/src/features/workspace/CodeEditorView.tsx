@@ -101,10 +101,11 @@ export function CodeEditorView({
         </div>
       </div>
 
-      <div className="flex-1 flex min-h-0">
+      <div className="flex-1 flex min-h-0 min-w-0">
         <div className={`flex min-w-0 ${showPreview && (language === "html" || previewEnabled) ? "border-r" : ""}`} style={{ flex: showPreview && (language === "html" || previewEnabled) ? 1 : undefined, borderColor: "#3e3e3e" }}>
           <MonacoEditor
             height={height ?? "100%"}
+            width="100%"
             language={monacoLang}
             value={content}
             onChange={handleChange}
@@ -116,14 +117,22 @@ export function CodeEditorView({
               lineHeight: 20,
               padding: { top: 10 },
               scrollBeyondLastLine: false,
-              wordWrap: "on",
+              wordWrap: "off",
               tabSize: 2,
               renderLineHighlight: "line",
               smoothScrolling: true,
               cursorBlinking: "smooth",
               bracketPairColorization: { enabled: true },
               automaticLayout: true,
-              scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+              fixedOverflowWidgets: true,
+              overviewRulerLanes: 0,
+              scrollbar: {
+                horizontal: "visible",
+                vertical: "visible",
+                verticalScrollbarSize: 8,
+                horizontalScrollbarSize: 8,
+                alwaysConsumeMouseWheel: false,
+              },
               overviewRulerBorder: false,
               hideCursorInOverviewRuler: true,
               renderWhitespace: "none",

@@ -2,7 +2,7 @@ import { createServer } from "http";
 import { mkdirSync, existsSync } from "fs";
 import { setupWebSocket } from "./ws/gateway";
 import { handleApiRequest } from "./api/index";
-import { config } from "./config";
+import { config, resolveCorsOrigin } from "./config";
 import { ensureDefaults } from "./db";
 import { resumeMcpConnections } from "./mcp/manager";
 import { logger } from "./utils/logger";
@@ -24,9 +24,10 @@ async function main() {
 
   const server = createServer(async (req, res) => {
     // CORS headers
-    res.setHeader("Access-Control-Allow-Origin", config.cors.origin);
+    res.setHeader("Access-Control-Allow-Origin", resolveCorsOrigin(req.headers.origin));
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+    res.setHeader("Vary", "Origin");
 
     if (req.method === "OPTIONS") {
       res.writeHead(204);

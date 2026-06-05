@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAuthStore } from "@/stores/auth-store";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore, type Theme } from "@/stores/settings-store";
@@ -14,6 +14,11 @@ import {
   type TeamInvite,
 } from "@/features/team/team-invites";
 import { getContacts, subscribeContacts, upsertContact, type ContactEntry } from "@/features/team/contact-book";
+import {
+  deploymentTargetStatusLabel,
+  isDeploymentTargetConfigured,
+  type DeploymentTargetsResponse,
+} from "@/features/deployment/deployment-targets";
 
 type SettingsTab = "general" | "model" | "deployment" | "team" | "export";
 
@@ -25,27 +30,6 @@ interface ConfigStatus {
     apiKeyConfigured: boolean;
     apiKeyPrefix: string | null;
   };
-}
-
-interface DeploymentTarget {
-  id: string;
-  name: string;
-  type: string;
-  host: string;
-  port: number;
-  username: string;
-  deployPath: string;
-  publicUrl: string;
-  status?: string;
-  configured?: boolean;
-  missingEnv?: string[];
-  envTemplate?: string;
-  lastError?: string | null;
-}
-
-interface DeploymentTargetsResponse {
-  defaultTarget: DeploymentTarget;
-  targets: DeploymentTarget[];
 }
 
 const LLM_PRESETS = [
@@ -91,6 +75,8 @@ export function SettingsView() {
   const userAgents = useUserAgentStore((state) => state.agents);
   const [configStatus, setConfigStatus] = useState<ConfigStatus | null>(null);
   const [deploymentStatus, setDeploymentStatus] = useState<DeploymentTargetsResponse | null>(null);
+  const [deploymentLoading, setDeploymentLoading] = useState(true);
+  const [deploymentError, setDeploymentError] = useState<string | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [baseURLInput, setBaseURLInput] = useState("");
   const [modelInput, setModelInput] = useState("");
@@ -134,11 +120,62 @@ export function SettingsView() {
       .catch(() => setConfigStatus(null));
   }, []);
 
-  useEffect(() => {
-    api.get<DeploymentTargetsResponse>("/api/deployment-targets")
-      .then(setDeploymentStatus)
-      .catch(() => setDeploymentStatus(null));
+  const refreshDeploymentStatus = useCallback(async () => {
+    setDeploymentLoading(true);
+    setDeploymentError(null);
+    try {
+      const status = await api.get<DeploymentTargetsResponse>("/api/deployment-targets");
+      setDeploymentStatus(status);
+    } catch (error) {
+      setDeploymentStatus(null);
+      setDeploymentError(error instanceof Error ? error.message : "部署配置读取失败");
+    } finally {
+      setDeploymentLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    api.get<DeploymentTargetsResponse>("/api/deployment-targets")
+      .then((status) => {
+        if (cancelled) return;
+        setDeploymentStatus(status);
+        setDeploymentError(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setDeploymentStatus(null);
+        setDeploymentError(error instanceof Error ? error.message : "部署配置读取失败");
+      })
+      .finally(() => {
+        if (!cancelled) setDeploymentLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "deployment") return;
+    let cancelled = false;
+    api.get<DeploymentTargetsResponse>("/api/deployment-targets")
+      .then((status) => {
+        if (cancelled) return;
+        setDeploymentStatus(status);
+        setDeploymentError(null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setDeploymentStatus(null);
+        setDeploymentError(error instanceof Error ? error.message : "部署配置读取失败");
+      })
+      .finally(() => {
+        if (!cancelled) setDeploymentLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tab]);
 
   const stats = useMemo(() => {
     const messageCount = Object.values(chat.messages).reduce((total, messages) => total + messages.length, 0);
@@ -151,15 +188,9 @@ export function SettingsView() {
   }, [chat.conversations.length, chat.messages, pendingInvites.length, userAgents.length]);
 
   const defaultTarget = deploymentStatus?.defaultTarget;
-
-  const refreshDeploymentStatus = async () => {
-    try {
-      const status = await api.get<DeploymentTargetsResponse>("/api/deployment-targets");
-      setDeploymentStatus(status);
-    } catch {
-      setDeploymentStatus(null);
-    }
-  };
+  const defaultTargetConfigured = isDeploymentTargetConfigured(defaultTarget);
+  const defaultTargetLabel = deploymentTargetStatusLabel(defaultTarget, deploymentLoading, deploymentError);
+  const defaultTargetTone = deploymentLoading ? "neutral" : defaultTargetConfigured ? "success" : "warning";
 
   const handleSaveModel = async () => {
     setSaving(true);
@@ -403,12 +434,12 @@ export function SettingsView() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{defaultTarget?.name || "AgentHub 默认服务器"}</h2>
-                    <StatusPill tone={defaultTarget?.configured ? "success" : "warning"}>
-                      {defaultTarget?.configured ? "可用" : "缺少配置"}
+                    <StatusPill tone={defaultTargetTone}>
+                      {defaultTargetLabel}
                     </StatusPill>
                   </div>
                   <p className="mt-2 text-xs leading-5" style={{ color: "var(--fg-secondary)" }}>
-                    {defaultTarget?.host ? `${defaultTarget.username}@${defaultTarget.host}:${defaultTarget.port}` : "未读取到服务器地址"}
+                    {deploymentLoading ? "正在读取默认服务器配置..." : deploymentError ? deploymentError : defaultTarget?.host ? `${defaultTarget.username}@${defaultTarget.host}:${defaultTarget.port}` : "未读取到服务器地址"}
                   </p>
                   <p className="mt-1 break-all text-xs" style={{ color: "var(--fg-tertiary)" }}>
                     {defaultTarget?.publicUrl || "暂无公开访问模板"}
@@ -431,7 +462,7 @@ export function SettingsView() {
                   </button>
                 </div>
               </div>
-              {!defaultTarget?.configured && defaultTarget?.missingEnv?.length ? (
+              {!deploymentLoading && !defaultTargetConfigured && defaultTarget?.missingEnv?.length ? (
                 <div className="mt-4 rounded-lg p-3" style={{ background: "var(--warning-subtle)", border: "1px solid var(--warning-border)" }}>
                   <p className="text-xs font-semibold" style={{ color: "var(--warning)" }}>缺少环境变量：{defaultTarget.missingEnv.join(" / ")}</p>
                   <button type="button" onClick={copyDeploymentTemplate} className="mt-2 rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}>

@@ -1015,7 +1015,7 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
         emptyText="在编辑器里拖选代码行后，可直接交给 PMO、Codex 或 UX Reviewer。"
         onClear={() => setSelectedCode(null)}
       />
-      <div className="overflow-hidden rounded-lg" style={{ border: "1px solid var(--border)", background: "#1e1e1e" }}>
+      <div className="min-w-0 overflow-hidden rounded-lg" style={{ border: "1px solid var(--border)", background: "#1e1e1e" }}>
         <div className="flex h-9 items-center justify-between gap-2 px-3" style={{ background: "#2b2b2b", borderBottom: "1px solid #3b3b3b" }}>
           <div className="min-w-0">
             <span className="block truncate text-[11px] font-bold text-white">{activeItem.filename}</span>
@@ -1033,10 +1033,11 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
             </button>
           </div>
         </div>
-        <div style={{ height: 420 }}>
+        <div className="min-w-0" style={{ height: 420, width: "100%" }}>
           <MonacoEditor
             key={activeItem.id}
             height="100%"
+            width="100%"
             language={activeItem.language}
             theme="vs-dark"
             value={value}
@@ -1047,10 +1048,19 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
               fontSize: 12,
               lineHeight: 19,
               lineNumbers: "on",
-              wordWrap: "on",
+              wordWrap: "off",
               scrollBeyondLastLine: false,
               automaticLayout: true,
               tabSize: 2,
+              fixedOverflowWidgets: true,
+              overviewRulerLanes: 0,
+              scrollbar: {
+                horizontal: "visible",
+                vertical: "visible",
+                horizontalScrollbarSize: 10,
+                verticalScrollbarSize: 10,
+                alwaysConsumeMouseWheel: false,
+              },
             }}
           />
         </div>
@@ -1265,9 +1275,10 @@ function DiffPanel({ messages, artifacts }: { messages: Message[]; artifacts: Ar
             应用为版本
           </button>
         </div>
-        <div style={{ height: 430 }}>
+        <div className="min-w-0" style={{ height: 430, width: "100%" }}>
           <MonacoDiffEditor
             height="100%"
+            width="100%"
             language={LANG_MAP[payload?.fileName?.split(".").pop()?.toLowerCase() ?? ""] ?? "plaintext"}
             original={original}
             modified={modified}
@@ -1278,8 +1289,18 @@ function DiffPanel({ messages, artifacts }: { messages: Message[]; artifacts: Ar
               minimap: { enabled: false },
               fontSize: 12,
               lineHeight: 19,
+              wordWrap: "off",
               automaticLayout: true,
               scrollBeyondLastLine: false,
+              fixedOverflowWidgets: true,
+              overviewRulerLanes: 0,
+              scrollbar: {
+                horizontal: "visible",
+                vertical: "visible",
+                horizontalScrollbarSize: 10,
+                verticalScrollbarSize: 10,
+                alwaysConsumeMouseWheel: false,
+              },
             }}
           />
         </div>

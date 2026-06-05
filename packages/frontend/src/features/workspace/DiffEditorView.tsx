@@ -66,6 +66,7 @@ export function DiffEditorView({
       <div className="flex-1 min-h-0">
         <MonacoDiffEditor
           height={height ?? "100%"}
+          width="100%"
           language={monacoLang}
           original={original}
           modified={modified}
@@ -77,11 +78,19 @@ export function DiffEditorView({
             fontSize: 13,
             lineHeight: 20,
             scrollBeyondLastLine: false,
-            wordWrap: "on",
+            wordWrap: "off",
             renderLineHighlight: "line",
             smoothScrolling: true,
             automaticLayout: true,
-            scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
+            fixedOverflowWidgets: true,
+            overviewRulerLanes: 0,
+            scrollbar: {
+              horizontal: "visible",
+              vertical: "visible",
+              verticalScrollbarSize: 8,
+              horizontalScrollbarSize: 8,
+              alwaysConsumeMouseWheel: false,
+            },
             folding: true,
             lineNumbers: "on",
             glyphMargin: false,

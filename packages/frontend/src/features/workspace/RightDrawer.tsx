@@ -105,10 +105,12 @@ function FilesView({ artifacts }: { artifacts: Artifact[] }) {
                 {isOpen ? "▲" : "▼"}
               </button>
             </div>
-            <pre className="whitespace-pre-wrap px-3 py-2.5 m-0 overflow-x-auto" style={{
+            <pre className="whitespace-pre px-3 py-2.5 m-0 overflow-auto custom-scrollbar" style={{
               fontSize: "var(--text-xs)", fontFamily: "var(--font-mono)", lineHeight: 1.55,
               color: isOpen ? "var(--fg-secondary)" : "var(--fg-tertiary)",
               maxHeight: isOpen ? 300 : 60, overflowY: isOpen ? "auto" : "hidden",
+              minWidth: "100%",
+              tabSize: 2,
             }}>
               {truncated ? content.slice(0, 200) + "…" : content}
             </pre>

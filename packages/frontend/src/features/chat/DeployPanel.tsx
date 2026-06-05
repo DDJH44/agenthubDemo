@@ -11,6 +11,11 @@ import type { WSClientMessage } from "@agenthub/shared";
 import { collectDeployFiles, pickDeployArtifact } from "./deploy-artifacts";
 import { upsertDeployCard } from "./deploy-card";
 import { getDeployProviderLabel } from "./deploy-platforms";
+import {
+  isDeploymentTargetConfigured,
+  type DeploymentTarget,
+  type DeploymentTargetsResponse,
+} from "@/features/deployment/deployment-targets";
 
 type Platform = "mock-preview" | "vercel" | "miaoda" | "self-hosted" | "static-download" | "container-package";
 
@@ -21,30 +26,6 @@ interface PlatformOption {
   hint: string;
   tags: string[];
   icon: string;
-}
-
-interface DeploymentTarget {
-  id: string;
-  name: string;
-  host: string;
-  port: number;
-  username: string;
-  deployPath: string;
-  publicUrl: string;
-  authType: string;
-  publicKey: string;
-  status: string;
-  configured?: boolean;
-  requiredEnv?: string[];
-  optionalEnv?: string[];
-  missingEnv?: string[];
-  envTemplate?: string;
-  lastError?: string | null;
-}
-
-interface DeploymentTargetsResponse {
-  defaultTarget: DeploymentTarget;
-  targets: DeploymentTarget[];
 }
 
 const PLATFORMS: PlatformOption[] = [
@@ -213,10 +194,12 @@ export function DeployPanel() {
   const isDeploying = normalizedStatus === "deploying";
   const deployFilePreview = deployFiles.slice(0, 4);
   const selectedDeploymentTarget = deploymentTargets.find((target) => target.id === selectedDeploymentTargetId) ?? null;
+  const defaultDeploymentTargetReady = isDeploymentTargetConfigured(defaultDeploymentTarget);
+  const defaultDeploymentTargetStatusLabel = defaultDeploymentTarget ? (defaultDeploymentTargetReady ? "已配置" : "未配置") : "读取中";
   const selfHostedDefaultUnavailable =
     selectedPlatform === "self-hosted" &&
     selectedDeploymentTargetId === "platform-default" &&
-    defaultDeploymentTarget?.configured === false;
+    !defaultDeploymentTargetReady;
   const canDeploy = baseCanDeploy && !selfHostedDefaultUnavailable;
   const selectedTargetPublicKey = targetPublicKey || selectedDeploymentTarget?.publicKey || "";
 
@@ -228,11 +211,12 @@ export function DeployPanel() {
         if (cancelled) return;
         setDefaultDeploymentTarget(data.defaultTarget);
         setDeploymentTargets(data.targets);
-        const fallbackTarget = data.defaultTarget.configured === false ? preferredUserDeploymentTarget(data.targets) : null;
+        const defaultTargetReady = isDeploymentTargetConfigured(data.defaultTarget);
+        const fallbackTarget = !defaultTargetReady ? preferredUserDeploymentTarget(data.targets) : null;
         if (fallbackTarget) {
           setSelectedDeploymentTargetId((current) => current === "platform-default" ? fallbackTarget.id : current);
           setStatusMessage(`默认服务器未配置，已自动选择你的服务器目标：${fallbackTarget.name}`);
-        } else if (data.defaultTarget.configured === false) {
+        } else if (!defaultTargetReady) {
           setStatusMessage("默认服务器未配置。可以添加自有服务器，或切换到静态预览先查看产物。");
         }
       })
@@ -263,7 +247,7 @@ export function DeployPanel() {
       });
       setDeploymentTargets((items) => [result.target, ...items.filter((item) => item.id !== result.target.id)]);
       setSelectedDeploymentTargetId(result.target.id);
-      setTargetPublicKey(result.target.publicKey);
+      setTargetPublicKey(result.target.publicKey ?? "");
       setTargetFormOpen(false);
       setStatusMessage("服务器目标已创建，请把公钥加入服务器 authorized_keys 后再测试或部署。");
     } catch (error) {
@@ -323,7 +307,7 @@ export function DeployPanel() {
       const nextTargets = deploymentTargets.filter((item) => item.id !== target.id);
       setDeploymentTargets(nextTargets);
       if (selectedDeploymentTargetId === target.id) {
-        const fallbackTarget = defaultDeploymentTarget?.configured === false ? preferredUserDeploymentTarget(nextTargets) : null;
+        const fallbackTarget = !isDeploymentTargetConfigured(defaultDeploymentTarget) ? preferredUserDeploymentTarget(nextTargets) : null;
         setSelectedDeploymentTargetId(fallbackTarget?.id ?? "platform-default");
         setTargetPublicKey("");
       }
@@ -598,8 +582,8 @@ export function DeployPanel() {
                 >
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>AgentHub 默认服务器</p>
-                    <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: defaultDeploymentTarget?.configured === false ? "var(--danger)" : "var(--success)", background: defaultDeploymentTarget?.configured === false ? "var(--danger-subtle)" : "var(--success-subtle)" }}>
-                      {defaultDeploymentTarget?.configured === false ? "未配置" : "已配置"}
+                    <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: defaultDeploymentTarget ? (defaultDeploymentTargetReady ? "var(--success)" : "var(--danger)") : "var(--fg-tertiary)", background: defaultDeploymentTarget ? (defaultDeploymentTargetReady ? "var(--success-subtle)" : "var(--danger-subtle)") : "var(--surface-low)" }}>
+                      {defaultDeploymentTargetStatusLabel}
                     </span>
                   </div>
                   <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
