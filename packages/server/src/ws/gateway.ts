@@ -113,6 +113,9 @@ function parseJsonField<T>(raw: unknown, fallback: T): T {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const AGENT_START_MARKER = "[AGENT_START]";
+const AGENT_END_MARKER = "[AGENT_END]";
+const GROUP_AGENT_CONTROL_NAME = "__all__";
 
 function compactSummaryLine(value: unknown, maxLength = 140) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, maxLength) : "";
@@ -232,6 +235,60 @@ function formatExecutionTask(summary: AgentExecutionContextSummary) {
     summary.references.length ? `引用：${summary.references.join("；")}` : "",
     summary.openQuestions.length ? `待确认但不阻塞：${summary.openQuestions.join("；")}` : "",
   ].filter(Boolean).join("\n");
+}
+
+function isAgentBoundaryMessage(message: { content: string }) {
+  return message.content === AGENT_START_MARKER || message.content === AGENT_END_MARKER;
+}
+
+function getAgentScopedMessages<T extends { content: string }>(messages: T[]): T[] {
+  const scoped: T[] = [];
+  let active = false;
+
+  for (const message of messages) {
+    if (message.content === AGENT_START_MARKER) {
+      active = true;
+      continue;
+    }
+    if (message.content === AGENT_END_MARKER) {
+      active = false;
+      continue;
+    }
+    if (active) scoped.push(message);
+  }
+
+  return scoped;
+}
+
+function hasEnabledAgent(agents: Array<{ enabled: boolean }>) {
+  return agents.some((agent) => agent.enabled);
+}
+
+async function listRecentMessagesForAgentContext(conversationId: string, take = 120) {
+  const rows = await prisma.message.findMany({
+    where: { conversationId },
+    orderBy: { timestamp: "desc" },
+    take,
+  });
+  return rows.reverse();
+}
+
+async function createAgentBoundaryMessage(conversationId: string, boundary: "start" | "end", userId: string) {
+  await messageRepo.create({
+    conversationId,
+    type: "system",
+    sender: "system",
+    content: boundary === "start" ? AGENT_START_MARKER : AGENT_END_MARKER,
+    payload: { kind: "agent_boundary", boundary, controlledBy: userId },
+  });
+}
+
+async function setConversationAgentsEnabled(conversationId: string, participants: string[], convType: string, enabled: boolean) {
+  const agentNames = buildInitialConversationAgentNames(participants, convType);
+  for (const agentName of agentNames) {
+    await conversationAgentRepo.setEnabled(conversationId, agentName, enabled);
+  }
+  return agentNames;
 }
 
 async function checkConversationAccess(ws: WebSocket, conversationId: string, userId: string): Promise<boolean> {
@@ -1034,8 +1091,10 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
 
             const realUserCount = convType === "group" ? await countRealUsers(convParticipants) : 0;
             const isMultiUserGroup = convType === "group" && realUserCount >= 2;
+            const convAgents = await conversationAgentRepo.listByConversation(conversationId);
+            const groupAgentsEnabled = isMultiUserGroup && hasEnabledAgent(convAgents);
 
-            if (isMultiUserGroup && !agentExecution) {
+            if (isMultiUserGroup && !agentExecution && !groupAgentsEnabled) {
               const userMsg = await messageRepo.createAndUpdateConv({
                 conversationId,
                 type: "user_message",
@@ -1100,13 +1159,12 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const simpleChat = !workflowRef && isSimpleChat(text);
             const artifactTask = isArtifactGenerationTask(text);
 
-            const convAgents = await conversationAgentRepo.listByConversation(conversationId);
             const enabledAgentNames = agentExecution
               ? buildInitialConversationAgentNames(convParticipants, convType)
               : getEffectiveEnabledAgentNames(convParticipants, convType, convAgents);
             const hasEnabledAgents = enabledAgentNames.length > 0;
 
-            if (!agentExecution && (simpleChat || ((!hasEnabledAgents || isDirectConv) && !artifactTask))) {
+            if (!agentExecution && !groupAgentsEnabled && (simpleChat || ((!hasEnabledAgents || isDirectConv) && !artifactTask))) {
               const userMsg = await messageRepo.createAndUpdateConv({
                 conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: [],
                 id: clientMsgId,
@@ -1118,7 +1176,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                 try {
                   const recentMsgs = await messageRepo.listByConversation(conversationId, { take: 20 });
                   const history = recentMsgs
-                    .filter(m => m.content !== "[AGENT_START]" && m.content !== "[AGENT_END]")
+                    .filter(m => !isAgentBoundaryMessage(m))
                     .map(m => ({
                       role: (m.type === "user_message" || m.sender === "user") ? "user" as const : "assistant" as const,
                       content: m.content.slice(0, 500),
@@ -1152,17 +1210,29 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
 
             let executionSummary: AgentExecutionContextSummary | null = null;
             let routingText = text;
-            if (agentExecution) {
-              const recentMsgs = await messageRepo.listByConversation(conversationId, { take: 30 });
+            let shouldBroadcastExecutionSummary = false;
+            if (agentExecution || groupAgentsEnabled) {
+              const recentMsgs = await listRecentMessagesForAgentContext(conversationId);
+              const scopedMsgs = isMultiUserGroup ? getAgentScopedMessages(recentMsgs) : recentMsgs;
+              const messagesForSummary = [
+                ...scopedMsgs,
+                { type: "user_message", sender: userName, content: text },
+              ];
               executionSummary = buildExecutionSummaryFromMessages(
-                recentMsgs,
-                agentExecution.task || text,
-                agentExecution.contextSummary,
+                messagesForSummary,
+                agentExecution?.task || text,
+                agentExecution?.contextSummary,
               );
               routingText = formatExecutionTask(executionSummary);
-              for (const agentName of buildInitialConversationAgentNames(convParticipants, convType)) {
-                await conversationAgentRepo.setEnabled(conversationId, agentName, true);
-                broadcast(conversationId, { type: "agent:enabled", conversationId, agentName, timestamp: Date.now() });
+              shouldBroadcastExecutionSummary = Boolean(agentExecution);
+
+              if (agentExecution) {
+                if (isMultiUserGroup && !groupAgentsEnabled) {
+                  await createAgentBoundaryMessage(conversationId, "start", userId);
+                }
+                for (const agentName of await setConversationAgentsEnabled(conversationId, convParticipants, convType, true)) {
+                  broadcast(conversationId, { type: "agent:enabled", conversationId, agentName, timestamp: Date.now() });
+                }
               }
             }
 
@@ -1171,7 +1241,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
 
             let matchedAgents = agents;
             let matchSummary = "";
-            if (executionSummary) {
+            if (executionSummary && shouldBroadcastExecutionSummary) {
               const matched = matchByKeywords(executionSummary.goal || routingText);
               matchedAgents = agents.length > 0 ? agents : matched.map((m) => m.agentId);
               matchSummary = `多人讨论已确认 · 已过滤 ${executionSummary.sourceMessageCount} 条上下文`;
@@ -1292,22 +1362,54 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
           // ══�?Agent Control ══�?
           case "agent:enable": {
             if (!await checkConversationAccess(ws, msg.conversationId, userId)) break;
+            const conv = await conversationRepo.getById(msg.conversationId);
+            if (!conv) { sendError(ws, "NOT_FOUND", "Conversation not found"); break; }
+            const participants = getParticipants(conv);
+            const realUserCount = conv.type === "group" ? await countRealUsers(participants) : 0;
+            const isMultiUserGroup = conv.type === "group" && realUserCount >= 2;
+            const currentAgents = await conversationAgentRepo.listByConversation(msg.conversationId);
+
+            if (isMultiUserGroup) {
+              if (conv.createdBy !== userId) {
+                sendError(ws, "FORBIDDEN", "Only the group owner can enable agents in a multi-user group");
+                break;
+              }
+              if (!hasEnabledAgent(currentAgents)) {
+                await createAgentBoundaryMessage(msg.conversationId, "start", userId);
+              }
+              await setConversationAgentsEnabled(msg.conversationId, participants, conv.type, true);
+              broadcast(msg.conversationId, { type: "agent:enabled", conversationId: msg.conversationId, agentName: GROUP_AGENT_CONTROL_NAME, timestamp: Date.now() });
+              break;
+            }
+
             await conversationAgentRepo.setEnabled(msg.conversationId, msg.agentName, true);
-            // Insert start marker
-            await messageRepo.createAndUpdateConv({
-              conversationId: msg.conversationId, type: "system", sender: "system", content: "[AGENT_START]",
-            });
             broadcast(msg.conversationId, { type: "agent:enabled", conversationId: msg.conversationId, agentName: msg.agentName, timestamp: Date.now() });
             break;
           }
 
           case "agent:disable": {
             if (!await checkConversationAccess(ws, msg.conversationId, userId)) break;
+            const conv = await conversationRepo.getById(msg.conversationId);
+            if (!conv) { sendError(ws, "NOT_FOUND", "Conversation not found"); break; }
+            const participants = getParticipants(conv);
+            const realUserCount = conv.type === "group" ? await countRealUsers(participants) : 0;
+            const isMultiUserGroup = conv.type === "group" && realUserCount >= 2;
+            const currentAgents = await conversationAgentRepo.listByConversation(msg.conversationId);
+
+            if (isMultiUserGroup) {
+              if (conv.createdBy !== userId) {
+                sendError(ws, "FORBIDDEN", "Only the group owner can mute agents in a multi-user group");
+                break;
+              }
+              if (hasEnabledAgent(currentAgents)) {
+                await createAgentBoundaryMessage(msg.conversationId, "end", userId);
+              }
+              await setConversationAgentsEnabled(msg.conversationId, participants, conv.type, false);
+              broadcast(msg.conversationId, { type: "agent:disabled", conversationId: msg.conversationId, agentName: GROUP_AGENT_CONTROL_NAME, timestamp: Date.now() });
+              break;
+            }
+
             await conversationAgentRepo.setEnabled(msg.conversationId, msg.agentName, false);
-            // Insert end marker
-            await messageRepo.createAndUpdateConv({
-              conversationId: msg.conversationId, type: "system", sender: "system", content: "[AGENT_END]",
-            });
             broadcast(msg.conversationId, { type: "agent:disabled", conversationId: msg.conversationId, agentName: msg.agentName, timestamp: Date.now() });
             break;
           }
@@ -1318,6 +1420,8 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             if (!conv) { sendError(ws, "NOT_FOUND", "Conversation not found"); break; }
             const agents = await conversationAgentRepo.listByConversation(msg.conversationId);
             const participants = getParticipants(conv);
+            const realUserCount = conv.type === "group" ? await countRealUsers(participants) : 0;
+            const defaultAgentEnabled = !(conv.type === "group" && realUserCount >= 2);
             const initialAgentNames = buildInitialConversationAgentNames(participants, conv.type);
             const hasExplicitParticipantAgents = initialAgentNames.some((name) => !isCoordinatorAgent(name));
             const visibleAgentNames = hasExplicitParticipantAgents
@@ -1331,7 +1435,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                 const entry = agentMap.get(agentName);
                 return {
                   agentName,
-                  enabled: entry?.enabled ?? true,
+                  enabled: entry?.enabled ?? defaultAgentEnabled,
                   addedAt: entry?.addedAt.getTime() ?? conv.createdAt.getTime(),
                 };
               }),
@@ -1343,6 +1447,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
           // ══�?Member Management ══�?
           case "member:invite": {
             if (!await checkConversationAccess(ws, msg.conversationId, userId)) break;
+            const beforeConv = await conversationRepo.getById(msg.conversationId);
+            const beforeParticipants = beforeConv ? getParticipants(beforeConv) : [];
+            const beforeRealUserCount = beforeConv?.type === "group" ? await countRealUsers(beforeParticipants) : 0;
             const invitedUser = await resolveInvitee(msg);
             if (!normalizeInviteIdentifier(msg)) {
               sendError(ws, "VALIDATION", "User email or user id is required");
@@ -1351,6 +1458,13 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             if (!invitedUser) { sendError(ws, "NOT_FOUND", "User not found"); break; }
             const added = await conversationRepo.addParticipant(msg.conversationId, invitedUser.id);
             if (!added) { sendError(ws, "ALREADY_MEMBER", "User is already a member or conversation not found"); break; }
+            const afterConv = await conversationRepo.getById(msg.conversationId);
+            const afterParticipants = afterConv ? getParticipants(afterConv) : [];
+            const afterRealUserCount = afterConv?.type === "group" ? await countRealUsers(afterParticipants) : 0;
+            if (afterConv?.type === "group" && beforeRealUserCount < 2 && afterRealUserCount >= 2) {
+              await setConversationAgentsEnabled(msg.conversationId, afterParticipants, afterConv.type, false);
+              broadcast(msg.conversationId, { type: "agent:disabled", conversationId: msg.conversationId, agentName: GROUP_AGENT_CONTROL_NAME, timestamp: Date.now() });
+            }
             broadcast(msg.conversationId, { type: "member:added", conversationId: msg.conversationId, userId: invitedUser.id, userName: invitedUser.name, timestamp: Date.now() });
             break;
           }
@@ -1385,7 +1499,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const agentMembers = agentNames.map((agentName) => ({ userId: agentName, userName: agentName, role: "agent", joinedAt: 0 }));
             const userMembers = participants.map((pid) => {
               const u = userMap.get(pid);
-              return u ? { userId: u.id, userName: u.name, role: "member", joinedAt: u.createdAt.getTime() } : null;
+              return u ? { userId: u.id, userName: u.name, role: u.id === conv.createdBy ? "owner" : "member", joinedAt: u.createdAt.getTime() } : null;
             }).filter(Boolean);
             const members = [...agentMembers, ...userMembers];
             ws.send(JSON.stringify({ type: "member:list:results", conversationId: msg.conversationId, members, timestamp: Date.now() }));

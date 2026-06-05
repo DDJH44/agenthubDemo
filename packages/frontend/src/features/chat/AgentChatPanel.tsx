@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AgentExecutionContextSummary, AgentExecutionRequest, Message, WorkflowReferencePayload } from "@agenthub/shared";
+import type { AgentExecutionRequest, Message, WorkflowReferencePayload } from "@agenthub/shared";
 import { AnalyzeAndAssignFlow } from "./AnalyzeAndAssignFlow";
 import { AgentStepList } from "./AgentStepList";
 import { ConversationNavBar } from "./ConversationNavBar";
@@ -22,6 +22,7 @@ import {
   toWorkflowReferencePayload,
   type SavedWorkflowSnapshot,
 } from "@/features/workflows/saved-workflows";
+import { getGlobalSend } from "@/lib/ws-client";
 
 interface StepProgress {
   index: number;
@@ -142,6 +143,13 @@ export function AgentChatPanel({
     return () => cancelAnimationFrame(frame);
   }, [convId]);
 
+  useEffect(() => {
+    if (!convId || !showMultiUserExecutionGate) return;
+    const send = getGlobalSend();
+    send({ type: "member:list", conversationId: convId });
+    send({ type: "agent:list", conversationId: convId });
+  }, [convId, showMultiUserExecutionGate]);
+
   const scrollToLatest = useCallback((behavior: ScrollBehavior = "smooth") => {
     const element = scrollRef.current;
     if (!element) return;
@@ -223,19 +231,14 @@ export function AgentChatPanel({
     window.requestAnimationFrame(() => scrollToLatest("auto"));
   }, [convId, isStreaming, onSend, scrollToLatest, text, workflowReference]);
 
-  const handleConfirmExecution = useCallback((summary: AgentExecutionContextSummary) => {
-    const taskText = `确认执行：${summary.goal}`;
-    onSend(taskText, {
-      agentExecution: {
-        mode: "execute",
-        task: summary.goal,
-        contextSummary: summary,
-      },
+  const handleToggleAgentMode = useCallback((enabled: boolean) => {
+    if (!convId) return;
+    getGlobalSend()({
+      type: enabled ? "agent:enable" : "agent:disable",
+      conversationId: convId,
+      agentName: "__all__",
     });
-    setText("");
-    setWorkflowReferenceState({ conversationId: convId, workflow: null });
-    window.requestAnimationFrame(() => scrollToLatest("auto"));
-  }, [convId, onSend, scrollToLatest]);
+  }, [convId]);
 
   const handleAssignAgent = useCallback((agentId: string, content: string) => {
     if (convId && onAssignAgent) onAssignAgent(convId, agentId, content);
@@ -367,13 +370,12 @@ export function AgentChatPanel({
 
             <div className="shrink-0" style={{ borderTop: "1px solid var(--divider)" }}>
               <ContextBasket conversationId={convId} onOpenContextPanel={handleOpenContextPanel} />
-              {showMultiUserExecutionGate && (
+              {showMultiUserExecutionGate && convId && (
                 <MultiUserExecutionGate
-                  messages={messages}
-                  draft={text}
+                  conversationId={convId}
                   disabled={!connected}
                   isStreaming={isStreaming}
-                  onConfirm={handleConfirmExecution}
+                  onToggleAgentMode={handleToggleAgentMode}
                 />
               )}
               <QuickReplyBar

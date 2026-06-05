@@ -1,17 +1,21 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import type { AgentExecutionContextSummary, Message } from "@agenthub/shared";
+import { useAuthStore } from "@/stores/auth-store";
+import { useConversationAgentStore } from "@/stores/conversation-agent-store";
+import { useConversationMemberStore } from "@/stores/conversation-member-store";
 
 interface Props {
-  messages: Message[];
-  draft: string;
+  conversationId: string;
   disabled?: boolean;
   isStreaming?: boolean;
-  onConfirm: (summary: AgentExecutionContextSummary) => void;
+  onToggleAgentMode: (enabled: boolean) => void;
 }
 
 const MAX_ITEMS = 4;
+const AGENT_START_MARKER = "[AGENT_START]";
+const AGENT_END_MARKER = "[AGENT_END]";
 
 function compactLine(value: string, max = 90) {
   return value.replace(/\s+/g, " ").trim().slice(0, max);
@@ -35,8 +39,30 @@ function uniquePush(list: string[], item: string) {
   list.push(value);
 }
 
+function getScopedMessages(messages: Message[]) {
+  let active = false;
+  let hasBoundary = false;
+  const scoped: Message[] = [];
+
+  for (const message of messages) {
+    if (message.content === AGENT_START_MARKER) {
+      active = true;
+      hasBoundary = true;
+      continue;
+    }
+    if (message.content === AGENT_END_MARKER) {
+      active = false;
+      hasBoundary = true;
+      continue;
+    }
+    if (active) scoped.push(message);
+  }
+
+  return hasBoundary ? scoped : messages;
+}
+
 export function buildExecutionContextSummary(messages: Message[], draft: string): AgentExecutionContextSummary {
-  const humanMessages = messages.filter(isHumanMessage).slice(-16);
+  const humanMessages = getScopedMessages(messages).filter(isHumanMessage).slice(-16);
   const lines = humanMessages
     .map((message) => compactLine(message.content, 160))
     .filter(Boolean);
@@ -77,88 +103,55 @@ export function buildExecutionContextSummary(messages: Message[], draft: string)
   };
 }
 
-function SummaryList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
-  return (
-    <div className="min-w-0">
-      <p className="text-[11px] font-bold" style={{ color: "var(--fg-secondary)" }}>{title}</p>
-      <div className="mt-1 space-y-1">
-        {(items.length > 0 ? items : [empty]).map((item, index) => (
-          <p key={`${title}-${index}`} className="truncate text-[11px]" style={{ color: items.length > 0 ? "var(--fg-tertiary)" : "var(--fg-disabled)" }}>
-            {item}
-          </p>
-        ))}
-      </div>
-    </div>
-  );
-}
+export function MultiUserExecutionGate({ conversationId, disabled, isStreaming, onToggleAgentMode }: Props) {
+  const currentUserId = useAuthStore((state) => state.user?.id);
+  const agents = useConversationAgentStore((state) => state.agentsByConversation[conversationId] ?? []);
+  const members = useConversationMemberStore((state) => state.membersByConversation[conversationId] ?? []);
 
-export function MultiUserExecutionGate({ messages, draft, disabled, isStreaming, onConfirm }: Props) {
-  const [summary, setSummary] = useState<AgentExecutionContextSummary | null>(null);
-  const previewSummary = useMemo(() => summary ?? buildExecutionContextSummary(messages, draft), [draft, messages, summary]);
-  const canConfirm = !disabled && !isStreaming && previewSummary.goal.trim().length > 0;
-
-  const handleBuildSummary = () => {
-    setSummary(buildExecutionContextSummary(messages, draft));
-  };
-
-  const handleConfirm = () => {
-    if (!canConfirm) return;
-    onConfirm(previewSummary);
-    setSummary(null);
-  };
+  const realMembers = useMemo(() => members.filter((member) => member.role !== "agent"), [members]);
+  const owner = realMembers.find((member) => member.role === "owner") ?? realMembers[0];
+  const isOwner = Boolean(currentUserId && owner?.userId === currentUserId);
+  const agentsEnabled = agents.some((agent) => agent.enabled);
+  const canToggle = !disabled && !isStreaming && isOwner;
+  const statusLabel = agentsEnabled ? "Agent 已启用" : "Agent 静音中";
+  const helperText = agentsEnabled
+    ? "后续任务会读取启用区间内的讨论。"
+    : "当前是自由讨论区，消息不会触发 Agent。";
 
   return (
     <div className="px-3 pb-2">
       <div
-        className="rounded-xl px-3 py-2"
+        className="flex items-center justify-between gap-3 rounded-xl px-3 py-2"
         style={{ background: "var(--surface-tinted)", border: "1px solid var(--border)" }}
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full" style={{ background: summary ? "var(--accent)" : "var(--fg-disabled)" }} />
-              <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>
-                {summary ? "上下文已过滤" : "讨论中 · Agent 已静音"}
-              </p>
-            </div>
-            <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
-              2 人以上群聊会先保留人类讨论，确认执行后 PMO 才读取过滤摘要。
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span
+              className="h-2 w-2 rounded-full"
+              style={{ background: agentsEnabled ? "var(--success)" : "var(--fg-disabled)" }}
+            />
+            <p className="truncate text-xs font-bold" style={{ color: "var(--fg-primary)" }}>
+              {statusLabel}
             </p>
+            <span className="rounded-full px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+              {realMembers.length} 人群聊
+            </span>
           </div>
-          <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              onClick={handleBuildSummary}
-              disabled={disabled}
-              className="h-7 rounded-lg px-2.5 text-[11px] font-semibold transition-colors disabled:opacity-40"
-              style={{ color: "var(--fg-secondary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
-            >
-              整理上下文
-            </button>
-            <button
-              type="button"
-              onClick={handleConfirm}
-              disabled={!canConfirm}
-              className="h-7 rounded-lg px-3 text-[11px] font-bold text-white transition-opacity disabled:opacity-40"
-              style={{ background: "var(--accent)", border: "1px solid var(--accent)" }}
-            >
-              确认执行
-            </button>
-          </div>
+          <p className="mt-0.5 truncate text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
+            {helperText}{isOwner ? "" : " 仅群主可切换。"}
+          </p>
         </div>
 
-        {summary && (
-          <div className="mt-3 grid gap-2 rounded-lg p-2 sm:grid-cols-2" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-            <div className="sm:col-span-2">
-              <p className="text-[11px] font-bold" style={{ color: "var(--fg-secondary)" }}>执行目标</p>
-              <p className="mt-1 text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{summary.goal}</p>
-            </div>
-            <SummaryList title="已确认" items={summary.confirmed} empty="暂无明确确认项" />
-            <SummaryList title="约束" items={summary.constraints} empty="暂无额外约束" />
-            <SummaryList title="引用" items={summary.references} empty="暂无引用资料" />
-            <SummaryList title="待确认" items={summary.openQuestions} empty="暂无冲突问题" />
-          </div>
-        )}
+        <button
+          type="button"
+          onClick={() => onToggleAgentMode(!agentsEnabled)}
+          disabled={!canToggle}
+          className="h-8 shrink-0 rounded-lg px-3 text-[11px] font-bold text-white transition-opacity disabled:opacity-45"
+          style={{ background: agentsEnabled ? "var(--fg-tertiary)" : "var(--accent)", border: "1px solid transparent" }}
+          title={isOwner ? undefined : "仅群主可切换智能体状态"}
+        >
+          {agentsEnabled ? "静音智能体" : "启用智能体"}
+        </button>
       </div>
     </div>
   );
