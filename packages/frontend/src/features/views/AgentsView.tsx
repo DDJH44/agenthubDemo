@@ -45,6 +45,25 @@ interface PlatformHealthResponse {
   platforms: PlatformHealthItem[];
 }
 
+function normalizePlatformHealth(data: Partial<PlatformHealthResponse> | null | undefined): PlatformHealthResponse {
+  const platforms = Array.isArray(data?.platforms) ? data.platforms : [];
+  const minimumRequired = typeof data?.minimumRequired === "number" ? data.minimumRequired : 2;
+  const configuredCount = typeof data?.configuredCount === "number"
+    ? data.configuredCount
+    : platforms.filter((platform) => platform.configured).length;
+  const supportedCount = typeof data?.supportedCount === "number"
+    ? data.supportedCount
+    : Math.max(platforms.length, minimumRequired);
+
+  return {
+    minimumRequired,
+    configuredCount,
+    supportedCount,
+    minimumSatisfied: typeof data?.minimumSatisfied === "boolean" ? data.minimumSatisfied : configuredCount >= minimumRequired,
+    platforms,
+  };
+}
+
 const PLATFORM_AGENTS: PlatformAgent[] = [
   {
     id: "pmo",
@@ -248,7 +267,7 @@ export function AgentsView() {
     api.get<PlatformHealthResponse>("/api/agent-platforms/status")
       .then((data) => {
         if (!mounted) return;
-        setPlatformHealth(data);
+        setPlatformHealth(normalizePlatformHealth(data));
         setPlatformHealthError("");
       })
       .catch((error) => {
@@ -259,7 +278,8 @@ export function AgentsView() {
   }, []);
 
   const selected = PLATFORM_AGENTS.find((agent) => agent.id === selectedId) ?? PLATFORM_AGENTS[0];
-  const healthById = useMemo(() => new Map((platformHealth?.platforms ?? []).map((item) => [item.id, item])), [platformHealth]);
+  const platformItems = useMemo(() => platformHealth?.platforms ?? [], [platformHealth?.platforms]);
+  const healthById = useMemo(() => new Map(platformItems.map((item) => [item.id, item])), [platformItems]);
   const selectedHealth = healthById.get(selected.id);
   const selectedEffectiveStatus: AgentStatus = selectedHealth ? (selectedHealth.configured ? "online" : "idle") : selected.status;
   const selectedConnection = connectionFromHealth(selected.id, selectedHealth);
@@ -365,9 +385,9 @@ export function AgentsView() {
               {platformHealthError}
             </p>
           )}
-          {platformHealth && (
+          {platformItems.length > 0 && (
             <div className="mt-3 grid gap-2 md:grid-cols-2">
-              {platformHealth.platforms.map((platform) => {
+              {platformItems.map((platform) => {
                 const meta = getConnectionStateMeta(platform.configured ? "live" : "unconfigured");
                 return (
                   <div key={platform.id} className="rounded-lg p-3" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
