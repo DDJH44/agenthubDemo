@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { parseMentions } from "@agenthub/shared";
+import { MentionSuggestions, type MentionSuggestionOption } from "./MentionSuggestions";
 import {
   getWorkflowNodeLabels,
   getWorkflowReferencePrompt,
@@ -21,17 +21,39 @@ interface Props {
   disabled?: boolean;
   isSending?: boolean;
   conversationMode?: "single" | "group";
-  onAssignAgent?: (agentId: string, content: string) => void;
-  onMentionQueryChange?: (query: string | null) => void;
+  mentionOptions?: MentionSuggestionOption[];
   contextCount?: number;
   workflowReference?: SavedWorkflowSnapshot | null;
   onWorkflowReferenceChange?: (workflow: SavedWorkflowSnapshot | null) => void;
 }
 
-function getCursorMentionQuery(value: string, cursorPos: number): string | null {
+interface MentionRange {
+  start: number;
+  end: number;
+  query: string;
+}
+
+function normalizeMention(value: string) {
+  return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function getCursorMentionRange(value: string, cursorPos: number, options: MentionSuggestionOption[]): MentionRange | null {
   const beforeCursor = value.slice(0, cursorPos);
-  const match = beforeCursor.match(/@([\w-]*)$/);
-  return match ? match[1] : null;
+  const atIndex = beforeCursor.lastIndexOf("@");
+  if (atIndex < 0) return null;
+  if (atIndex > 0 && /\S/.test(beforeCursor[atIndex - 1])) return null;
+
+  const query = beforeCursor.slice(atIndex + 1);
+  if (query.includes("\n") || query.length > 80) return null;
+  if (/[，。,.!?;；:：()[\]{}<>]/.test(query)) return null;
+
+  const normalizedQuery = normalizeMention(query);
+  if (normalizedQuery.includes(" ")) {
+    const stillMatchesAgent = options.some((option) => normalizeMention(option.name).startsWith(normalizedQuery));
+    if (!stillMatchesAgent) return null;
+  }
+
+  return { start: atIndex, end: cursorPos, query };
 }
 
 function Icon({ path }: { path: string }) {
@@ -52,8 +74,7 @@ export function QuickReplyBar({
   disabled,
   isSending,
   conversationMode,
-  onAssignAgent,
-  onMentionQueryChange,
+  mentionOptions = [],
   contextCount = 0,
   workflowReference = null,
   onWorkflowReferenceChange,
@@ -63,6 +84,7 @@ export function QuickReplyBar({
   const isGroup = conversationMode === "group";
   const [savedWorkflows, setSavedWorkflows] = useState<SavedWorkflowSnapshot[]>([]);
   const [isWorkflowMenuOpen, setIsWorkflowMenuOpen] = useState(false);
+  const [mentionRange, setMentionRange] = useState<MentionRange | null>(null);
 
   const fitTextarea = useCallback(() => {
     const el = textareaRef.current;
@@ -71,14 +93,15 @@ export function QuickReplyBar({
     el.style.height = `${Math.min(132, Math.max(38, el.scrollHeight))}px`;
   }, []);
 
-  const handleChange = useCallback((nextValue: string) => {
+  const updateMentionRange = useCallback((nextValue: string, cursorPos: number) => {
+    setMentionRange(isGroup ? getCursorMentionRange(nextValue, cursorPos, mentionOptions) : null);
+  }, [isGroup, mentionOptions]);
+
+  const handleChange = useCallback((nextValue: string, cursorPos: number) => {
     onChange(nextValue);
     window.requestAnimationFrame(fitTextarea);
-    if (onMentionQueryChange) {
-      const cursorPos = textareaRef.current?.selectionStart ?? nextValue.length;
-      onMentionQueryChange(getCursorMentionQuery(nextValue, cursorPos));
-    }
-  }, [fitTextarea, onChange, onMentionQueryChange]);
+    updateMentionRange(nextValue, cursorPos);
+  }, [fitTextarea, onChange, updateMentionRange]);
 
   useEffect(() => {
     fitTextarea();
@@ -114,31 +137,52 @@ export function QuickReplyBar({
     const trimmed = value.trim();
     if (!trimmed || disabled || isSending) return;
 
-    if (conversationMode === "group" && onAssignAgent) {
-      const parsed = parseMentions(trimmed);
-      if (parsed.agents.length > 0) {
-        for (const agentId of parsed.agents) {
-          onAssignAgent(agentId, parsed.cleanText || trimmed);
-        }
-        onChange("");
-        return;
-      }
-    }
-
+    setMentionRange(null);
     onSend();
-  }, [conversationMode, disabled, isSending, onAssignAgent, onChange, onSend, value]);
+  }, [disabled, isSending, onSend, value]);
 
   const handleMentionClick = () => {
-    onMention();
-    window.setTimeout(() => {
+    const el = textareaRef.current;
+    if (!el) {
+      onMention();
+      return;
+    }
+
+    const cursor = el.selectionStart ?? value.length;
+    const before = value.slice(0, cursor);
+    const after = value.slice(cursor);
+    const insert = before && !/\s$/.test(before) ? " @" : "@";
+    const nextValue = `${before}${insert}${after}`;
+    const nextCursor = before.length + insert.length;
+    onChange(nextValue);
+    setIsWorkflowMenuOpen(false);
+    setMentionRange({ start: nextCursor - 1, end: nextCursor, query: "" });
+    window.requestAnimationFrame(() => {
+      fitTextarea();
+      el.focus();
+      el.setSelectionRange(nextCursor, nextCursor);
+    });
+  };
+
+  const insertMention = useCallback((name: string) => {
+    const el = textareaRef.current;
+    const cursor = el?.selectionStart ?? value.length;
+    const range = mentionRange ?? getCursorMentionRange(value, cursor, mentionOptions);
+    if (!range) return;
+
+    const inserted = `@${name} `;
+    const nextValue = `${value.slice(0, range.start)}${inserted}${value.slice(range.end)}`;
+    const nextCursor = range.start + inserted.length;
+    onChange(nextValue);
+    setMentionRange(null);
+    window.requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
-      const pos = el.value.length;
+      fitTextarea();
       el.focus();
-      el.setSelectionRange(pos, pos);
-      onMentionQueryChange?.("");
-    }, 0);
-  };
+      el.setSelectionRange(nextCursor, nextCursor);
+    });
+  }, [fitTextarea, mentionOptions, mentionRange, onChange, value]);
 
   const insertWorkflowReference = (workflow: SavedWorkflowSnapshot) => {
     const prompt = getWorkflowReferencePrompt(workflow);
@@ -237,8 +281,11 @@ export function QuickReplyBar({
           <textarea
             ref={textareaRef}
             value={value}
-            onChange={(event) => handleChange(event.target.value)}
+            onChange={(event) => handleChange(event.target.value, event.target.selectionStart ?? event.target.value.length)}
+            onSelect={(event) => updateMentionRange(value, event.currentTarget.selectionStart ?? value.length)}
+            onKeyUp={(event) => updateMentionRange(value, event.currentTarget.selectionStart ?? value.length)}
             onKeyDown={(event) => {
+              if (mentionRange && ["ArrowDown", "ArrowUp", "Enter", "Escape"].includes(event.key)) return;
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
                 submit();
@@ -302,6 +349,15 @@ export function QuickReplyBar({
           </div>
         )}
         </div>
+
+        {isGroup && mentionRange && (
+          <MentionSuggestions
+            query={mentionRange.query}
+            agents={mentionOptions}
+            onSelect={insertMention}
+            onDismiss={() => setMentionRange(null)}
+          />
+        )}
 
         {isWorkflowMenuOpen && (
           <div

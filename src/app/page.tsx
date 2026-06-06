@@ -460,10 +460,6 @@ export default function Page() {
     }
   }, [ws]);
 
-  const handleAssignAgent = useCallback((conversationId: string, agentId: string, content: string) => {
-    ws.assignAgent(conversationId, agentId, content);
-  }, [ws]);
-
   // 监听会话重命名事件 → 发送 WS 持久化
   useEffect(() => {
     const handler = (e: Event) => {
@@ -921,7 +917,6 @@ export default function Page() {
                     taskSummary={chat.taskSummary}
                     messages={activeMessages}
                     onSend={handleSend}
-                    onAssignAgent={handleAssignAgent}
                     onBackToList={() => setShowMobileConvList(true)}
                     isMobile={isMobile}
                   />

@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AgentExecutionRequest, Message, WorkflowReferencePayload } from "@agenthub/shared";
 import { AnalyzeAndAssignFlow } from "./AnalyzeAndAssignFlow";
 import { AgentStepList } from "./AgentStepList";
 import { ConversationNavBar } from "./ConversationNavBar";
 import { ContextBasket } from "./ContextBasket";
 import { CurrentTaskStatusBar } from "./CurrentTaskStatusBar";
-import { MentionSuggestions } from "./MentionSuggestions";
 import { MessageList } from "./MessageList";
 import { MultiUserExecutionGate } from "./MultiUserExecutionGate";
 import { QuickReplyBar } from "./QuickReplyBar";
@@ -15,8 +14,9 @@ import { RightPanel } from "./RightPanel";
 import { TaskSteps } from "./TaskSteps";
 import { BrandMascot } from "@/components/BrandMascot";
 import { useChatStore } from "@/stores/chat-store";
+import { useConversationAgentStore } from "@/stores/conversation-agent-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
-import { isMultiUserConversation } from "./agent-directory";
+import { getAgentMeta, getConversationAgents, isMultiUserConversation } from "./agent-directory";
 import {
   stripWorkflowReferencePrompt,
   toWorkflowReferencePayload,
@@ -42,7 +42,6 @@ interface Props {
   taskSummary: string;
   messages: Message[];
   onSend: (text: string, options?: { workflowRef?: WorkflowReferencePayload; agentExecution?: AgentExecutionRequest }) => void;
-  onAssignAgent?: (conversationId: string, agentId: string, content: string) => void;
   onBackToList?: () => void;
   isMobile?: boolean;
 }
@@ -56,6 +55,10 @@ const EMPTY_ACTIONS = [
 
 function isNearScrollBottom(element: HTMLElement, threshold = 72) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold;
+}
+
+function normalizeMentionName(value: string) {
+  return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function createConversationDetail(convId: string) {
@@ -94,7 +97,6 @@ export function AgentChatPanel({
   taskSummary,
   messages,
   onSend,
-  onAssignAgent,
   onBackToList,
   isMobile,
 }: Props) {
@@ -107,12 +109,12 @@ export function AgentChatPanel({
     setConversationStreaming,
   } = useChatStore();
   const userAgents = useUserAgentStore((state) => state.agents);
+  const agentsByConversation = useConversationAgentStore((state) => state.agentsByConversation);
   const [text, setText] = useState("");
   const [workflowReferenceState, setWorkflowReferenceState] = useState<{ conversationId: string | null; workflow: SavedWorkflowSnapshot | null }>({
     conversationId: null,
     workflow: null,
   });
-  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
   const [showPreviewPanel, setShowPreviewPanel] = useState(false);
   const [isFollowingOutput, setIsFollowingOutput] = useState(true);
   const [hasDetachedUpdates, setHasDetachedUpdates] = useState(false);
@@ -126,6 +128,48 @@ export function AgentChatPanel({
   const showMultiUserExecutionGate = isMultiUserConversation(activeConversation, userAgents);
   const contextCount = convId ? (contextReferences[convId]?.length ?? 0) : 0;
   const workflowReference = workflowReferenceState.conversationId === convId ? workflowReferenceState.workflow : null;
+  const mentionOptions = useMemo(() => {
+    if (!activeConversation || currentMode !== "group") return [];
+    const conversationAgentStatuses = convId ? (agentsByConversation[convId] ?? []) : [];
+
+    const statusByName = new Map(conversationAgentStatuses.map((status) => [normalizeMentionName(status.agentName), status]));
+    const optionByName = new Map<string, {
+      name: string;
+      role?: string;
+      description?: string;
+      color?: string;
+      badge?: string;
+      enabled?: boolean;
+    }>();
+
+    for (const status of conversationAgentStatuses) {
+      const meta = getAgentMeta(status.agentName, userAgents);
+      optionByName.set(normalizeMentionName(status.agentName), {
+        name: status.agentName,
+        role: meta.role,
+        description: meta.capabilities.slice(0, 2).join(" / "),
+        color: meta.color,
+        badge: meta.badge,
+        enabled: status.enabled,
+      });
+    }
+
+    for (const meta of getConversationAgents(activeConversation, userAgents)) {
+      const key = normalizeMentionName(meta.name);
+      if (optionByName.has(key)) continue;
+      const status = statusByName.get(key);
+      optionByName.set(key, {
+        name: meta.name,
+        role: meta.role,
+        description: meta.capabilities.slice(0, 2).join(" / "),
+        color: meta.color,
+        badge: meta.badge,
+        enabled: status?.enabled ?? true,
+      });
+    }
+
+    return [...optionByName.values()];
+  }, [activeConversation, agentsByConversation, convId, currentMode, userAgents]);
   const latestMessage = messages[messages.length - 1];
   const autoScrollKey = [
     convId ?? "none",
@@ -144,10 +188,10 @@ export function AgentChatPanel({
   }, [convId]);
 
   useEffect(() => {
-    if (!convId || !showMultiUserExecutionGate) return;
+    if (!convId) return;
     const send = getGlobalSend();
-    send({ type: "member:list", conversationId: convId });
     send({ type: "agent:list", conversationId: convId });
+    if (showMultiUserExecutionGate) send({ type: "member:list", conversationId: convId });
   }, [convId, showMultiUserExecutionGate]);
 
   const scrollToLatest = useCallback((behavior: ScrollBehavior = "smooth") => {
@@ -239,10 +283,6 @@ export function AgentChatPanel({
       agentName: "__all__",
     });
   }, [convId]);
-
-  const handleAssignAgent = useCallback((agentId: string, content: string) => {
-    if (convId && onAssignAgent) onAssignAgent(convId, agentId, content);
-  }, [convId, onAssignAgent]);
 
   const handleUndoMessage = useCallback((messageId: string) => {
     if (convId) undoMessage(convId, messageId);
@@ -396,8 +436,7 @@ export function AgentChatPanel({
                 isSending={isStreaming}
                 disabled={!connected}
                 conversationMode={currentMode}
-                onAssignAgent={handleAssignAgent}
-                onMentionQueryChange={setMentionQuery}
+                mentionOptions={mentionOptions}
                 contextCount={contextCount}
                 workflowReference={workflowReference}
                 onWorkflowReferenceChange={handleWorkflowReferenceChange}
@@ -406,18 +445,6 @@ export function AgentChatPanel({
           </div>
         </div>
       </div>
-
-      {mentionQuery !== null && (
-        <MentionSuggestions
-          query={mentionQuery}
-          onSelect={(name) => {
-            setText((value) => value.replace(/@[\w-]*$/, `@${name} `));
-            setMentionQuery(null);
-          }}
-          onDismiss={() => setMentionQuery(null)}
-          position={{ top: 0, left: 0 }}
-        />
-      )}
 
       {showPreviewPanel && (
         <>
