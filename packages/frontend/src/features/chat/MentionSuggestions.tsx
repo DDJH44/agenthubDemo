@@ -91,8 +91,6 @@ export function MentionSuggestions({ query, agents, onSelect, onDismiss }: Props
     return () => document.removeEventListener("keydown", handler, true);
   }, [filtered.length, filteredNames, clampedIndex, selectItem, onDismiss]);
 
-  if (agents.length === 0) return null;
-
   return (
     <div
       ref={ref}
@@ -115,7 +113,7 @@ export function MentionSuggestions({ query, agents, onSelect, onDismiss }: Props
 
       {filtered.length === 0 ? (
         <div className="px-3 py-3 text-xs" style={{ color: "var(--fg-tertiary)" }}>
-          没有匹配的智能体
+          {agents.length === 0 ? "正在读取群聊智能体..." : "没有匹配的智能体"}
         </div>
       ) : (
         <div className="max-h-72 overflow-y-auto py-1 custom-scrollbar">

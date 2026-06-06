@@ -123,8 +123,9 @@ export function AgentChatPanel({
   const lastAutoScrollKeyRef = useRef("");
   const lastAutoScrollConvRef = useRef<string | null | undefined>(undefined);
   const convId = activeConversationId ?? activeConversationIdProp;
-  const currentMode = convId ? (conversationMode[convId] ?? "single") : "single";
   const activeConversation = convId ? conversations.find((conversation) => conversation.id === convId) : null;
+  const isConversationGroup = activeConversation?.type === "group" || activeConversation?.type === "task_room";
+  const currentMode = isConversationGroup ? "group" : (convId ? (conversationMode[convId] ?? "single") : "single");
   const showMultiUserExecutionGate = isMultiUserConversation(activeConversation, userAgents);
   const contextCount = convId ? (contextReferences[convId]?.length ?? 0) : 0;
   const workflowReference = workflowReferenceState.conversationId === convId ? workflowReferenceState.workflow : null;

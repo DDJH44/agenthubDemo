@@ -45,7 +45,7 @@ function getCursorMentionRange(value: string, cursorPos: number, options: Mentio
 
   const query = beforeCursor.slice(atIndex + 1);
   if (query.includes("\n") || query.length > 80) return null;
-  if (/[，。,.!?;；:：()[\]{}<>]/.test(query)) return null;
+  if (/[,\uFF0C.\u3002!?\uFF01\uFF1F;\uFF1B:\uFF1A()[\]{}<>]/.test(query)) return null;
 
   const normalizedQuery = normalizeMention(query);
   if (normalizedQuery.includes(" ")) {
