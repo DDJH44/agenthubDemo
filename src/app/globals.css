@@ -618,23 +618,28 @@ body::before {
   color: #f472b6;
 }
 .coze-prose ul {
-  padding-left: 1.5em;
-  margin: 0.5em 0;
+  padding-left: 1.9rem;
+  margin: 0.75em 0 0.75em 0.1rem;
   list-style: disc;
 }
 .coze-prose ul li {
-  margin: 0.3em 0;
-  padding-left: 0.25em;
+  margin: 0.65em 0;
+  padding-left: 0.35rem;
   color: var(--fg-primary);
 }
 .coze-prose ol {
-  padding-left: 1.5em;
-  margin: 0.5em 0;
+  padding-left: 1.9rem;
+  margin: 0.75em 0 0.75em 0.1rem;
   list-style: decimal;
 }
 .coze-prose ol li {
-  margin: 0.3em 0;
+  margin: 0.65em 0;
+  padding-left: 0.35rem;
   color: var(--fg-primary);
+}
+.coze-prose li::marker {
+  color: var(--fg-tertiary);
+  font-size: 0.86em;
 }
 .coze-prose blockquote {
   border-left: 3px solid var(--accent);

@@ -1328,7 +1328,7 @@ export function AIAssistantView() {
                           </span>
                         </div>
                         <div
-                          className={`rounded-xl px-4 py-3 ${msg.role === "user" ? "text-right" : ""}`}
+                          className={`rounded-xl py-3.5 ${msg.role === "user" ? "px-4 text-right" : "px-5"}`}
                           style={{
                             background: msg.role === "user" ? "var(--accent-subtle)" : "var(--surface-white)",
                             color: msg.role === "user" ? "var(--fg-primary)" : "var(--fg-primary)",
@@ -1368,7 +1368,7 @@ export function AIAssistantView() {
                   <AssistantAvatar size={30} className="mt-0.5" />
                   <div className="min-w-0 max-w-[85%]">
                     <div className="mb-1.5" style={{ fontSize: "12px", color: "var(--fg-tertiary)" }}>AI 智能助手</div>
-                    <div className="rounded-xl px-4 py-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                    <div className="rounded-xl px-5 py-3.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
                       {streamBuffer ? (
                         <div className="coze-prose" dangerouslySetInnerHTML={{ __html: renderMarkdown(streamBuffer) }} />
                       ) : (
