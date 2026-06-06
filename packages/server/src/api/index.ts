@@ -150,6 +150,70 @@ function publicTeamInvite(invite: StoredTeamInvite) {
   };
 }
 
+const AGENT_PLATFORM_CHECKS = [
+  {
+    id: "codex",
+    name: "Codex",
+    provider: "OpenAI",
+    envName: "CODEX_PATH",
+    fallbackCommand: "codex",
+    adapter: "packages/adapter/src/codex",
+    adapterType: "codex",
+    capabilities: ["代码生成", "代码编辑", "Diff 输出", "测试修复"],
+  },
+  {
+    id: "claude-code",
+    name: "Claude Code",
+    provider: "Anthropic",
+    envName: "CLAUDE_CODE_PATH",
+    fallbackCommand: "claude",
+    adapter: "packages/adapter/src/claude-code",
+    adapterType: "claude-code",
+    capabilities: ["代码审查", "冲突合并", "失败接管", "Diff 说明"],
+  },
+] as const;
+
+function publicCommandName(command: string) {
+  return command.split(/[\\/]/).pop() || command;
+}
+
+async function readCliVersion(command: string) {
+  const versionArgs = [["--version"], ["-v"]];
+  for (const args of versionArgs) {
+    try {
+      const result = await execFileAsync(command, args, { timeout: 2500, windowsHide: true });
+      const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
+      const firstLine = output.split(/\r?\n/).find(Boolean);
+      return firstLine?.slice(0, 120) || "version command ok";
+    } catch {
+      // Try the next common version flag before marking the platform unavailable.
+    }
+  }
+  return "";
+}
+
+async function checkAgentPlatform(platform: typeof AGENT_PLATFORM_CHECKS[number]) {
+  const command = process.env[platform.envName]?.trim() || platform.fallbackCommand;
+  const version = await readCliVersion(command);
+  const configured = Boolean(version);
+  return {
+    id: platform.id,
+    name: platform.name,
+    provider: platform.provider,
+    adapterType: platform.adapterType,
+    adapter: platform.adapter,
+    command: publicCommandName(command),
+    configured,
+    state: configured ? "live" : "unconfigured",
+    version: version || undefined,
+    message: configured
+      ? `${platform.name} CLI 可执行，运行时可通过 ${platform.adapter} 派发任务。`
+      : `未检测到 ${publicCommandName(command)}。请在服务器安装 CLI，或设置 ${platform.envName} 指向可执行文件。`,
+    capabilities: platform.capabilities,
+    checkedAt: new Date().toISOString(),
+  };
+}
+
 /* ── POST /api/assistant ── */
 registerRoute("POST", "/api/assistant", async (req, res) => {
   const user = await requireAuth(req, res);
@@ -384,6 +448,24 @@ registerRoute("GET", "/api/config/status", async (req, res) => {
       apiKeyConfigured: !!process.env.OPENAI_API_KEY,
       apiKeyPrefix: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.slice(0, 6) + "..." : null,
     },
+  }));
+});
+
+/* ── GET /api/agent-platforms/status ── */
+registerRoute("GET", "/api/agent-platforms/status", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const platforms = await Promise.all(AGENT_PLATFORM_CHECKS.map(checkAgentPlatform));
+  const configuredCount = platforms.filter((platform) => platform.configured).length;
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({
+    minimumRequired: 2,
+    configuredCount,
+    supportedCount: AGENT_PLATFORM_CHECKS.length,
+    minimumSatisfied: configuredCount >= 2,
+    platforms,
   }));
 });
 
@@ -1256,8 +1338,16 @@ function normalizeUserAgentConfig(input: unknown, existingRaw?: string) {
     : {};
   const next = { ...existing };
 
-  for (const key of ["provider", "baseURL", "baseUrl", "model", "systemPrompt", "avatar", "avatarBg", "tools"]) {
+  for (const key of ["provider", "baseURL", "baseUrl", "cliPath", "model", "systemPrompt", "avatar", "avatarBg", "tools"]) {
     if (incoming[key] !== undefined) next[key] = incoming[key];
+  }
+
+  const incomingProvider = typeof incoming.provider === "string" ? incoming.provider : "";
+  if (incomingProvider === "inherit" || providerIsCliAgent(incomingProvider)) {
+    delete next.apiKey;
+    delete next.apiKeyEncrypted;
+    delete next.apiKeyHint;
+    delete next.hasApiKey;
   }
 
   if (typeof incoming.clearApiKey === "boolean" && incoming.clearApiKey) {
@@ -1330,12 +1420,20 @@ function userAgentBaseURL(config: Record<string, unknown>) {
   return stringConfigValue(config, "baseURL", "baseUrl");
 }
 
+function userAgentCliPath(config: Record<string, unknown>) {
+  return stringConfigValue(config, "cliPath");
+}
+
 function userAgentModel(config: Record<string, unknown>) {
   return stringConfigValue(config, "model") || process.env.LLM_MODEL || "gpt-4o-mini";
 }
 
+function providerIsCliAgent(provider: string) {
+  return provider === "codex" || provider === "claude-code";
+}
+
 function providerNeedsBaseURL(provider: string) {
-  return provider !== "inherit" && provider !== "openai";
+  return provider !== "inherit" && provider !== "openai" && !providerIsCliAgent(provider);
 }
 
 function adapterOverridesFromAgentConfig(config: Record<string, unknown>): Partial<AdapterConfig> | undefined {
@@ -1355,6 +1453,17 @@ function adapterOverridesFromAgentConfig(config: Record<string, unknown>): Parti
 
   const apiKey = savedAgentApiKey(config);
   const baseURL = userAgentBaseURL(config);
+  const cliPath = userAgentCliPath(config);
+  if (providerIsCliAgent(provider)) {
+    return {
+      type: provider as AdapterConfig["type"],
+      cliPath: cliPath || undefined,
+      model: model || undefined,
+      temperature: 0,
+      maxTokens: 48,
+    };
+  }
+
   if (!apiKey) throw new Error("请先保存 API Key。");
   if (providerNeedsBaseURL(provider) && !baseURL) throw new Error("请填写 Base URL。");
   if (!model) throw new Error("请填写模型名称。");

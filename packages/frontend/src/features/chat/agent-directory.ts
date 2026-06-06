@@ -72,11 +72,11 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
     color: "#0f766e",
     capabilities: ["代码生成", "代码编辑", "Diff"],
     connection: {
-      state: "live",
-      label: "Codex 适配器",
+      state: "unconfigured",
+      label: "Codex CLI",
       adapter: "packages/adapter/src/codex",
-      boundary: "具备真实适配器入口；实际可用性取决于本地环境变量和模型服务配置。",
-      lastChecked: "运行时校验",
+      boundary: "已内置 Codex 适配器入口；实际可用性以 Agent 平台健康检查中的 CLI 检测结果为准。",
+      lastChecked: "平台页检测",
     },
   },
   {
@@ -89,11 +89,11 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
     color: "#9a6700",
     capabilities: ["冲突合并", "降级接管", "代码审查"],
     connection: {
-      state: "fallback",
-      label: "降级通道",
+      state: "unconfigured",
+      label: "Claude Code CLI",
       adapter: "packages/adapter/src/claude-code",
-      boundary: "用于失败降级、冲突复核和接管策略；外部接口不可用时进入降级队列并保留冲突事件。",
-      lastChecked: "任务派发时",
+      boundary: "已内置 Claude Code 适配器入口；可用于失败降级、冲突复核和接管策略，实际可用性以 CLI 检测结果为准。",
+      lastChecked: "平台页检测",
     },
   },
   {
@@ -152,6 +152,16 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
 
 const FALLBACK_COLORS = ["#174ea6", "#0f766e", "#9a6700", "#a50e0e", "#5f6368", "#7c3aed", "#0e7490"];
 const TOOL_LABELS = new Map(TOOL_OPTIONS.map((tool) => [tool.value, tool.label]));
+const PROVIDER_LABELS: Record<string, string> = {
+  inherit: "继承系统",
+  openai: "OpenAI",
+  "openai-compatible": "OpenAI 兼容",
+  "volc-ark": "火山方舟",
+  deepseek: "DeepSeek",
+  custom: "OpenAI 兼容",
+  codex: "Codex CLI",
+  "claude-code": "Claude Code CLI",
+};
 
 function normalize(value: string) {
   return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
@@ -183,7 +193,7 @@ function userAgentToDirectoryEntry(agent: UserAgent): AgentDirectoryEntry {
     id: agent.id,
     aliases: [agent.id, agent.name],
     name: agent.name,
-    provider: "Custom",
+    provider: PROVIDER_LABELS[agent.provider ?? "inherit"] ?? "Custom",
     role: roleLabel,
     badge: badgeSource.toUpperCase(),
     color: agent.avatarBg,
@@ -191,8 +201,8 @@ function userAgentToDirectoryEntry(agent: UserAgent): AgentDirectoryEntry {
     isCustom: true,
     connection: {
       ...CUSTOM_CONNECTION,
-      adapter: agent.model,
-      boundary: `用户自建 Agent，模型配置为 ${agent.model}，工具权限由创建表单控制。`,
+      adapter: agent.provider === "codex" || agent.provider === "claude-code" ? (agent.cliPath || agent.provider) : agent.model,
+      boundary: `用户自建 Agent，运行方式为 ${PROVIDER_LABELS[agent.provider ?? "inherit"] ?? "Custom"}，工具权限由创建表单控制。`,
       lastChecked: "用户配置",
     },
   };

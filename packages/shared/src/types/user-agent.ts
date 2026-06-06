@@ -6,7 +6,7 @@ export type ModelId = "gpt-4o-mini" | "gpt-4o" | "claude-3.5-sonnet" | "qwen-max
 
 export type ToolType = "code_execution" | "web_search" | "file_read" | "file_write" | "shell" | "diff_apply" | "browser";
 
-export type AgentLLMProvider = "inherit" | "openai" | "openai-compatible" | "volc-ark" | "deepseek" | "custom";
+export type AgentLLMProvider = "inherit" | "openai" | "openai-compatible" | "volc-ark" | "deepseek" | "custom" | "codex" | "claude-code";
 
 export interface UserAgent {
   id: string;
@@ -17,6 +17,7 @@ export interface UserAgent {
   model: ModelId;
   provider?: AgentLLMProvider;
   baseURL?: string;
+  cliPath?: string;
   apiKey?: string;
   hasApiKey?: boolean;
   apiKeyHint?: string;

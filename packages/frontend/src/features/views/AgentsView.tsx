@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AGENT_DIRECTORY, getAgentConnection, getConnectionStateMeta, type AgentConnectionState } from "@/features/chat/agent-directory";
+import { api } from "@/lib/api-client";
 import { useNavigationStore } from "@/stores/navigation-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
 
@@ -19,6 +20,29 @@ interface PlatformAgent {
   adapter: string;
   fallback: string;
   tools: string[];
+}
+
+interface PlatformHealthItem {
+  id: string;
+  name: string;
+  provider: string;
+  adapterType: "codex" | "claude-code";
+  adapter: string;
+  command: string;
+  configured: boolean;
+  state: AgentConnectionState;
+  version?: string;
+  message: string;
+  capabilities: string[];
+  checkedAt: string;
+}
+
+interface PlatformHealthResponse {
+  minimumRequired: number;
+  configuredCount: number;
+  supportedCount: number;
+  minimumSatisfied: boolean;
+  platforms: PlatformHealthItem[];
 }
 
 const PLATFORM_AGENTS: PlatformAgent[] = [
@@ -126,8 +150,19 @@ function getPlatformConnection(agentId: string) {
   return entry ? getAgentConnection(entry) : null;
 }
 
-function ConnectionBadge({ agentId }: { agentId: string }) {
-  const connection = getPlatformConnection(agentId);
+function connectionFromHealth(agentId: string, health?: PlatformHealthItem | null) {
+  if (!health) return getPlatformConnection(agentId);
+  return {
+    state: health.configured ? "live" as const : "unconfigured" as const,
+    label: health.configured ? "CLI 可用" : "待配置",
+    adapter: health.adapter,
+    boundary: health.message,
+    lastChecked: health.version ? health.version : "刚刚检测",
+  };
+}
+
+function ConnectionBadge({ agentId, health }: { agentId: string; health?: PlatformHealthItem }) {
+  const connection = connectionFromHealth(agentId, health);
   if (!connection) return null;
   const meta = getConnectionStateMeta(connection.state);
   return (
@@ -137,20 +172,23 @@ function ConnectionBadge({ agentId }: { agentId: string }) {
       title={connection.boundary}
     >
       <span className="h-1.5 w-1.5 rounded-full" style={{ background: meta.color }} />
-      {meta.shortLabel}
+      {health ? (health.configured ? "可用" : "待配") : meta.shortLabel}
     </span>
   );
 }
 
 function PlatformAgentCard({
   agent,
+  health,
   selected,
   onClick,
 }: {
   agent: PlatformAgent;
+  health?: PlatformHealthItem;
   selected: boolean;
   onClick: () => void;
 }) {
+  const effectiveStatus: AgentStatus = health ? (health.configured ? "online" : "idle") : agent.status;
   return (
     <button
       type="button"
@@ -171,8 +209,8 @@ function PlatformAgentCard({
               <p className="mt-0.5 text-xs" style={{ color: "var(--fg-tertiary)" }}>{agent.provider} · {agent.role}</p>
             </div>
             <div className="flex shrink-0 gap-1">
-              <ConnectionBadge agentId={agent.id} />
-              <StatusBadge status={agent.status} />
+              <ConnectionBadge agentId={agent.id} health={health} />
+              <StatusBadge status={effectiveStatus} />
             </div>
           </div>
           <p className="mt-2 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>{agent.desc}</p>
@@ -202,27 +240,44 @@ export function AgentsView() {
   const { setActiveNav } = useNavigationStore();
   const userAgents = useUserAgentStore((state) => state.agents);
   const [selectedId, setSelectedId] = useState("pmo");
+  const [platformHealth, setPlatformHealth] = useState<PlatformHealthResponse | null>(null);
+  const [platformHealthError, setPlatformHealthError] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    api.get<PlatformHealthResponse>("/api/agent-platforms/status")
+      .then((data) => {
+        if (!mounted) return;
+        setPlatformHealth(data);
+        setPlatformHealthError("");
+      })
+      .catch((error) => {
+        if (!mounted) return;
+        setPlatformHealthError(error instanceof Error ? error.message : "平台检测失败");
+      });
+    return () => { mounted = false; };
+  }, []);
 
   const selected = PLATFORM_AGENTS.find((agent) => agent.id === selectedId) ?? PLATFORM_AGENTS[0];
-  const selectedConnection = getPlatformConnection(selected.id);
+  const healthById = useMemo(() => new Map((platformHealth?.platforms ?? []).map((item) => [item.id, item])), [platformHealth]);
+  const selectedHealth = healthById.get(selected.id);
+  const selectedEffectiveStatus: AgentStatus = selectedHealth ? (selectedHealth.configured ? "online" : "idle") : selected.status;
+  const selectedConnection = connectionFromHealth(selected.id, selectedHealth);
   const selectedConnectionMeta = selectedConnection ? getConnectionStateMeta(selectedConnection.state) : null;
   const stats = useMemo(() => {
-    const connectionCounts = PLATFORM_AGENTS.reduce((acc, agent) => {
-      const state = getPlatformConnection(agent.id)?.state;
-      if (state === "live" || state === "local") acc.ready += 1;
-      if (state === "demo" || state === "fallback") acc.demo += 1;
-      return acc;
-    }, { ready: 0, demo: 0 });
+    const supportedMainstream = platformHealth?.supportedCount ?? 2;
+    const availableMainstream = platformHealth?.configuredCount ?? 0;
     return [
       { label: "平台 Agent", value: PLATFORM_AGENTS.length },
-      { label: "主流平台", value: 3 },
+      { label: "主流平台接口", value: supportedMainstream },
       { label: "自建 Agent", value: userAgents.length },
-      { label: "真实/内置", value: connectionCounts.ready },
+      { label: "当前可用", value: `${availableMainstream}/${supportedMainstream}` },
     ];
-  }, [userAgents.length]);
+  }, [platformHealth?.configuredCount, platformHealth?.supportedCount, userAgents.length]);
   const connectionHealth = useMemo(() => {
     const counts = PLATFORM_AGENTS.reduce<Record<AgentConnectionState, number>>((acc, agent) => {
-      const state = getPlatformConnection(agent.id)?.state ?? "unconfigured";
+      const health = healthById.get(agent.id);
+      const state = health ? connectionFromHealth(agent.id, health)?.state ?? "unconfigured" : getPlatformConnection(agent.id)?.state ?? "unconfigured";
       acc[state] += 1;
       return acc;
     }, { local: 0, live: 0, demo: 0, fallback: 0, unconfigured: 0 });
@@ -239,7 +294,7 @@ export function AgentsView() {
         { state: "fallback" as const, label: "降级通道", value: counts.fallback, desc: "外部执行失败时保留接管、冲突和回滚证据。" },
       ],
     };
-  }, []);
+  }, [healthById]);
 
   return (
     <div className="flex h-full min-h-0" style={{ background: "var(--page-bg)" }}>
@@ -279,12 +334,16 @@ export function AgentsView() {
             <div>
               <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>连接健康检查</h2>
               <p className="mt-1 max-w-2xl text-xs" style={{ color: "var(--fg-tertiary)", lineHeight: 1.6 }}>
-                明确区分真实适配器、内置能力、内置适配器和失败降级通道，避免把未连接外部平台的执行链路误认为真实第三方执行。
+                明确区分真实 CLI 平台、内置能力和降级通道；Codex / Claude Code 会由后端检测当前服务器是否可执行。
               </p>
             </div>
             <span className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}>
               <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#174ea6" }} />
-              {connectionHealth.ready}/{connectionHealth.total} 真实或内置 · {connectionHealth.readiness}%
+              {platformHealth
+                ? `${platformHealth.configuredCount}/${platformHealth.minimumRequired} 主流平台可用`
+                : platformHealthError
+                ? "检测失败"
+                : "检测中"}
             </span>
           </div>
           <div className="grid gap-2 md:grid-cols-4">
@@ -301,11 +360,35 @@ export function AgentsView() {
               );
             })}
           </div>
+          {platformHealthError && (
+            <p className="mt-3 rounded-md px-3 py-2 text-xs" style={{ color: "var(--danger)", background: "var(--danger-subtle)", border: "1px solid var(--danger-border)" }}>
+              {platformHealthError}
+            </p>
+          )}
+          {platformHealth && (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {platformHealth.platforms.map((platform) => {
+                const meta = getConnectionStateMeta(platform.configured ? "live" : "unconfigured");
+                return (
+                  <div key={platform.id} className="rounded-lg p-3" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{platform.name}</p>
+                      <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: meta.color, background: meta.bg, border: `1px solid ${meta.border}` }}>
+                        {platform.configured ? "CLI 可用" : "待配置"}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px]" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>{platform.message}</p>
+                    <p className="mt-1 truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>命令：{platform.command}{platform.version ? ` · ${platform.version}` : ""}</p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         <section className="grid gap-3 xl:grid-cols-2">
           {PLATFORM_AGENTS.map((agent) => (
-            <PlatformAgentCard key={agent.id} agent={agent} selected={selected.id === agent.id} onClick={() => setSelectedId(agent.id)} />
+            <PlatformAgentCard key={agent.id} agent={agent} health={healthById.get(agent.id)} selected={selected.id === agent.id} onClick={() => setSelectedId(agent.id)} />
           ))}
         </section>
 
@@ -348,7 +431,7 @@ export function AgentsView() {
             <h2 className="truncate text-base font-bold" style={{ color: "var(--fg-primary)" }}>{selected.name}</h2>
             <p className="text-xs" style={{ color: "var(--fg-tertiary)" }}>{selected.provider} · {selected.role}</p>
           </div>
-          <div className="ml-auto flex gap-1"><ConnectionBadge agentId={selected.id} /><StatusBadge status={selected.status} /></div>
+          <div className="ml-auto flex gap-1"><ConnectionBadge agentId={selected.id} health={selectedHealth} /><StatusBadge status={selectedEffectiveStatus} /></div>
         </div>
 
         <div className="space-y-5">

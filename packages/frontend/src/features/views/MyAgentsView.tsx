@@ -28,8 +28,10 @@ const MODEL_OPTIONS: Array<{ value: ModelId; label: string }> = [
   { value: "deepseek-chat", label: "DeepSeek Chat" },
 ];
 
-const LLM_PROVIDER_OPTIONS: Array<{ value: AgentLLMProvider; label: string; baseURL: string; model: string }> = [
+const LLM_PROVIDER_OPTIONS: Array<{ value: AgentLLMProvider; label: string; baseURL: string; model: string; cli?: boolean }> = [
   { value: "inherit", label: "继承系统配置", baseURL: "", model: "gpt-4o-mini" },
+  { value: "codex", label: "Codex CLI", baseURL: "", model: "codex-cli", cli: true },
+  { value: "claude-code", label: "Claude Code CLI", baseURL: "", model: "claude-code-cli", cli: true },
   { value: "volc-ark", label: "火山方舟 / 豆包", baseURL: "https://ark.cn-beijing.volces.com/api/v3", model: "your-volcengine-endpoint-id" },
   { value: "openai", label: "OpenAI", baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini" },
   { value: "deepseek", label: "DeepSeek", baseURL: "https://api.deepseek.com/v1", model: "deepseek-chat" },
@@ -84,6 +86,7 @@ interface AgentFormState {
   model: ModelId;
   provider: AgentLLMProvider;
   baseURL: string;
+  cliPath: string;
   apiKey: string;
   hasApiKey?: boolean;
   apiKeyHint?: string;
@@ -115,6 +118,7 @@ function emptyForm(): AgentFormState {
     model: "gpt-4o-mini",
     provider: "inherit",
     baseURL: "",
+    cliPath: "",
     apiKey: "",
     hasApiKey: false,
     apiKeyHint: "",
@@ -132,12 +136,17 @@ function fromAgent(agent: UserAgent): AgentFormState {
     model: agent.model,
     provider: agent.provider ?? "inherit",
     baseURL: agent.baseURL ?? "",
+    cliPath: agent.cliPath ?? "",
     apiKey: "",
     hasApiKey: agent.hasApiKey,
     apiKeyHint: agent.apiKeyHint,
     systemPrompt: agent.systemPrompt,
     tools: agent.tools,
   };
+}
+
+function isCliAgentProvider(provider: AgentLLMProvider) {
+  return provider === "codex" || provider === "claude-code";
 }
 
 function parseDescription(description: string): AgentFormState {
@@ -215,9 +224,11 @@ function AgentForm({
       ...value,
       provider,
       baseURL: preset?.baseURL ?? value.baseURL,
+      cliPath: preset?.cli ? value.cliPath : "",
       model: (preset?.model || value.model) as ModelId,
     });
   };
+  const isCliProvider = isCliAgentProvider(value.provider);
 
   return (
     <div className="rounded-lg p-5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
@@ -297,10 +308,10 @@ function AgentForm({
           <div>
             <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>LLM 接入</p>
             <p className="mt-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>
-              继承系统配置，或为这个 Agent 单独接入 OpenAI 兼容 API。
+              继承系统配置，或为这个 Agent 单独接入 OpenAI 兼容 API / CLI Agent 平台。
             </p>
           </div>
-          {value.hasApiKey && (
+          {value.hasApiKey && !isCliProvider && (
             <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--success)", background: "var(--success-subtle)" }}>
               已保存 {value.apiKeyHint || ""}
             </span>
@@ -320,30 +331,46 @@ function AgentForm({
             </select>
           </label>
 
-          <label className="block lg:col-span-2">
-            <span className="mb-1 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>Base URL</span>
-            <input
-              value={value.baseURL}
-              onChange={(event) => setField("baseURL", event.target.value)}
-              disabled={value.provider === "inherit"}
-              placeholder="https://ark.cn-beijing.volces.com/api/v3"
-              className="h-10 w-full rounded-md px-3 text-sm outline-none disabled:opacity-60"
-              style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
-            />
-          </label>
+          {isCliProvider ? (
+            <label className="block lg:col-span-2">
+              <span className="mb-1 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>CLI 命令路径</span>
+              <input
+                value={value.cliPath}
+                onChange={(event) => setField("cliPath", event.target.value)}
+                placeholder={value.provider === "codex" ? "留空使用 CODEX_PATH 或 codex" : "留空使用 CLAUDE_CODE_PATH 或 claude"}
+                className="h-10 w-full rounded-md px-3 text-sm outline-none"
+                style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+              />
+              <p className="mt-1 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>适合服务器已安装 CLI 的真实平台 Agent；无需填写 API Key。</p>
+            </label>
+          ) : (
+            <>
+              <label className="block lg:col-span-2">
+                <span className="mb-1 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>Base URL</span>
+                <input
+                  value={value.baseURL}
+                  onChange={(event) => setField("baseURL", event.target.value)}
+                  disabled={value.provider === "inherit"}
+                  placeholder="https://ark.cn-beijing.volces.com/api/v3"
+                  className="h-10 w-full rounded-md px-3 text-sm outline-none disabled:opacity-60"
+                  style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+                />
+              </label>
 
-          <label className="block lg:col-span-3">
-            <span className="mb-1 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>API Key</span>
-            <input
-              type="password"
-              value={value.apiKey}
-              onChange={(event) => setField("apiKey", event.target.value)}
-              disabled={value.provider === "inherit"}
-              placeholder={value.hasApiKey ? "留空表示继续使用已保存密钥" : "只保存在服务端，不会明文回显"}
-              className="h-10 w-full rounded-md px-3 text-sm outline-none disabled:opacity-60"
-              style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
-            />
-          </label>
+              <label className="block lg:col-span-3">
+                <span className="mb-1 block text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>API Key</span>
+                <input
+                  type="password"
+                  value={value.apiKey}
+                  onChange={(event) => setField("apiKey", event.target.value)}
+                  disabled={value.provider === "inherit"}
+                  placeholder={value.hasApiKey ? "留空表示继续使用已保存密钥" : "只保存在服务端，不会明文回显"}
+                  className="h-10 w-full rounded-md px-3 text-sm outline-none disabled:opacity-60"
+                  style={{ color: "var(--fg-primary)", background: "var(--surface-white)", border: "1px solid var(--border)" }}
+                />
+              </label>
+            </>
+          )}
         </div>
       </div>
 
@@ -443,6 +470,7 @@ export function MyAgentsView() {
   };
 
   const saveForm = () => {
+    const isCliProvider = isCliAgentProvider(form.provider);
     const payload = {
       name: form.name.trim(),
       avatar: form.avatar,
@@ -450,8 +478,9 @@ export function MyAgentsView() {
       role: form.role,
       model: form.model,
       provider: form.provider,
-      baseURL: form.provider === "inherit" ? "" : form.baseURL.trim(),
-      apiKey: form.provider === "inherit" ? "" : form.apiKey.trim(),
+      baseURL: form.provider === "inherit" || isCliProvider ? "" : form.baseURL.trim(),
+      cliPath: isCliProvider ? form.cliPath.trim() : "",
+      apiKey: form.provider === "inherit" || isCliProvider ? "" : form.apiKey.trim(),
       hasApiKey: form.hasApiKey,
       apiKeyHint: form.apiKeyHint,
       systemPrompt: form.systemPrompt.trim(),

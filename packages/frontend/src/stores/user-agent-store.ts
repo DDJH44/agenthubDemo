@@ -62,6 +62,7 @@ function toServerPayload(agent: UserAgent) {
     config: {
       provider: agent.provider ?? "inherit",
       baseURL: agent.baseURL,
+      cliPath: agent.cliPath,
       model: agent.model,
       systemPrompt: agent.systemPrompt,
       avatar: agent.avatar,
@@ -80,6 +81,7 @@ function mapServerAgent(raw: ServerAgentRecord): UserAgent {
     provider?: string;
     baseURL?: string;
     baseUrl?: string;
+    cliPath?: string;
     hasApiKey?: boolean;
     apiKeyHint?: string;
     systemPrompt?: string;
@@ -102,6 +104,7 @@ function mapServerAgent(raw: ServerAgentRecord): UserAgent {
     model: (config.model || "gpt-4o-mini") as UserAgent["model"],
     provider: (config.provider || "inherit") as UserAgent["provider"],
     baseURL: config.baseURL || config.baseUrl || "",
+    cliPath: config.cliPath || "",
     hasApiKey: Boolean(config.hasApiKey),
     apiKeyHint: config.apiKeyHint || "",
     systemPrompt: config.systemPrompt || `我是 ${raw.name}`,

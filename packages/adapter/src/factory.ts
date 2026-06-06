@@ -16,5 +16,8 @@ export function createAdapter(config: AdapterConfig): IAdapter {
 
 export function createAdapterFromEnv(overrides?: Partial<AdapterConfig>): IAdapter {
   const type = (overrides?.type ?? process.env.ADAPTER_TYPE ?? "openai") as AdapterConfig["type"];
-  return createAdapter({ type, apiKey: overrides?.apiKey ?? process.env.OPENAI_API_KEY, baseURL: overrides?.baseURL ?? process.env.OPENAI_BASE_URL, model: overrides?.model ?? process.env.LLM_MODEL ?? "gpt-4o-mini", cliPath: overrides?.cliPath, maxTokens: overrides?.maxTokens, temperature: overrides?.temperature });
+  const cliPath = overrides?.cliPath
+    ?? (type === "codex" ? process.env.CODEX_PATH : undefined)
+    ?? (type === "claude-code" ? process.env.CLAUDE_CODE_PATH : undefined);
+  return createAdapter({ type, apiKey: overrides?.apiKey ?? process.env.OPENAI_API_KEY, baseURL: overrides?.baseURL ?? process.env.OPENAI_BASE_URL, model: overrides?.model ?? process.env.LLM_MODEL ?? "gpt-4o-mini", cliPath, maxTokens: overrides?.maxTokens, temperature: overrides?.temperature });
 }

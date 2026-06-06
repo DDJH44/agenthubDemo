@@ -9,6 +9,7 @@ export interface AgentRuntimeProfile {
   type: string;
   provider?: string;
   baseURL?: string;
+  cliPath?: string;
   apiKey?: string;
   model?: string;
   systemPrompt?: string;
@@ -24,6 +25,7 @@ interface RawAgentConfig {
   provider?: unknown;
   baseURL?: unknown;
   baseUrl?: unknown;
+  cliPath?: unknown;
   apiKey?: unknown;
   apiKeyEncrypted?: unknown;
   model?: unknown;
@@ -96,6 +98,7 @@ function profileFromRecord(record: {
       : typeof config.baseUrl === "string"
       ? config.baseUrl.trim()
       : undefined,
+    cliPath: typeof config.cliPath === "string" ? config.cliPath.trim() : undefined,
     apiKey: readApiKey(config),
     model: typeof config.model === "string" ? config.model : undefined,
     systemPrompt: typeof config.systemPrompt === "string" ? config.systemPrompt.trim() : undefined,
@@ -139,15 +142,22 @@ export function isInheritedProvider(provider: string | undefined) {
 function adapterTypeFromProvider(provider: string | undefined): AdapterConfig["type"] | undefined {
   if (isInheritedProvider(provider)) return undefined;
   if (provider === "openai") return "openai";
+  if (provider === "codex") return "codex";
+  if (provider === "claude-code") return "claude-code";
   return "generic-openai";
 }
 
+function isCliAgentProvider(provider: string | undefined) {
+  return provider === "codex" || provider === "claude-code";
+}
+
 function providerRequiresBaseURL(provider: string | undefined) {
-  return !isInheritedProvider(provider) && provider !== "openai";
+  return !isInheritedProvider(provider) && provider !== "openai" && !isCliAgentProvider(provider);
 }
 
 export function getPrivateLLMConfigIssue(profile: AgentRuntimeProfile): string | undefined {
   if (isInheritedProvider(profile.provider)) return undefined;
+  if (isCliAgentProvider(profile.provider)) return undefined;
   if (!profile.apiKey) return "API Key missing";
   if (providerRequiresBaseURL(profile.provider) && !profile.baseURL) return "Base URL missing";
   if (!profile.model?.trim()) return "Model missing";
@@ -168,6 +178,7 @@ export function chooseRuntimeAdapterOverrides(profiles: AgentRuntimeProfile[]): 
     if (type) override.type = type;
     if (preferred.apiKey) override.apiKey = preferred.apiKey;
     if (preferred.baseURL) override.baseURL = preferred.baseURL;
+    if (preferred.cliPath) override.cliPath = preferred.cliPath;
     if (preferred.model?.trim()) override.model = preferred.model.trim();
     return override;
   }
