@@ -20,6 +20,7 @@ import {
   selectEnabledAgentsForTask,
 } from "../agents/conversation-routing";
 import { createAdapterFromEnv } from "@agenthub/adapter";
+import { chooseRuntimeAdapterOverrides, resolveAgentRuntimeProfiles } from "../agents/runtime-profile";
 import { logger } from "../utils/logger";
 import { prisma } from "../db/index";
 import { deployManager } from "../deploy/index";
@@ -343,6 +344,63 @@ function normalizeAgentAddNames(raw: unknown) {
     names.push(name);
   }
   return names;
+}
+
+function mentionOnlyFallback(agentName: string) {
+  const displayName = agentName || "Agent";
+  return `${displayName} 在，我先听你说。把具体要处理的内容发来就行。`;
+}
+
+function compactMentionOnlyReply(raw: string, agentName: string) {
+  const cleaned = raw
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/^#+\s*/gm, "")
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) return mentionOnlyFallback(agentName);
+  if (/任务完成总览|完成状态|原始需求|交付内容|步骤\d|###|^- /m.test(cleaned)) {
+    return mentionOnlyFallback(agentName);
+  }
+
+  const sentence = cleaned.split(/(?<=[。！？!?])\s+/)[0]?.trim() ?? cleaned;
+  if (sentence.length <= 90) return sentence;
+  return `${sentence.slice(0, 88)}…`;
+}
+
+async function buildMentionOnlyReply(agentName: string, userId: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+  let adapter: IAdapter | null = null;
+
+  try {
+    const profiles = await resolveAgentRuntimeProfiles(userId, [agentName]);
+    adapter = createAdapterFromEnv(chooseRuntimeAdapterOverrides(profiles));
+    await adapter.connect();
+    const reply = await adapter.sendMessage(
+      `用户刚刚在群聊里只点名了你：@${agentName}`,
+      {
+        temperature: 0.8,
+        maxTokens: 120,
+        signal: controller.signal,
+        systemPrompt: [
+          `你是群聊中的智能体「${agentName}」。`,
+          "用户只是 @ 了你，还没有提出明确任务。",
+          "请像真实团队成员一样自然回应，最多一句话。",
+          "不要输出标题、列表、任务总结、能力清单、代码或 Markdown。",
+          "如果没有明确需求，就表示你在，并让用户继续说明具体要处理的内容。",
+        ].join("\n"),
+      }
+    );
+    return compactMentionOnlyReply(reply, agentName);
+  } catch (err) {
+    logger.warn(`Mention-only reply fallback for ${agentName}: ${err}`, "WebSocket");
+    return mentionOnlyFallback(agentName);
+  } finally {
+    clearTimeout(timeout);
+    await adapter?.disconnect().catch(() => undefined);
+  }
 }
 
 async function resolveInvitee(raw: unknown) {
@@ -1290,6 +1348,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             // Route only to agents that belong to this conversation. Custom agents can satisfy
             // built-in roles, e.g. "Frontend Agent" can receive a worker/code task.
             matchedAgents = selectEnabledAgentsForTask(matchedAgents, enabledAgentNames);
+            const isMentionOnlyTask = originalMentionParse.hasMention && !originalMentionParse.cleanText.trim() && !workflowRef && !executionSummary;
 
             const userMsg = await messageRepo.createAndUpdateConv({
               conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: matchedAgents,
@@ -1314,6 +1373,35 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               },
             });
 
+            if (isMentionOnlyTask) {
+              const sender = matchedAgents[0] ?? "planner";
+              const reply = await buildMentionOnlyReply(sender, userId);
+              const agentMsg = await messageRepo.createAndUpdateConv({
+                conversationId,
+                type: "agent_message",
+                sender,
+                senderId: sender,
+                content: reply,
+                mentions: [],
+                payload: { kind: "mention_ack", targetAgent: sender },
+              });
+              broadcast(conversationId, {
+                type: "message:created",
+                message: {
+                  id: agentMsg.id,
+                  conversationId: agentMsg.conversationId,
+                  type: agentMsg.type,
+                  sender: agentMsg.sender,
+                  senderId: agentMsg.senderId ?? undefined,
+                  content: agentMsg.content,
+                  mentions: [],
+                  payload: { kind: "mention_ack", targetAgent: sender },
+                  timestamp: agentMsg.timestamp.getTime(),
+                },
+              });
+              break;
+            }
+
             if (executionSummary) {
               const summaryMsg = await messageRepo.create({
                 conversationId,
@@ -1337,11 +1425,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               });
             }
 
-            const isMentionOnlyTask = originalMentionParse.hasMention && !originalMentionParse.cleanText.trim() && !workflowRef && !executionSummary;
             const queueTask = workflowRef?.task
-              || (isMentionOnlyTask
-                ? `请以 ${matchedAgents.join("、")} 的身份简短回应：你已经被点名并已就绪，说明你可以处理的任务类型。`
-                : cleanText || routingText);
+              || cleanText
+              || routingText;
             const jobId = await queue.enqueue({
               workspaceId: DEFAULT_WORKSPACE,
               conversationId,
