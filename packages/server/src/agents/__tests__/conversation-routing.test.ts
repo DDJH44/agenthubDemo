@@ -1,6 +1,7 @@
 import {
   buildInitialConversationAgentNames,
   getEffectiveEnabledAgentNames,
+  resolveConversationMentions,
   resolveVisibleAgentForRole,
   selectEnabledAgentsForTask,
 } from "../conversation-routing";
@@ -46,5 +47,38 @@ describe("conversation agent routing", () => {
     expect(resolveVisibleAgentForRole("worker", activeAgents)).toBe("Frontend Agent");
     expect(resolveVisibleAgentForRole("refiner", activeAgents)).toBe("UX Reviewer");
     expect(resolveVisibleAgentForRole("planner", activeAgents)).toBe("planner");
+  });
+
+  it("resolves custom agent mentions with spaces or separators", () => {
+    const enabledAgents = ["planner", "Frontend Builder", "claude code"];
+
+    expect(resolveConversationMentions("@claude code", enabledAgents)).toMatchObject({
+      agents: ["claude code"],
+      cleanText: "",
+      hasMention: true,
+    });
+    expect(resolveConversationMentions("@claude-code 审查一下代码", enabledAgents)).toMatchObject({
+      agents: ["claude code"],
+      cleanText: "审查一下代码",
+      hasMention: true,
+    });
+    expect(resolveConversationMentions("@Frontend Builder 生成登录页", enabledAgents)).toMatchObject({
+      agents: ["Frontend Builder"],
+      cleanText: "生成登录页",
+      hasMention: true,
+    });
+  });
+
+  it("keeps built-in mention routing available", () => {
+    expect(resolveConversationMentions("@worker 生成网页", ["planner", "Frontend Builder"])).toMatchObject({
+      agents: ["worker"],
+      cleanText: "生成网页",
+      hasMention: true,
+    });
+    expect(resolveConversationMentions("@all 做一次检查", ["planner", "Frontend Builder"])).toMatchObject({
+      isAllAgents: true,
+      cleanText: "做一次检查",
+      hasMention: true,
+    });
   });
 });

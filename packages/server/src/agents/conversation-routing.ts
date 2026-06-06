@@ -1,4 +1,5 @@
 export const CORE_AGENT_NAMES = ["planner", "worker", "critic", "researcher", "refiner"] as const;
+const KNOWN_MENTION_AGENTS = [...CORE_AGENT_NAMES, "coder", "reviewer", "browser"] as const;
 const MAIN_AGENT_ID = "__main__";
 
 type CoreAgentName = (typeof CORE_AGENT_NAMES)[number];
@@ -15,8 +16,112 @@ function unique(values: string[]) {
   return [...new Set(values.filter((value) => value.trim()))];
 }
 
+function parseKnownMentions(text: string) {
+  const mentionRegex = /@(\w+)/g;
+  const mentions: string[] = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = mentionRegex.exec(text)) !== null) mentions.push(match[1].toLowerCase());
+
+  const knownAgents = [...KNOWN_MENTION_AGENTS];
+  const isAllAgents = mentions.includes("all");
+  const agents = isAllAgents ? knownAgents : mentions.filter((mention) => knownAgents.includes(mention as typeof KNOWN_MENTION_AGENTS[number]));
+  const cleanText = text.replace(/@\w+/g, "").trim();
+  return { agents, cleanText: cleanText || text, isAllAgents };
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function matchMentionTail(tail: string, agentName: string) {
+  const words = normalizeAgentKey(agentName).split(" ").filter(Boolean);
+  if (words.length === 0) return 0;
+
+  const patterns = words.length === 1
+    ? [escapeRegExp(words[0])]
+    : [
+        words.map(escapeRegExp).join("[\\s_-]+"),
+        words.map(escapeRegExp).join("[\\s_-]*"),
+      ];
+
+  for (const pattern of patterns) {
+    const match = tail.match(new RegExp(`^(${pattern})(?=$|[^A-Za-z0-9_-])`, "i"));
+    if (match?.[1]) return match[1].length;
+  }
+  return 0;
+}
+
+function removeRanges(text: string, ranges: Array<[number, number]>) {
+  if (ranges.length === 0) return text;
+
+  const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
+  let cursor = 0;
+  let output = "";
+
+  for (const [start, end] of sorted) {
+    if (start < cursor) continue;
+    output += text.slice(cursor, start);
+    cursor = end;
+  }
+
+  output += text.slice(cursor);
+  return output.replace(/\s+/g, " ").trim();
+}
+
 export function normalizeAgentKey(value: string) {
   return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+export function resolveConversationMentions(text: string, enabledAgentNames: string[]) {
+  const known = parseKnownMentions(text);
+  const candidates = unique([...enabledAgentNames, ...CORE_AGENT_NAMES, ...known.agents])
+    .sort((a, b) => normalizeAgentKey(b).length - normalizeAgentKey(a).length);
+  const ranges: Array<[number, number]> = [];
+  const agents: string[] = [];
+  let isAllAgents = known.isAllAgents;
+
+  let cursor = 0;
+  while (cursor < text.length) {
+    const atIndex = text.indexOf("@", cursor);
+    if (atIndex < 0) break;
+
+    const tail = text.slice(atIndex + 1);
+    const allMatch = tail.match(/^all(?=$|[^A-Za-z0-9_-])/i);
+    if (allMatch) {
+      isAllAgents = true;
+      ranges.push([atIndex, atIndex + 1 + allMatch[0].length]);
+      cursor = atIndex + 1 + allMatch[0].length;
+      continue;
+    }
+
+    let matchedName = "";
+    let matchedLength = 0;
+    for (const candidate of candidates) {
+      const length = matchMentionTail(tail, candidate);
+      if (length > matchedLength) {
+        matchedName = candidate;
+        matchedLength = length;
+      }
+    }
+
+    if (matchedName && matchedLength > 0) {
+      agents.push(matchedName);
+      ranges.push([atIndex, atIndex + 1 + matchedLength]);
+      cursor = atIndex + 1 + matchedLength;
+      continue;
+    }
+
+    cursor = atIndex + 1;
+  }
+
+  const cleanText = ranges.length > 0 ? removeRanges(text, ranges) : known.cleanText;
+  return {
+    agents: unique([...known.agents, ...agents]),
+    cleanText,
+    isAllAgents,
+    hasMention: isAllAgents || agents.length > 0 || known.agents.length > 0,
+  };
 }
 
 export function isCoreAgentName(value: string): value is CoreAgentName {

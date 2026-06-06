@@ -2,7 +2,6 @@ import type { Server as HTTPServer, IncomingMessage } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import type { IAdapter } from "@agenthub/adapter";
 import type { AgentExecutionContextSummary, AgentExecutionRequest, AgentRole, ConversationListItem, PlanNode, WorkflowNodeType, WorkflowReferencePayload } from "@agenthub/shared";
-import { parseMentions } from "@agenthub/shared";
 import { messageRepo } from "../db/repositories/message";
 import { conversationRepo } from "../db/repositories/conversation";
 import { conversationAgentRepo } from "../db/repositories/conversation-agent";
@@ -17,6 +16,7 @@ import {
   getEffectiveEnabledAgentNames,
   isCoordinatorAgent,
   normalizeAgentKey,
+  resolveConversationMentions,
   selectEnabledAgentsForTask,
 } from "../agents/conversation-routing";
 import { createAdapterFromEnv } from "@agenthub/adapter";
@@ -1173,15 +1173,15 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             }
 
             const isDirectConv = convType === "direct";
-            const simpleChat = !workflowRef && isSimpleChat(text);
-            const artifactTask = isArtifactGenerationTask(text);
-
             const enabledAgentNames = agentExecution
               ? buildInitialConversationAgentNames(convParticipants, convType)
               : getEffectiveEnabledAgentNames(convParticipants, convType, convAgents);
             const hasEnabledAgents = enabledAgentNames.length > 0;
+            const originalMentionParse = resolveConversationMentions(text, enabledAgentNames);
+            const simpleChat = !workflowRef && !originalMentionParse.hasMention && isSimpleChat(text);
+            const artifactTask = isArtifactGenerationTask(text);
 
-            if (!agentExecution && !groupAgentsEnabled && (simpleChat || ((!hasEnabledAgents || isDirectConv) && !artifactTask))) {
+            if (!agentExecution && !groupAgentsEnabled && !originalMentionParse.hasMention && (simpleChat || ((!hasEnabledAgents || isDirectConv) && !artifactTask))) {
               const userMsg = await messageRepo.createAndUpdateConv({
                 conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: [],
                 id: clientMsgId,
@@ -1254,13 +1254,20 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             }
 
             // Agents are enabled - proceed with orchestrator
-            const { agents, cleanText, isAllAgents } = parseMentions(routingText);
+            const routingMentionParse = resolveConversationMentions(routingText, enabledAgentNames);
+            const mentionParse = routingMentionParse.hasMention ? routingMentionParse : originalMentionParse;
+            const cleanText = routingMentionParse.hasMention
+              ? routingMentionParse.cleanText
+              : mentionParse.hasMention
+                ? mentionParse.cleanText
+                : routingMentionParse.cleanText;
+            const { isAllAgents } = mentionParse;
 
-            let matchedAgents = agents;
+            let matchedAgents = mentionParse.agents;
             let matchSummary = "";
             if (executionSummary && shouldBroadcastExecutionSummary) {
               const matched = matchByKeywords(executionSummary.goal || routingText);
-              matchedAgents = agents.length > 0 ? agents : matched.map((m) => m.agentId);
+              matchedAgents = mentionParse.agents.length > 0 ? mentionParse.agents : matched.map((m) => m.agentId);
               matchSummary = `多人讨论已确认 · 已过滤 ${executionSummary.sourceMessageCount} 条上下文`;
             } else if (workflowRef) {
               matchedAgents = getWorkflowAgentMentions(workflowRef);
@@ -1268,7 +1275,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             } else if (isAllAgents) {
               matchedAgents = AGENT_NAMES;
               matchSummary = "已启用全部智能体";
-            } else if (agents.length === 0) {
+            } else if (mentionParse.hasMention && matchedAgents.length > 0) {
+              matchSummary = `已点名 ${matchedAgents.join("、")}`;
+            } else if (matchedAgents.length === 0) {
               const matched = matchByKeywords(cleanText || routingText);
               matchedAgents = matched.map((m) => m.agentId);
               matchSummary = artifactTask
@@ -1328,7 +1337,11 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               });
             }
 
-            const queueTask = workflowRef?.task || cleanText || routingText;
+            const isMentionOnlyTask = originalMentionParse.hasMention && !originalMentionParse.cleanText.trim() && !workflowRef && !executionSummary;
+            const queueTask = workflowRef?.task
+              || (isMentionOnlyTask
+                ? `请以 ${matchedAgents.join("、")} 的身份简短回应：你已经被点名并已就绪，说明你可以处理的任务类型。`
+                : cleanText || routingText);
             const jobId = await queue.enqueue({
               workspaceId: DEFAULT_WORKSPACE,
               conversationId,
