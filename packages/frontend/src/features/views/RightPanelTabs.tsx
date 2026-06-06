@@ -2,6 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { useNavigationStore } from "@/stores/navigation-store";
+import { useAuthStore } from "@/stores/auth-store";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { createId } from "@/lib/id";
@@ -52,6 +53,7 @@ export function RightPanelTabs() {
   const [memories, setMemories] = useState<MemoryEntry[]>([]);
   const [memoryHydrated, setMemoryHydrated] = useState(false);
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
+  const user = useAuthStore((state) => state.user);
 
   const {
     conversations, messages, sessionAgentStatuses, taskProgress,
@@ -240,13 +242,16 @@ export function RightPanelTabs() {
 
   const handleInviteMember = useCallback(() => {
     const email = prompt("请输入要邀请的成员邮箱：");
-    const result = addPendingTeamInvite(email, "right-panel");
+    const result = addPendingTeamInvite(email, "right-panel", {
+      fromEmail: user?.email,
+      fromName: user?.name,
+    });
     if (!result.ok) {
       setInviteStatus("请输入有效邮箱。");
       return;
     }
     setInviteStatus(result.duplicate ? `${result.invite.email} 已在待确认列表。` : `已添加 ${result.invite.email}，等待成员确认。`);
-  }, []);
+  }, [user?.email, user?.name]);
 
   const tabs: { key: TabKey; label: string; badge?: number }[] = [
     { key: "context", label: "上下文" },

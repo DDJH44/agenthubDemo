@@ -322,6 +322,8 @@ export function SettingsView() {
     const result = addPendingTeamInvite(contact.contact.email, "settings", {
       name: contact.contact.name,
       contactId: contact.contact.id,
+      fromEmail: user?.email,
+      fromName: user?.name,
     });
     if (!result.ok) {
       setInviteMsg({ ok: false, text: t("settings.team.invalidEmail") });

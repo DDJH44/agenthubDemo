@@ -3,8 +3,19 @@
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "@/lib/api-client";
+import { useAuthStore } from "@/stores/auth-store";
 import { useSettingsStore } from "@/stores/settings-store";
-import { addPendingTeamInvite, getPendingTeamInvites, subscribeTeamInvites, type TeamInvite } from "@/features/team/team-invites";
+import {
+  acceptIncomingTeamInvite,
+  addPendingTeamInvite,
+  declineIncomingTeamInvite,
+  getIncomingTeamInvites,
+  getPendingTeamInvites,
+  subscribeIncomingTeamInvites,
+  subscribeTeamInvites,
+  syncIncomingTeamInvitesFromServer,
+  type TeamInvite,
+} from "@/features/team/team-invites";
 import { getContacts, removeContact, subscribeContacts, upsertContact, type ContactEntry } from "@/features/team/contact-book";
 
 interface UserInfo {
@@ -102,9 +113,11 @@ function ContactCard({
 }
 
 export function ContactsView() {
+  const currentUser = useAuthStore((state) => state.user);
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [contacts, setContacts] = useState<ContactEntry[]>([]);
   const [pendingInvites, setPendingInvites] = useState<TeamInvite[]>([]);
+  const [incomingInvites, setIncomingInvites] = useState<TeamInvite[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -150,17 +163,21 @@ export function ContactsView() {
     const timeoutId = window.setTimeout(() => {
       setContacts(getContacts());
       setPendingInvites(getPendingTeamInvites());
+      setIncomingInvites(getIncomingTeamInvites(currentUser?.email));
+      void syncIncomingTeamInvitesFromServer(currentUser?.email).then(setIncomingInvites);
       void loadUsers("");
     }, 0);
     const unsubscribeContacts = subscribeContacts(setContacts);
     const unsubscribeInvites = subscribeTeamInvites(setPendingInvites);
+    const unsubscribeIncoming = subscribeIncomingTeamInvites(currentUser?.email, setIncomingInvites);
     return () => {
       window.clearTimeout(timeoutId);
       unsubscribeContacts();
       unsubscribeInvites();
+      unsubscribeIncoming();
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     };
-  }, [loadUsers]);
+  }, [currentUser?.email, loadUsers]);
 
   const handleSearchChange = (value: string) => {
     setSearch(value);
@@ -213,8 +230,9 @@ export function ContactsView() {
     total: rows.length,
     local: contacts.length,
     pending: pendingInvites.length,
+    incoming: incomingInvites.length,
     registered: rows.filter((row) => row.source === "registered").length,
-  }), [contacts.length, pendingInvites.length, rows]);
+  }), [contacts.length, incomingInvites.length, pendingInvites.length, rows]);
 
   const handleScroll = useCallback(() => {
     if (!listRef.current || loadingMore || !hasMore) return;
@@ -237,7 +255,12 @@ export function ContactsView() {
       return;
     }
     if (inviteAfterAdd) {
-      const invite = addPendingTeamInvite(result.contact.email, "contacts", { name: result.contact.name, contactId: result.contact.id });
+      const invite = addPendingTeamInvite(result.contact.email, "contacts", {
+        name: result.contact.name,
+        contactId: result.contact.id,
+        fromEmail: currentUser?.email,
+        fromName: currentUser?.name,
+      });
       if (!invite.ok) {
         setNotice({ ok: false, text: "联系人已保存，但邀请邮箱无效" });
         return;
@@ -260,12 +283,41 @@ export function ContactsView() {
     const result = addPendingTeamInvite(contact.email, "contacts", {
       name: contact.name,
       contactId: saved.ok ? saved.contact.id : contact.localId,
+      fromEmail: currentUser?.email,
+      fromName: currentUser?.name,
     });
     if (!result.ok) {
       setNotice({ ok: false, text: "邀请失败，请检查邮箱" });
       return;
     }
     setNotice({ ok: true, text: result.duplicate ? "该联系人已在待确认邀请中" : `已邀请 ${contact.name}` });
+  };
+
+  const acceptInvite = (invite: TeamInvite) => {
+    const result = acceptIncomingTeamInvite(invite.id, currentUser?.email);
+    if (!result.ok) {
+      setNotice({ ok: false, text: "邀请状态已变化，请刷新后重试" });
+      return;
+    }
+    upsertContact({
+      email: result.invite.fromEmail,
+      name: result.invite.fromName || result.invite.fromEmail,
+      role: "团队成员",
+      source: "invite",
+      invitedAt: result.invite.invitedAt,
+    });
+    setIncomingInvites(getIncomingTeamInvites(currentUser?.email));
+    setNotice({ ok: true, text: `已接受 ${result.invite.fromName || result.invite.fromEmail} 的邀请` });
+  };
+
+  const declineInvite = (invite: TeamInvite) => {
+    const result = declineIncomingTeamInvite(invite.id, currentUser?.email);
+    if (!result.ok) {
+      setNotice({ ok: false, text: "邀请状态已变化，请刷新后重试" });
+      return;
+    }
+    setIncomingInvites(getIncomingTeamInvites(currentUser?.email));
+    setNotice({ ok: true, text: "已忽略该邀请" });
   };
 
   const removeLocalContact = (contact: ContactRow) => {
@@ -286,14 +338,56 @@ export function ContactsView() {
               {locale === "zh" ? "添加联系人、邀请成员，并在会话协作中复用这些人员。" : "Manage contacts and invite members."}
             </p>
           </div>
-          <div className="grid grid-cols-4 gap-2 text-center">
+          <div className="grid grid-cols-5 gap-2 text-center">
             <ContactMetric label="全部" value={stats.total} />
             <ContactMetric label="本地" value={stats.local} />
             <ContactMetric label="已注册" value={stats.registered} />
-            <ContactMetric label="待确认" value={stats.pending} />
+            <ContactMetric label="已发出" value={stats.pending} />
+            <ContactMetric label="收到" value={stats.incoming} />
           </div>
         </div>
       </div>
+
+      {incomingInvites.length > 0 ? (
+        <div className="px-6 pt-3">
+          <div className="rounded-lg p-3" style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>收到的成员邀请</p>
+                <p className="mt-0.5 text-xs" style={{ color: "var(--fg-tertiary)" }}>接受后，对方会加入你的通讯录，后续可用于群聊协作。</p>
+              </div>
+              <span className="rounded-full px-2 py-0.5 text-[11px] font-semibold" style={{ background: "var(--surface-white)", color: "var(--accent)" }}>
+                {incomingInvites.length} 条
+              </span>
+            </div>
+            <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))" }}>
+              {incomingInvites.map((invite) => (
+                <div key={invite.id} className="flex items-center gap-3 rounded-lg px-3 py-2" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                  <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-xs font-bold text-white" style={{ background: getAvatarColor(invite.fromName || invite.fromEmail || "A") }}>
+                    {(invite.fromName || invite.fromEmail || "A").slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>
+                      {invite.fromName || invite.fromEmail || "团队成员"}
+                    </p>
+                    <p className="truncate text-xs" style={{ color: "var(--fg-tertiary)" }}>
+                      邀请你加入 AgentHub 协作
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <button type="button" onClick={() => acceptInvite(invite)} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style={{ background: "var(--accent)" }}>
+                      接受
+                    </button>
+                    <button type="button" onClick={() => declineInvite(invite)} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--border)", color: "var(--fg-secondary)" }}>
+                      忽略
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid gap-3 px-6 py-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
         <div className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>

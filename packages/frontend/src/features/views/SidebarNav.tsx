@@ -1,9 +1,10 @@
 "use client";
 
 import Image from "next/image";
-import { useRef, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { BotIcon, UserIcon, type BotIconHandle } from "@/components/ui";
 import { useT } from "@/hooks/useT";
+import { getIncomingTeamInvites, subscribeIncomingTeamInvites, syncIncomingTeamInvitesFromServer } from "@/features/team/team-invites";
 import { useAuthStore } from "@/stores/auth-store";
 import { useNavigationStore, type NavKey } from "@/stores/navigation-store";
 import { useSettingsStore } from "@/stores/settings-store";
@@ -93,16 +94,40 @@ function useBotIconHover(enabled: boolean) {
   };
 }
 
+function useIncomingInviteCount(userEmail: string | null | undefined) {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setCount(getIncomingTeamInvites(userEmail).length);
+      void syncIncomingTeamInvitesFromServer(userEmail).then((invites) => setCount(invites.length));
+    }, 0);
+    const intervalId = window.setInterval(() => {
+      void syncIncomingTeamInvitesFromServer(userEmail).then((invites) => setCount(invites.length));
+    }, 15000);
+    const unsubscribe = subscribeIncomingTeamInvites(userEmail, (invites) => setCount(invites.length));
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+      unsubscribe();
+    };
+  }, [userEmail]);
+
+  return count;
+}
+
 function NavItemButton({
   item,
   activeNav,
   setActiveNav,
   t,
+  badgeCount = 0,
 }: {
   item: NavItem;
   activeNav: NavKey;
   setActiveNav: (key: NavKey) => void;
   t: (key: string) => string;
+  badgeCount?: number;
 }) {
   const isActive = activeNav === item.key;
   const isMyAgentsItem = item.key === "my-agents";
@@ -130,6 +155,11 @@ function NavItemButton({
       {isActive && <span className="absolute bottom-1.5 left-0 top-1.5 w-0.5 rounded-r-full" style={{ background: "var(--accent)" }} />}
       <NavIcon path={item.icon} active={isActive} isBot={isMyAgentsItem} botIconRef={bot.botIconRef} />
       <span className="min-w-0 flex-1 truncate">{t(`nav.${item.key}`)}</span>
+      {badgeCount > 0 ? (
+        <span className="ml-auto rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white" style={{ background: "var(--danger)" }}>
+          {badgeCount > 99 ? "99+" : badgeCount}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -139,11 +169,13 @@ function CollapsedIconItem({
   activeNav,
   setActiveNav,
   t,
+  badgeCount = 0,
 }: {
   item: NavItem;
   activeNav: NavKey;
   setActiveNav: (key: NavKey) => void;
   t: (key: string) => string;
+  badgeCount?: number;
 }) {
   const isActive = activeNav === item.key;
   const isMyAgentsItem = item.key === "my-agents";
@@ -169,6 +201,11 @@ function CollapsedIconItem({
     >
       {isActive && <span className="absolute -left-1 h-4 w-0.5 rounded-r-full" style={{ background: "var(--accent)" }} />}
       <NavIconGlyph path={item.icon} isBot={isMyAgentsItem} botIconRef={bot.botIconRef} size={15} />
+      {badgeCount > 0 ? (
+        <span className="absolute -right-1 -top-1 min-w-4 rounded-full px-1 text-[9px] font-bold leading-4 text-white" style={{ background: "var(--danger)" }}>
+          {badgeCount > 9 ? "9+" : badgeCount}
+        </span>
+      ) : null}
     </button>
   );
 }
@@ -177,6 +214,7 @@ function CollapsedNav() {
   const { activeNav, setActiveNav, toggleSidebar } = useNavigationStore();
   const user = useAuthStore((state) => state.user);
   const t = useT();
+  const incomingInviteCount = useIncomingInviteCount(user?.email);
 
   return (
     <div className="flex h-full w-12 flex-col items-center gap-1 py-3">
@@ -191,7 +229,14 @@ function CollapsedNav() {
       </button>
       <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto custom-scrollbar">
         {NAV_ITEMS.map((item) => (
-          <CollapsedIconItem key={item.key} item={item} activeNav={activeNav} setActiveNav={setActiveNav} t={t} />
+          <CollapsedIconItem
+            key={item.key}
+            item={item}
+            activeNav={activeNav}
+            setActiveNav={setActiveNav}
+            t={t}
+            badgeCount={item.key === "contacts" ? incomingInviteCount : 0}
+          />
         ))}
       </div>
       <UserIcon
@@ -229,6 +274,7 @@ function ExpandedNav({
   const { locale, toggleLocale } = useSettingsStore();
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
+  const incomingInviteCount = useIncomingInviteCount(user?.email);
 
   return (
     <div className="flex h-full flex-col" style={{ width: "100%" }}>
@@ -285,7 +331,14 @@ function ExpandedNav({
               </p>
               <div className="space-y-1">
                 {sectionItems.map((item) => (
-                  <NavItemButton key={item.key} item={item} activeNav={activeNav} setActiveNav={setActiveNav} t={t} />
+                  <NavItemButton
+                    key={item.key}
+                    item={item}
+                    activeNav={activeNav}
+                    setActiveNav={setActiveNav}
+                    t={t}
+                    badgeCount={item.key === "contacts" ? incomingInviteCount : 0}
+                  />
                 ))}
               </div>
             </div>

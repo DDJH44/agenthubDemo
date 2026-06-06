@@ -39,11 +39,27 @@ interface AssistantAttachmentPayload {
   dataUrl?: string;
 }
 
+type TeamInviteStatus = "pending" | "accepted" | "declined" | "cancelled";
+
+interface StoredTeamInvite {
+  id: string;
+  email: string;
+  name?: string;
+  contactId?: string;
+  source: "settings" | "right-panel" | "contacts";
+  fromEmail: string;
+  fromName: string;
+  status: TeamInviteStatus;
+  invitedAt: number;
+  respondedAt?: number;
+}
+
 type RouteHandler = (req: RequestWithParams, res: ServerResponse) => Promise<void>;
 
 const routes: Record<string, RouteHandler> = {};
 const paramRoutes: Array<{ method: string; pattern: RegExp; keys: string[]; handler: RouteHandler }> = [];
 const execFileAsync = promisify(execFile);
+const TEAM_INVITES_PATH = path.join(config.files.uploadDir, "team-invites.json");
 
 export function registerRoute(method: string, path: string, handler: RouteHandler) {
   // Check if path has params (e.g. /api/files/:id/download)
@@ -96,6 +112,42 @@ export async function handleApiRequest(req: IncomingMessage, res: ServerResponse
     }
     return true;
   }
+}
+
+function normalizeEmail(value: unknown): string | null {
+  const email = typeof value === "string" ? value.trim().toLowerCase() : "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
+  return email;
+}
+
+function readTeamInvites(): StoredTeamInvite[] {
+  try {
+    if (!existsSync(TEAM_INVITES_PATH)) return [];
+    const parsed = JSON.parse(readFileSync(TEAM_INVITES_PATH, "utf-8"));
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeTeamInvites(invites: StoredTeamInvite[]) {
+  mkdirSync(path.dirname(TEAM_INVITES_PATH), { recursive: true });
+  writeFileSync(TEAM_INVITES_PATH, JSON.stringify(invites, null, 2), "utf-8");
+}
+
+function publicTeamInvite(invite: StoredTeamInvite) {
+  return {
+    id: invite.id,
+    email: invite.email,
+    name: invite.name,
+    contactId: invite.contactId,
+    source: invite.source,
+    fromEmail: invite.fromEmail,
+    fromName: invite.fromName,
+    status: invite.status,
+    invitedAt: invite.invitedAt,
+    respondedAt: invite.respondedAt,
+  };
 }
 
 /* ── POST /api/assistant ── */
@@ -333,6 +385,136 @@ registerRoute("GET", "/api/config/status", async (req, res) => {
       apiKeyPrefix: process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.slice(0, 6) + "..." : null,
     },
   }));
+});
+
+/* ── Team invites ── */
+registerRoute("GET", "/api/team-invites/incoming", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const email = normalizeEmail(user.email);
+  const invites = email
+    ? readTeamInvites().filter((invite) => invite.email === email && invite.status === "pending")
+    : [];
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ invites: invites.map(publicTeamInvite) }));
+});
+
+registerRoute("GET", "/api/team-invites/outgoing", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const fromEmail = normalizeEmail(user.email);
+  const invites = fromEmail
+    ? readTeamInvites().filter((invite) => invite.fromEmail === fromEmail && invite.status === "pending")
+    : [];
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ invites: invites.map(publicTeamInvite) }));
+});
+
+registerRoute("POST", "/api/team-invites", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const body = await readJsonBody(req) as {
+    id?: string;
+    email?: string;
+    name?: string;
+    contactId?: string;
+    source?: StoredTeamInvite["source"];
+  };
+  const email = normalizeEmail(body.email);
+  const fromEmail = normalizeEmail(user.email);
+  if (!email || !fromEmail) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "valid target email required" }));
+    return;
+  }
+  if (email === fromEmail) {
+    res.writeHead(400, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "cannot invite yourself" }));
+    return;
+  }
+
+  const now = Date.now();
+  const source = body.source === "settings" || body.source === "right-panel" || body.source === "contacts" ? body.source : "settings";
+  const invites = readTeamInvites();
+  const existing = invites.find((invite) => invite.email === email && invite.fromEmail === fromEmail && invite.status === "pending");
+  if (existing) {
+    const updated: StoredTeamInvite = {
+      ...existing,
+      name: body.name?.trim() || existing.name,
+      contactId: body.contactId || existing.contactId,
+      source,
+    };
+    writeTeamInvites(invites.map((invite) => (invite.id === existing.id ? updated : invite)));
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ invite: publicTeamInvite(updated), duplicate: true }));
+    return;
+  }
+
+  const invite: StoredTeamInvite = {
+    id: body.id || randomUUID(),
+    email,
+    name: body.name?.trim() || undefined,
+    contactId: body.contactId,
+    source,
+    fromEmail,
+    fromName: user.name,
+    status: "pending",
+    invitedAt: now,
+  };
+  writeTeamInvites([invite, ...invites]);
+  res.writeHead(201, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ invite: publicTeamInvite(invite), duplicate: false }));
+});
+
+registerRoute("POST", "/api/team-invites/:id/accept", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const inviteId = (req as RequestWithParams).params?.id;
+  const email = normalizeEmail(user.email);
+  const invites = readTeamInvites();
+  const invite = invites.find((item) => item.id === inviteId && item.email === email && item.status === "pending");
+  if (!invite) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "invite not found" }));
+    return;
+  }
+  const accepted: StoredTeamInvite = { ...invite, status: "accepted", respondedAt: Date.now() };
+  writeTeamInvites(invites.map((item) => (item.id === invite.id ? accepted : item)));
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ invite: publicTeamInvite(accepted) }));
+});
+
+registerRoute("POST", "/api/team-invites/:id/decline", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const inviteId = (req as RequestWithParams).params?.id;
+  const email = normalizeEmail(user.email);
+  const invites = readTeamInvites();
+  const invite = invites.find((item) => item.id === inviteId && item.email === email && item.status === "pending");
+  if (!invite) {
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "invite not found" }));
+    return;
+  }
+  const declined: StoredTeamInvite = { ...invite, status: "declined", respondedAt: Date.now() };
+  writeTeamInvites(invites.map((item) => (item.id === invite.id ? declined : item)));
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ invite: publicTeamInvite(declined) }));
+});
+
+registerRoute("DELETE", "/api/team-invites/:id", async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const inviteId = (req as RequestWithParams).params?.id;
+  const fromEmail = normalizeEmail(user.email);
+  const invites = readTeamInvites();
+  writeTeamInvites(invites.map((invite) => (
+    invite.id === inviteId && invite.fromEmail === fromEmail && invite.status === "pending"
+      ? { ...invite, status: "cancelled", respondedAt: Date.now() }
+      : invite
+  )));
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
 });
 
 async function writeEnvVar(envPath: string, key: string, value: string) {
