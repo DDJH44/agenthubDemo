@@ -38,6 +38,15 @@ const BUILD_ACTION_HINTS = [
   /帮我|请|做|写|生成|创建|开发|制作|实现|编写|构建|搭建|设计/i,
 ];
 
+const LIGHTWEIGHT_MENTION_CHAT_PATTERNS = [
+  /^(你好|hi|hello|hey|嗨|哈喽|在吗|在不在|你在吗|听得到吗|收到吗|谢谢|感谢|辛苦了|好的|收到|ok|okay|嗯|可以|可以吗|行吗|这样可以吗|这样行吗|你怎么看|怎么说|有思路吗|先等一下|等一下|先别动|别执行|暂停|先暂停)\s*[!！?？。.~～]*$/i,
+  /^(are you there|you there|thanks|thank you|ok|okay|sure|cool|hold on|wait|pause)$/i,
+];
+
+const MENTION_TASK_HINTS = [
+  /帮我|请你|麻烦|生成|创建|开发|制作|实现|编写|构建|搭建|设计|修复|优化|重构|检查|审查|review|测试|部署|运行|执行|分析|总结|整理|输出|改成|改一下|写一下|做一下|看一下|看下|看看|解释一下|评价一下|代码|网页|网站|文档|ppt|系统|页面|功能|bug|diff|接口|数据库|需求|方案/i,
+];
+
 export function isSimpleChat(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length > 80) return false;
@@ -45,6 +54,14 @@ export function isSimpleChat(text: string): boolean {
   if (CHAT_PATTERNS.some((pattern) => pattern.test(trimmed))) return true;
   if (trimmed.length <= 15 && trimmed.split(/\s+/).length <= 5 && !/[，。；：！？、]/.test(trimmed)) return true;
   return false;
+}
+
+export function isLightweightMentionChat(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > 80) return false;
+  if (MENTION_TASK_HINTS.some((pattern) => pattern.test(trimmed))) return false;
+  if (LIGHTWEIGHT_MENTION_CHAT_PATTERNS.some((pattern) => pattern.test(trimmed))) return true;
+  return trimmed.length <= 12 && trimmed.split(/\s+/).length <= 4 && !/[，。；：！？、,.!?]/.test(trimmed);
 }
 
 export function isArtifactGenerationTask(text: string): boolean {

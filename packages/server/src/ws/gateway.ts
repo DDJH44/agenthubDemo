@@ -29,7 +29,7 @@ import { deploymentTargetRepo } from "../db/repositories/deployment-target";
 import { decryptSecret } from "../deploy/credentials";
 import { validateConversationId, validateWorkspaceId, validateMessageText, validateConversationTitle, validateConversationType, validateParticipants, validateSearchQuery, validateString } from "../utils/validators";
 import { validateSession } from "../auth/session";
-import { isArtifactGenerationTask, isSimpleChat } from "../utils/task-classifier";
+import { isArtifactGenerationTask, isLightweightMentionChat, isSimpleChat } from "../utils/task-classifier";
 
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
@@ -346,12 +346,19 @@ function normalizeAgentAddNames(raw: unknown) {
   return names;
 }
 
-function mentionOnlyFallback(agentName: string) {
+function lightweightMentionFallback(agentName: string, userText = "") {
   const displayName = agentName || "Agent";
+  const normalized = userText.trim().toLowerCase();
+  if (/^(谢谢|感谢|辛苦了|thanks|thank you)/i.test(normalized)) return "不客气。";
+  if (/^(好的|收到|ok|okay|嗯|可以|可以了)$/i.test(normalized)) return "收到。";
+  if (/先别动|别执行|暂停|先暂停|等一下|hold on|wait|pause/i.test(normalized)) return "好，我先不执行。";
+  if (/可以吗|行吗|这样可以吗|这样行吗|你怎么看|怎么说|有思路吗/i.test(normalized)) {
+    return "我看到了，方向可以先聊清楚；要我执行时再把具体要求发我。";
+  }
   return `${displayName} 在，我先听你说。把具体要处理的内容发来就行。`;
 }
 
-function compactMentionOnlyReply(raw: string, agentName: string) {
+function compactLightweightMentionReply(raw: string, agentName: string, userText = "") {
   const cleaned = raw
     .replace(/```[\s\S]*?```/g, "")
     .replace(/^#+\s*/gm, "")
@@ -359,9 +366,9 @@ function compactMentionOnlyReply(raw: string, agentName: string) {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (!cleaned) return mentionOnlyFallback(agentName);
+  if (!cleaned) return lightweightMentionFallback(agentName, userText);
   if (/任务完成总览|完成状态|原始需求|交付内容|步骤\d|###|^- /m.test(cleaned)) {
-    return mentionOnlyFallback(agentName);
+    return lightweightMentionFallback(agentName, userText);
   }
 
   const sentence = cleaned.split(/(?<=[。！？!?])\s+/)[0]?.trim() ?? cleaned;
@@ -369,7 +376,7 @@ function compactMentionOnlyReply(raw: string, agentName: string) {
   return `${sentence.slice(0, 88)}…`;
 }
 
-async function buildMentionOnlyReply(agentName: string, userId: string) {
+async function buildLightweightMentionReply(agentName: string, userId: string, userText = "") {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
   let adapter: IAdapter | null = null;
@@ -378,25 +385,31 @@ async function buildMentionOnlyReply(agentName: string, userId: string) {
     const profiles = await resolveAgentRuntimeProfiles(userId, [agentName]);
     adapter = createAdapterFromEnv(chooseRuntimeAdapterOverrides(profiles));
     await adapter.connect();
+    const hasUserText = Boolean(userText.trim());
     const reply = await adapter.sendMessage(
-      `用户刚刚在群聊里只点名了你：@${agentName}`,
+      hasUserText
+        ? `用户刚刚在群聊里 @ 你并说：${userText.trim()}`
+        : `用户刚刚在群聊里只点名了你：@${agentName}`,
       {
         temperature: 0.8,
         maxTokens: 120,
         signal: controller.signal,
         systemPrompt: [
           `你是群聊中的智能体「${agentName}」。`,
-          "用户只是 @ 了你，还没有提出明确任务。",
+          hasUserText
+            ? "用户只是在和你进行轻量对话、确认、寒暄或暂停提醒，还没有提出明确交付任务。"
+            : "用户只是 @ 了你，还没有提出明确任务。",
           "请像真实团队成员一样自然回应，最多一句话。",
           "不要输出标题、列表、任务总结、能力清单、代码或 Markdown。",
-          "如果没有明确需求，就表示你在，并让用户继续说明具体要处理的内容。",
+          "如果没有明确目标、交付物、代码、部署、分析或修复要求，不要进入计划模式。",
+          "根据用户语气随机应变：问候就问候，感谢就简短回应，犹豫就给一句自然确认，暂停就表示先不执行。",
         ].join("\n"),
       }
     );
-    return compactMentionOnlyReply(reply, agentName);
+    return compactLightweightMentionReply(reply, agentName, userText);
   } catch (err) {
-    logger.warn(`Mention-only reply fallback for ${agentName}: ${err}`, "WebSocket");
-    return mentionOnlyFallback(agentName);
+    logger.warn(`Lightweight mention reply fallback for ${agentName}: ${err}`, "WebSocket");
+    return lightweightMentionFallback(agentName, userText);
   } finally {
     clearTimeout(timeout);
     await adapter?.disconnect().catch(() => undefined);
@@ -1238,6 +1251,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const originalMentionParse = resolveConversationMentions(text, enabledAgentNames);
             const simpleChat = !workflowRef && !originalMentionParse.hasMention && isSimpleChat(text);
             const artifactTask = isArtifactGenerationTask(text);
+            const mentionCleanText = originalMentionParse.cleanText.trim();
+            const isMentionOnlyInput = originalMentionParse.hasMention && !mentionCleanText && !workflowRef && !agentExecution;
+            const isLightweightMentionInput = originalMentionParse.hasMention && !workflowRef && !agentExecution && isLightweightMentionChat(mentionCleanText);
 
             if (!agentExecution && !groupAgentsEnabled && !originalMentionParse.hasMention && (simpleChat || ((!hasEnabledAgents || isDirectConv) && !artifactTask))) {
               const userMsg = await messageRepo.createAndUpdateConv({
@@ -1286,7 +1302,8 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             let executionSummary: AgentExecutionContextSummary | null = null;
             let routingText = text;
             let shouldBroadcastExecutionSummary = false;
-            if (agentExecution || groupAgentsEnabled) {
+            const shouldBuildExecutionSummary = (agentExecution || groupAgentsEnabled) && !isMentionOnlyInput && !isLightweightMentionInput;
+            if (shouldBuildExecutionSummary) {
               const recentMsgs = await listRecentMessagesForAgentContext(conversationId);
               const scopedMsgs = isMultiUserGroup ? getAgentScopedMessages(recentMsgs) : recentMsgs;
               const messagesForSummary = [
@@ -1348,7 +1365,8 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             // Route only to agents that belong to this conversation. Custom agents can satisfy
             // built-in roles, e.g. "Frontend Agent" can receive a worker/code task.
             matchedAgents = selectEnabledAgentsForTask(matchedAgents, enabledAgentNames);
-            const isMentionOnlyTask = originalMentionParse.hasMention && !originalMentionParse.cleanText.trim() && !workflowRef && !executionSummary;
+            const isMentionOnlyTask = isMentionOnlyInput && !executionSummary;
+            const isLightweightMentionTask = isLightweightMentionInput && !executionSummary;
 
             const userMsg = await messageRepo.createAndUpdateConv({
               conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: matchedAgents,
@@ -1373,9 +1391,10 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               },
             });
 
-            if (isMentionOnlyTask) {
-              const sender = matchedAgents[0] ?? "planner";
-              const reply = await buildMentionOnlyReply(sender, userId);
+            if (isMentionOnlyTask || isLightweightMentionTask) {
+              const sender = matchedAgents[0] ?? mentionParse.agents[0] ?? "planner";
+              const payloadKind = isMentionOnlyTask ? "mention_ack" : "mention_chat";
+              const reply = await buildLightweightMentionReply(sender, userId, isLightweightMentionTask ? mentionCleanText : "");
               const agentMsg = await messageRepo.createAndUpdateConv({
                 conversationId,
                 type: "agent_message",
@@ -1383,7 +1402,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                 senderId: sender,
                 content: reply,
                 mentions: [],
-                payload: { kind: "mention_ack", targetAgent: sender },
+                payload: { kind: payloadKind, targetAgent: sender },
               });
               broadcast(conversationId, {
                 type: "message:created",
@@ -1395,7 +1414,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                   senderId: agentMsg.senderId ?? undefined,
                   content: agentMsg.content,
                   mentions: [],
-                  payload: { kind: "mention_ack", targetAgent: sender },
+                  payload: { kind: payloadKind, targetAgent: sender },
                   timestamp: agentMsg.timestamp.getTime(),
                 },
               });
