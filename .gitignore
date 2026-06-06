@@ -53,6 +53,8 @@ temp-ref.jpg
 /packages/server/db/files/
 /packages/server/db/*.db
 /packages/server/db/*.sqlite*
+/packages/server/src/db/prisma/*.db
+/packages/server/src/db/prisma/*.sqlite*
 
 # misc
 .DS_Store

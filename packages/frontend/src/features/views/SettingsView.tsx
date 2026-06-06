@@ -21,6 +21,18 @@ import {
 } from "@/features/deployment/deployment-targets";
 
 type SettingsTab = "general" | "model" | "deployment" | "team" | "export";
+type ReadinessTone = "success" | "warning" | "neutral";
+
+interface HealthStatus {
+  status: string;
+  service?: string;
+}
+
+interface ReadinessItem {
+  label: string;
+  detail: string;
+  tone: ReadinessTone;
+}
 
 interface ConfigStatus {
   adapter: {
@@ -93,6 +105,12 @@ export function SettingsView() {
     typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unsupported"
   );
   const [copied, setCopied] = useState(false);
+  const [checkingReadiness, setCheckingReadiness] = useState(false);
+  const [backendHealth, setBackendHealth] = useState<ReadinessItem>({
+    label: "后端 API",
+    detail: "尚未检查",
+    tone: "neutral",
+  });
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -191,6 +209,69 @@ export function SettingsView() {
   const defaultTargetConfigured = isDeploymentTargetConfigured(defaultTarget);
   const defaultTargetLabel = deploymentTargetStatusLabel(defaultTarget, deploymentLoading, deploymentError);
   const defaultTargetTone = deploymentLoading ? "neutral" : defaultTargetConfigured ? "success" : "warning";
+  const readinessItems = useMemo<ReadinessItem[]>(() => {
+    const clientMode = typeof window !== "undefined" && window.innerWidth < 768 ? "手机遥控器模式" : "桌面工作台模式";
+    const modelReady = Boolean(configStatus?.adapter.apiKeyConfigured);
+    return [
+      {
+        label: "前端运行环境",
+        detail: `已进入 ${clientMode}`,
+        tone: "success",
+      },
+      backendHealth,
+      {
+        label: "模型接入",
+        detail: configStatus
+          ? `${configStatus.adapter.model || "未读取模型"} · ${modelReady ? "API Key 已配置" : "API Key 未配置"}`
+          : "正在读取模型配置",
+        tone: configStatus ? modelReady ? "success" : "warning" : "neutral",
+      },
+      {
+        label: "默认部署服务器",
+        detail: deploymentLoading
+          ? "正在读取默认服务器配置"
+          : deploymentError || defaultTarget?.publicUrl || defaultTargetLabel,
+        tone: defaultTargetTone,
+      },
+      {
+        label: "工作区数据",
+        detail: `${stats.conversations} 个会话 · ${stats.messages} 条消息 · ${stats.agents} 个自建智能体`,
+        tone: stats.conversations > 0 || stats.agents > 0 ? "success" : "warning",
+      },
+    ];
+  }, [backendHealth, configStatus, defaultTarget?.publicUrl, defaultTargetLabel, defaultTargetTone, deploymentError, deploymentLoading, stats.agents, stats.conversations, stats.messages]);
+
+  const runReadinessCheck = useCallback(async () => {
+    setCheckingReadiness(true);
+    setBackendHealth({
+      label: "后端 API",
+      detail: "检查中...",
+      tone: "neutral",
+    });
+    try {
+      const health = await api.get<HealthStatus>("/api/health");
+      setBackendHealth({
+        label: "后端 API",
+        detail: health.status === "ok" ? `${health.service || "agenthub-server"} 正常` : `状态：${health.status}`,
+        tone: health.status === "ok" ? "success" : "warning",
+      });
+    } catch (error) {
+      setBackendHealth({
+        label: "后端 API",
+        detail: error instanceof Error ? error.message : "无法连接后端",
+        tone: "warning",
+      });
+    } finally {
+      setCheckingReadiness(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void runReadinessCheck();
+    }, 0);
+    return () => window.clearTimeout(timeoutId);
+  }, [runReadinessCheck]);
 
   const handleSaveModel = async () => {
     setSaving(true);
@@ -373,6 +454,7 @@ export function SettingsView() {
                 <StatusPill tone="success">已启用</StatusPill>
               </SettingRow>
             </Panel>
+            <ReadinessPanel items={readinessItems} checking={checkingReadiness} onCheck={runReadinessCheck} />
           </div>
         ) : null}
 
@@ -591,6 +673,43 @@ function Header({ title, desc }: { title: string; desc: string }) {
       <h1 className="text-xl font-bold" style={{ color: "var(--fg-primary)", fontFamily: "var(--font-heading)" }}>{title}</h1>
       <p className="mt-1 text-sm" style={{ color: "var(--fg-tertiary)" }}>{desc}</p>
     </div>
+  );
+}
+
+function ReadinessPanel({ items, checking, onCheck }: { items: ReadinessItem[]; checking: boolean; onCheck: () => void }) {
+  const readyCount = items.filter((item) => item.tone === "success").length;
+  return (
+    <Panel className="mt-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>结题演示自检</h2>
+          <p className="mt-1 text-xs leading-5" style={{ color: "var(--fg-tertiary)" }}>答辩前快速确认核心链路，不展示任何密钥内容。</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <StatusPill tone={readyCount === items.length ? "success" : "warning"}>{readyCount}/{items.length} 就绪</StatusPill>
+          <button
+            type="button"
+            disabled={checking}
+            onClick={onCheck}
+            className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-55"
+            style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}
+          >
+            {checking ? "检查中..." : "重新检查"}
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))" }}>
+        {items.map((item) => (
+          <div key={item.label} className="rounded-lg p-3" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{item.label}</p>
+              <StatusPill tone={item.tone}>{item.tone === "success" ? "正常" : item.tone === "warning" ? "需确认" : "检查中"}</StatusPill>
+            </div>
+            <p className="truncate text-xs" title={item.detail} style={{ color: "var(--fg-tertiary)" }}>{item.detail}</p>
+          </div>
+        ))}
+      </div>
+    </Panel>
   );
 }
 
