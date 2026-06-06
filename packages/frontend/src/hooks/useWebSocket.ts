@@ -667,6 +667,8 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
         case "agent:disabled": {
           // Refresh agent list
           socketRef.current?.send({ type: "agent:list", conversationId: msg.conversationId } as WSClientMessage);
+          socketRef.current?.send({ type: "member:list", conversationId: msg.conversationId } as WSClientMessage);
+          socketRef.current?.send({ type: "conversation:list" } as WSClientMessage);
           break;
         }
         case "agent:list:results": {

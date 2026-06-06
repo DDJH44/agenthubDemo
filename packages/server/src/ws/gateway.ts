@@ -16,6 +16,7 @@ import {
   buildInitialConversationAgentNames,
   getEffectiveEnabledAgentNames,
   isCoordinatorAgent,
+  normalizeAgentKey,
   selectEnabledAgentsForTask,
 } from "../agents/conversation-routing";
 import { createAdapterFromEnv } from "@agenthub/adapter";
@@ -326,6 +327,22 @@ function normalizeInviteIdentifier(raw: unknown) {
     if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
   }
   return "";
+}
+
+function normalizeAgentAddNames(raw: unknown) {
+  if (!Array.isArray(raw)) return [];
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (typeof item !== "string") continue;
+    const name = item.trim().slice(0, 100);
+    if (!name || name === GROUP_AGENT_CONTROL_NAME) continue;
+    const key = normalizeAgentKey(name);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(name);
+  }
+  return names;
 }
 
 async function resolveInvitee(raw: unknown) {
@@ -1411,6 +1428,76 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
 
             await conversationAgentRepo.setEnabled(msg.conversationId, msg.agentName, false);
             broadcast(msg.conversationId, { type: "agent:disabled", conversationId: msg.conversationId, agentName: msg.agentName, timestamp: Date.now() });
+            break;
+          }
+
+          case "agent:add": {
+            if (!await checkConversationAccess(ws, msg.conversationId, userId)) break;
+            const conv = await conversationRepo.getById(msg.conversationId);
+            if (!conv) { sendError(ws, "NOT_FOUND", "Conversation not found"); break; }
+            if (conv.type !== "group" && conv.type !== "task_room") {
+              sendError(ws, "VALIDATION", "Only group conversations can add agents");
+              break;
+            }
+
+            const requestedAgentNames = normalizeAgentAddNames((msg as { agentNames?: unknown }).agentNames);
+            if (requestedAgentNames.length === 0) {
+              sendError(ws, "VALIDATION", "agentNames is required");
+              break;
+            }
+
+            const participants = getParticipants(conv);
+            const participantKeys = new Set(participants.map(normalizeAgentKey));
+            const additions = requestedAgentNames.filter((agentName) => !participantKeys.has(normalizeAgentKey(agentName)));
+            if (additions.length === 0) {
+              sendError(ws, "ALREADY_MEMBER", "Selected agents are already in this conversation");
+              break;
+            }
+
+            const nextParticipants = [...participants, ...additions];
+            const realUserCount = conv.type === "group" ? await countRealUsers(nextParticipants) : 0;
+            const currentAgents = await conversationAgentRepo.listByConversation(msg.conversationId);
+            const newAgentEnabled = conv.type === "group" && realUserCount >= 2 ? hasEnabledAgent(currentAgents) : true;
+            await conversationRepo.update(msg.conversationId, { participants: JSON.stringify(nextParticipants) });
+
+            for (const agentName of additions) {
+              await conversationAgentRepo.setEnabled(msg.conversationId, agentName, newAgentEnabled);
+            }
+
+            const notice = await messageRepo.createAndUpdateConv({
+              conversationId: msg.conversationId,
+              type: "system",
+              sender: "system",
+              content: `已添加智能体：${additions.join("、")}`,
+              payload: { kind: "member_update", addedAgents: additions },
+              mentions: additions,
+            });
+            const latestConv = await conversationRepo.getById(msg.conversationId);
+            if (latestConv) {
+              const updated = toListItem({ ...latestConv, participants: latestConv.participants ?? "[]", lastMessage: latestConv.lastMessage ?? null, lastMessageAt: latestConv.lastMessageAt ?? null });
+              emitToRequesterAndRoom(msg.conversationId, ws, { type: "conversation:updated", conversation: updated, timestamp: Date.now() });
+            }
+            emitToRequesterAndRoom(msg.conversationId, ws, {
+              type: "message:created",
+              message: {
+                id: notice.id,
+                conversationId: notice.conversationId,
+                type: notice.type,
+                sender: notice.sender,
+                content: notice.content,
+                payload: { kind: "member_update", addedAgents: additions },
+                mentions: additions,
+                timestamp: notice.timestamp.getTime(),
+              },
+            });
+            for (const agentName of additions) {
+              emitToRequesterAndRoom(msg.conversationId, ws, {
+                type: newAgentEnabled ? "agent:enabled" : "agent:disabled",
+                conversationId: msg.conversationId,
+                agentName,
+                timestamp: Date.now(),
+              });
+            }
             break;
           }
 

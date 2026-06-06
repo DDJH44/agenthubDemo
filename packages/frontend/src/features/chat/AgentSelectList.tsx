@@ -9,9 +9,10 @@ interface AgentSelectListProps {
   mode: "single" | "multi";
   selected: string[];
   onChange: (selected: string[]) => void;
+  includeMain?: boolean;
 }
 
-export function AgentSelectList({ mode, selected, onChange }: AgentSelectListProps) {
+export function AgentSelectList({ mode, selected, onChange, includeMain = true }: AgentSelectListProps) {
   const { agents, hydrate } = useUserAgentStore();
   const [search, setSearch] = useState("");
   const toolLabels = useMemo(() => new Map(TOOL_OPTIONS.map((tool) => [tool.value, tool.label])), []);
@@ -20,7 +21,7 @@ export function AgentSelectList({ mode, selected, onChange }: AgentSelectListPro
     void hydrate();
   }, [hydrate]);
 
-  const allAgents: UserAgent[] = [MAIN_AGENT, ...agents];
+  const allAgents: UserAgent[] = includeMain ? [MAIN_AGENT, ...agents] : agents;
   const filtered = search
     ? allAgents.filter((agent) => {
       const capabilityText = agent.tools.map((tool) => toolLabels.get(tool) ?? tool).join(" ");
@@ -34,7 +35,7 @@ export function AgentSelectList({ mode, selected, onChange }: AgentSelectListPro
   };
 
   const handleToggle = (id: string) => {
-    if (id === MAIN_AGENT_ID) return;
+    if (includeMain && id === MAIN_AGENT_ID) return;
     if (mode === "single") {
       onChange([id]);
     } else {
@@ -68,7 +69,7 @@ export function AgentSelectList({ mode, selected, onChange }: AgentSelectListPro
 
       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-0.5 px-1">
         {filtered.map((agent) => {
-          const isMain = agent.id === MAIN_AGENT_ID;
+          const isMain = includeMain && agent.id === MAIN_AGENT_ID;
           const isSelected = isMain || selected.includes(agent.id);
 
           return (
@@ -163,7 +164,7 @@ export function AgentSelectList({ mode, selected, onChange }: AgentSelectListPro
       {mode === "multi" && (
         <div className="px-1 pt-2 mt-2" style={{ borderTop: "1px solid var(--border)" }}>
           <p style={{ fontSize: "var(--text-2xs)", color: "var(--fg-tertiary)" }}>
-            已选 {selected.length + 1} 个智能体（含主智能体）
+            已选 {includeMain ? selected.length + 1 : selected.length} 个智能体{includeMain ? "（含主智能体）" : ""}
           </p>
         </div>
       )}

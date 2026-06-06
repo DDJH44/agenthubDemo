@@ -5,8 +5,13 @@ import { useChatStore } from "@/stores/chat-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
 import { useNavigationStore } from "@/stores/navigation-store";
+import { getGlobalSend } from "@/lib/ws-client";
 import { getAgentMeta, getConversationAgents } from "./agent-directory";
+import { AgentSelectList } from "./AgentSelectList";
+import { ContactList } from "./ContactList";
 import { ContextWindowIndicator } from "./ContextWindowIndicator";
+
+type AddMemberTab = "agents" | "contacts";
 
 function Icon({ path, size = 14 }: { path: string; size?: number }) {
   return (
@@ -14,6 +19,10 @@ function Icon({ path, size = 14 }: { path: string; size?: number }) {
       <path d={path} />
     </svg>
   );
+}
+
+function normalizeParticipantKey(value: string) {
+  return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 export function ConversationNavBar() {
@@ -26,8 +35,13 @@ export function ConversationNavBar() {
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [showMembers, setShowMembers] = useState(false);
+  const [showAddMembers, setShowAddMembers] = useState(false);
+  const [addMemberTab, setAddMemberTab] = useState<AddMemberTab>("agents");
+  const [selectedAddAgents, setSelectedAddAgents] = useState<string[]>([]);
+  const [selectedAddContacts, setSelectedAddContacts] = useState<string[]>([]);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [moreStatus, setMoreStatus] = useState<string | null>(null);
+  const [addMemberStatus, setAddMemberStatus] = useState<string | null>(null);
   const currentUserId = useAuthStore((state) => state.user?.id);
   const userAgents = useUserAgentStore((state) => state.agents);
   const hydrateUserAgents = useUserAgentStore((state) => state.hydrate);
@@ -54,6 +68,8 @@ export function ConversationNavBar() {
   const memberAvatars = participantAgents.slice(0, 5);
   const extraMembers = Math.max(0, participants.length - memberAvatars.length);
   const primaryAgent = participantAgents[0]?.meta ?? getAgentMeta(title, userAgents);
+  const participantKeySet = new Set((activeConv?.participants ?? []).map(normalizeParticipantKey));
+  const addMemberCount = selectedAddAgents.length + selectedAddContacts.length;
 
   const contextData = useMemo(() => {
     const convMessages = activeConversationId ? (messages[activeConversationId] ?? []) : [];
@@ -96,6 +112,54 @@ export function ConversationNavBar() {
       setMoreStatus("复制失败，请手动选择");
     }
     window.setTimeout(() => setMoreStatus(null), 1400);
+  };
+
+  const resolveAgentName = (agentId: string) => userAgents.find((agent) => agent.id === agentId)?.name ?? agentId;
+
+  const resetAddMembers = () => {
+    setSelectedAddAgents([]);
+    setSelectedAddContacts([]);
+    setAddMemberTab("agents");
+    setAddMemberStatus(null);
+  };
+
+  const openAddMembers = () => {
+    resetAddMembers();
+    setShowMembers(false);
+    setShowAddMembers(true);
+  };
+
+  const closeAddMembers = () => {
+    setShowAddMembers(false);
+    resetAddMembers();
+  };
+
+  const confirmAddMembers = () => {
+    if (!activeConversationId) return;
+    const agentNames = selectedAddAgents
+      .map(resolveAgentName)
+      .filter((name) => !participantKeySet.has(normalizeParticipantKey(name)));
+    const contactIds = selectedAddContacts
+      .filter((id) => !participantKeySet.has(normalizeParticipantKey(id)));
+
+    if (agentNames.length === 0 && contactIds.length === 0) {
+      setAddMemberStatus("选择的成员已经在群聊中");
+      return;
+    }
+
+    const send = getGlobalSend();
+    if (agentNames.length > 0) {
+      send({ type: "agent:add", conversationId: activeConversationId, agentNames });
+    }
+    for (const userId of contactIds) {
+      send({ type: "member:invite", conversationId: activeConversationId, userId, invitee: userId });
+    }
+
+    setAddMemberStatus(`已提交 ${agentNames.length + contactIds.length} 个成员`);
+    window.setTimeout(() => {
+      closeAddMembers();
+      setShowMembers(true);
+    }, 650);
   };
 
   return (
@@ -242,6 +306,11 @@ export function ConversationNavBar() {
             <button type="button" onClick={() => { setEditingTitle(true); setTitleDraft(title); setShowMoreMenu(false); }} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-primary)" }}>
               重命名会话
             </button>
+            {isGroup && (
+              <button type="button" onClick={() => { setShowMoreMenu(false); openAddMembers(); }} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-primary)" }}>
+                添加成员
+              </button>
+            )}
             <button type="button" onClick={() => openRightPanel("tasks")} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-semibold hover:bg-[var(--surface-low)]" style={{ color: "var(--fg-primary)" }}>
               打开任务面板
             </button>
@@ -265,9 +334,20 @@ export function ConversationNavBar() {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setShowMembers(false)} />
           <div className="absolute right-4 top-16 z-50 w-72 overflow-hidden rounded-xl" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-lg)" }}>
-            <div className="px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
-              <h3 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>群成员</h3>
-              <p className="mt-0.5 text-xs" style={{ color: "var(--fg-tertiary)" }}>{participants.length} 个参与者</p>
+            <div className="flex items-center justify-between gap-3 px-4 py-3" style={{ borderBottom: "1px solid var(--border)" }}>
+              <div className="min-w-0">
+                <h3 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>群成员</h3>
+                <p className="mt-0.5 text-xs" style={{ color: "var(--fg-tertiary)" }}>{participants.length} 个参与者</p>
+              </div>
+              <button
+                type="button"
+                onClick={openAddMembers}
+                className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-colors hover:bg-[var(--accent-subtle)]"
+                style={{ color: "var(--accent)", border: "1px solid var(--accent-border)" }}
+              >
+                <Icon path="M12 5v14M5 12h14" size={12} />
+                添加
+              </button>
             </div>
             <div className="max-h-72 overflow-y-auto p-2 custom-scrollbar">
               {participantAgents.map(({ participant, meta }) => (
@@ -289,6 +369,88 @@ export function ConversationNavBar() {
             </div>
           </div>
         </>
+      )}
+
+      {showAddMembers && isGroup && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center px-4" style={{ background: "rgba(15, 23, 42, 0.22)", backdropFilter: "blur(6px)" }} onClick={closeAddMembers}>
+          <div
+            className="flex max-h-[82vh] w-full max-w-[520px] flex-col overflow-hidden rounded-xl"
+            style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xl)" }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3 px-5 py-4" style={{ borderBottom: "1px solid var(--border)" }}>
+              <div className="min-w-0">
+                <h3 className="text-base font-bold" style={{ color: "var(--fg-primary)" }}>添加群成员</h3>
+                <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)" }}>选择智能体或通讯录用户，提交后会同步到当前群聊。</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeAddMembers}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
+                style={{ color: "var(--fg-tertiary)" }}
+                aria-label="关闭添加成员"
+              >
+                <Icon path="M18 6L6 18M6 6l12 12" size={15} />
+              </button>
+            </div>
+
+            <div className="flex gap-1 px-5 pt-4">
+              {(["agents", "contacts"] as AddMemberTab[]).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setAddMemberTab(tab)}
+                  className="h-8 rounded-lg px-3 text-xs font-semibold transition-colors"
+                  style={{
+                    color: addMemberTab === tab ? "var(--accent)" : "var(--fg-tertiary)",
+                    background: addMemberTab === tab ? "var(--accent-subtle)" : "transparent",
+                    border: `1px solid ${addMemberTab === tab ? "var(--accent-border)" : "transparent"}`,
+                  }}
+                >
+                  {tab === "agents" ? "智能体" : "用户"}
+                </button>
+              ))}
+            </div>
+
+            <div className="min-h-0 flex-1 px-5 py-4">
+              {addMemberTab === "agents" ? (
+                <AgentSelectList mode="multi" selected={selectedAddAgents} onChange={setSelectedAddAgents} includeMain={false} />
+              ) : (
+                <ContactList selected={selectedAddContacts} onChange={setSelectedAddContacts} />
+              )}
+              {addMemberStatus && (
+                <p className="mt-3 rounded-lg px-3 py-2 text-xs" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
+                  {addMemberStatus}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between gap-3 px-5 py-4" style={{ borderTop: "1px solid var(--border)" }}>
+              <p className="text-xs" style={{ color: "var(--fg-tertiary)" }}>
+                已选 {addMemberCount} 个
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={closeAddMembers}
+                  className="h-9 rounded-lg px-4 text-sm font-semibold transition-colors hover:bg-[var(--surface-low)]"
+                  style={{ color: "var(--fg-secondary)", border: "1px solid var(--border)" }}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmAddMembers}
+                  disabled={addMemberCount === 0}
+                  className="h-9 rounded-lg px-4 text-sm font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-45"
+                  style={{ color: "#fff", background: "var(--accent)" }}
+                >
+                  添加到群聊
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

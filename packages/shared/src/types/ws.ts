@@ -43,6 +43,7 @@ export type WSClientMessage =
   // Agent control
   | { type: "agent:enable"; conversationId: string; agentName: string }
   | { type: "agent:disable"; conversationId: string; agentName: string }
+  | { type: "agent:add"; conversationId: string; agentNames: string[] }
   | { type: "agent:list"; conversationId: string }
   // Member management
   | { type: "member:invite"; conversationId: string; userId?: string; email?: string; invitee?: string }
