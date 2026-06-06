@@ -31,11 +31,11 @@ const NAV_ITEMS: NavItem[] = [
   { key: "help", icon: "M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9 M13.73 21a2 2 0 01-3.46 0", section: "system" },
 ];
 
-const SECTIONS: Array<{ key: NavItem["section"]; label: string }> = [
-  { key: "main", label: "主屏" },
-  { key: "workspace", label: "工作空间" },
-  { key: "agent", label: "智能体" },
-  { key: "system", label: "系统" },
+const SECTIONS: Array<{ key: NavItem["section"]; labelKey: string }> = [
+  { key: "main", labelKey: "sidebar.section.main" },
+  { key: "workspace", labelKey: "sidebar.section.workspace" },
+  { key: "agent", labelKey: "sidebar.section.agent" },
+  { key: "system", labelKey: "sidebar.section.system" },
 ];
 
 function NavIconGlyph({
@@ -185,7 +185,7 @@ function CollapsedNav() {
         onClick={toggleSidebar}
         className="mb-2 grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg"
         style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}
-        title="展开导航"
+        title={t("sidebar.expand")}
       >
         <Image src="/brand/logo-mark.png" alt="AgentHub" width={26} height={26} style={{ width: 26, height: 26, objectFit: "contain" }} />
       </button>
@@ -233,7 +233,7 @@ function ExpandedNav({
   return (
     <div className="flex h-full flex-col" style={{ width: "100%" }}>
       <div className="px-3 pb-3 pt-3" style={{ borderBottom: "1px solid var(--divider)" }}>
-        <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-2" style={{ background: "rgba(255,255,255,0.72)", border: "1px solid var(--border)" }}>
+        <div className="flex items-center gap-2.5 rounded-xl px-2.5 py-2" style={{ background: "var(--surface-glass)", border: "1px solid var(--border)" }}>
           <div className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-lg" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-xs)" }}>
             <Image src="/brand/logo-mark.png" alt="AgentHub" width={30} height={30} style={{ width: 30, height: 30, objectFit: "contain" }} />
           </div>
@@ -250,7 +250,7 @@ function ExpandedNav({
             onClick={toggleSidebar}
             className="grid h-7 w-7 shrink-0 place-items-center rounded-lg transition-colors hover:bg-[var(--surface-low)]"
             style={{ color: "var(--fg-tertiary)" }}
-            title="收起导航"
+            title={t("sidebar.collapse")}
           >
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true">
               <path d="M11 19l-7-7 7-7" />
@@ -268,7 +268,7 @@ function ExpandedNav({
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
               <path d="M12 5v14 M5 12h14" />
             </svg>
-            新建会话
+            {t("conversation.new")}
           </button>
         )}
       </div>
@@ -281,7 +281,7 @@ function ExpandedNav({
           return (
             <div key={section.key} className="mb-2">
               <p className="px-2 pb-1.5 pt-2 text-[10px] font-bold" style={{ color: "var(--fg-tertiary)" }}>
-                {section.label}
+                {t(section.labelKey)}
               </p>
               <div className="space-y-1">
                 {sectionItems.map((item) => (
@@ -310,7 +310,7 @@ function ExpandedNav({
               <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{user?.name ?? "用户"}</p>
               <div className="mt-1 flex items-center gap-1.5">
                 <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--success)" }} />
-                <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>在线</span>
+                <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{t("chat.online")}</span>
               </div>
             </div>
           </div>
@@ -329,7 +329,7 @@ function ExpandedNav({
               className="h-7 rounded-lg text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]"
               style={{ border: "1px solid var(--border)", color: "var(--fg-secondary)" }}
             >
-              退出
+              {t("common.logout")}
             </button>
           </div>
         </div>
@@ -357,7 +357,7 @@ export function SidebarNav({
     <aside
       className="flex h-full shrink-0 flex-col overflow-hidden"
       style={{
-        background: "linear-gradient(180deg, #fbfcff 0%, #f5f8fd 100%)",
+        background: "var(--sidebar-bg)",
         borderRight: "1px solid var(--divider)",
         width: "100%",
         transition: "width 0.25s cubic-bezier(0.4, 0, 0.2, 1)",

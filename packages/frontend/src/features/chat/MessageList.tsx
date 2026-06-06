@@ -565,7 +565,7 @@ function MessageActions({
   return (
     <div
       className={`mt-0 flex h-0 w-fit items-center overflow-hidden rounded-lg border px-1 py-0 opacity-0 transition-[height,margin,opacity,padding] group-hover:mt-1 group-hover:h-8 group-hover:py-0.5 group-hover:opacity-100 group-focus-within:mt-1 group-focus-within:h-8 group-focus-within:py-0.5 group-focus-within:opacity-100 ${isUser ? "ml-auto" : ""}`}
-      style={{ background: "rgba(255,255,255,0.92)", borderColor: "var(--border)", boxShadow: "var(--shadow-xs)" }}
+      style={{ background: "var(--surface-glass-strong)", borderColor: "var(--border)", boxShadow: "var(--shadow-xs)" }}
     >
       <ActionButton title={copied ? "已复制" : "复制"} onClick={copy} tone={copied ? "success" : "neutral"}>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -850,7 +850,7 @@ const MessageBubble = memo(function MessageBubble({
             {!isTaskCard && !artifactType && !htmlLike && !["diff_card", "deploy_card", "preview_card"].includes(message.type) && (
               <div className="px-4 py-3">
                 {workflowReferenceMeta && (
-                  <div className="mb-2 inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: isUser ? "rgba(255,255,255,0.72)" : "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+                  <div className="mb-2 inline-flex max-w-full items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: isUser ? "var(--surface-glass)" : "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
                     <span className="truncate">引用工作流：{workflowReferenceMeta.name}</span>
                     {workflowReferenceMeta.nodeCount ? (
                       <span className="shrink-0" style={{ color: "var(--fg-tertiary)" }}>· {workflowReferenceMeta.nodeCount} 节点</span>
@@ -858,7 +858,7 @@ const MessageBubble = memo(function MessageBubble({
                   </div>
                 )}
                 {hasThinking && (
-                  <div className="mb-2 w-fit rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: isUser ? "rgba(255,255,255,0.56)" : "var(--surface-low)" }}>
+                  <div className="mb-2 w-fit rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: isUser ? "var(--surface-glass)" : "var(--surface-low)" }}>
                     已省略思考过程
                   </div>
                 )}

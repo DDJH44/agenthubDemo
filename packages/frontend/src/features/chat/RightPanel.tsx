@@ -549,7 +549,7 @@ function OrchestrationBoard({
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 {evidenceItems.map((item) => (
-                  <div key={item.label} className="rounded-sm px-2 py-1" style={{ background: "rgba(255,255,255,0.72)" }}>
+                  <div key={item.label} className="rounded-sm px-2 py-1" style={{ background: "var(--surface-glass)" }}>
                     <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{item.label}</span>
                     <span className="float-right text-[10px] font-bold" style={{ color: "var(--fg-primary)" }}>{item.value}</span>
                   </div>

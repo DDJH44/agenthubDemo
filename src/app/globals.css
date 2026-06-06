@@ -11,6 +11,13 @@
   --surface-low: #eef2f8;
   --surface-mid: #e2e8f3;
   --surface-high: #cfd8e8;
+  --surface-glass: rgba(255, 255, 255, 0.72);
+  --surface-glass-strong: rgba(255, 255, 255, 0.92);
+  --sidebar-bg: linear-gradient(180deg, #fbfcff 0%, #f5f8fd 100%);
+  --page-soft-gradient: linear-gradient(180deg, var(--surface-white) 0%, #fbfcff 62%, #f5f8fd 100%);
+  --input-bg: #ffffff;
+  --shell-border: rgba(255, 255, 255, 0.72);
+  --shell-shadow: 0 24px 70px rgba(42, 53, 91, 0.18), 0 1px 0 rgba(255, 255, 255, 0.9) inset;
 
   --bg-root: #dfe6f4;
   --bg-surface: var(--surface-white);
@@ -96,14 +103,100 @@
   --font-mono: var(--font-jetbrains-mono), "MiSans", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei", monospace;
 }
 
+/* Standard dark theme */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --page-bg: #111318;
+  --surface-white: #181b22;
+  --surface-tinted: #1d212a;
+  --surface-low: #232936;
+  --surface-mid: #2b3342;
+  --surface-high: #354054;
+  --surface-glass: rgba(24, 27, 34, 0.74);
+  --surface-glass-strong: rgba(24, 27, 34, 0.94);
+  --sidebar-bg: linear-gradient(180deg, #171a22 0%, #12151c 100%);
+  --page-soft-gradient: linear-gradient(180deg, #181b22 0%, #161a22 62%, #12151c 100%);
+  --input-bg: #151922;
+  --shell-border: rgba(255, 255, 255, 0.08);
+  --shell-shadow: 0 24px 70px rgba(0, 0, 0, 0.35), 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+
+  --bg-root: #0f1218;
+  --bg-surface: var(--surface-white);
+  --bg-elevated: var(--surface-low);
+  --bg-hover: rgba(255, 255, 255, 0.05);
+  --bg-active: rgba(255, 255, 255, 0.08);
+
+  --fg-primary: #edf1f8;
+  --fg-secondary: #aeb8cb;
+  --fg-tertiary: #7c879b;
+  --fg-disabled: #586274;
+
+  --accent: #7c8cff;
+  --accent-hover: #9aa6ff;
+  --accent-light: #b8c0ff;
+  --accent-subtle: rgba(124, 140, 255, 0.13);
+  --accent-border: rgba(124, 140, 255, 0.24);
+  --accent-glow: 0 12px 30px rgba(124, 140, 255, 0.2);
+  --accent-gradient: linear-gradient(135deg, #7184ff 0%, #9a7cff 100%);
+
+  --accent-secondary: #5ed1c3;
+  --accent-secondary-subtle: rgba(94, 209, 195, 0.1);
+
+  --success: #4ade80;
+  --success-subtle: rgba(74, 222, 128, 0.11);
+  --success-border: rgba(74, 222, 128, 0.22);
+  --warning: #fbbf24;
+  --warning-subtle: rgba(251, 191, 36, 0.11);
+  --warning-border: rgba(251, 191, 36, 0.22);
+  --danger: #fb7185;
+  --danger-subtle: rgba(251, 113, 133, 0.11);
+  --danger-border: rgba(251, 113, 133, 0.22);
+
+  --glass-bg: rgba(24, 27, 34, 0.86);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 4px 24px rgba(0, 0, 0, 0.34);
+
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --divider: rgba(255, 255, 255, 0.06);
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.28);
+  --shadow-sm: 0 3px 10px rgba(0, 0, 0, 0.28), 0 0 1px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 8px 22px rgba(0, 0, 0, 0.34), 0 0 1px rgba(0, 0, 0, 0.36);
+  --shadow-lg: 0 16px 42px rgba(0, 0, 0, 0.42), 0 0 1px rgba(0, 0, 0, 0.42);
+  --shadow-xl: 0 24px 64px rgba(0, 0, 0, 0.5), 0 0 1px rgba(0, 0, 0, 0.46);
+  --shadow-glow: 0 18px 42px rgba(124, 140, 255, 0.16);
+}
+
+[data-theme="dark"] body {
+  background: var(--page-bg);
+}
+
+[data-theme="dark"] ::selection { background: rgba(124, 140, 255, 0.28); }
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); }
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+[data-theme="dark"] .custom-scrollbar:hover::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); }
+[data-theme="dark"] .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
+
 /* ═══ Coze Dark Theme ═══ */
 [data-theme="coze-dark"] {
+  color-scheme: dark;
+
   --page-bg: #0a0a0a;
   --surface-white: #141414;
   --surface-tinted: #1a1a1a;
   --surface-low: #1f1f1f;
   --surface-mid: #252525;
   --surface-high: #2a2a2a;
+  --surface-glass: rgba(20, 20, 20, 0.76);
+  --surface-glass-strong: rgba(20, 20, 20, 0.94);
+  --sidebar-bg: linear-gradient(180deg, #151515 0%, #0d0d0d 100%);
+  --page-soft-gradient: linear-gradient(180deg, #141414 0%, #111111 62%, #0a0a0a 100%);
+  --input-bg: #101010;
+  --shell-border: rgba(255, 255, 255, 0.06);
+  --shell-shadow: 0 24px 70px rgba(0, 0, 0, 0.5), 0 1px 0 rgba(255, 255, 255, 0.03) inset;
 
   --bg-root: var(--page-bg);
   --bg-surface: var(--surface-white);

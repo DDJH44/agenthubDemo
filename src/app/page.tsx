@@ -203,7 +203,7 @@ function ChatEmptyState({
       className="flex min-h-0 flex-1 items-center justify-center px-6 py-8"
       style={{
         background:
-          "linear-gradient(180deg, var(--surface-white) 0%, #fbfcff 62%, #f5f8fd 100%)",
+          "var(--page-soft-gradient)",
       }}
     >
       <div className="w-full max-w-[720px]">
@@ -297,7 +297,7 @@ function ChatEmptyState({
             ["Codex", "代码生成"],
             ["Open Code", "部署接入"],
           ].map(([name, desc]) => (
-            <div key={name} className="rounded-xl px-3 py-2" style={{ background: "rgba(255,255,255,0.72)", border: "1px solid var(--border)" }}>
+            <div key={name} className="rounded-xl px-3 py-2" style={{ background: "var(--surface-glass)", border: "1px solid var(--border)" }}>
               <p className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{name}</p>
               <p className="mt-0.5 text-[11px]" style={{ color: "var(--fg-tertiary)" }}>{desc}</p>
             </div>
@@ -777,8 +777,8 @@ export default function Page() {
       className="relative flex h-full w-full overflow-hidden md:rounded-[18px]"
       style={{
         background: "var(--surface-white)",
-        border: "1px solid rgba(255, 255, 255, 0.72)",
-        boxShadow: "0 24px 70px rgba(42, 53, 91, 0.18), 0 1px 0 rgba(255,255,255,0.9) inset",
+        border: "1px solid var(--shell-border)",
+        boxShadow: "var(--shell-shadow)",
       }}
     >
       {/* Mobile sidebar overlay */}

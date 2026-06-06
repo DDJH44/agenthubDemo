@@ -4,6 +4,7 @@ import Image from "next/image";
 import { type FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "../../../packages/frontend/src/stores/auth-store";
+import { useSettingsStore } from "../../../packages/frontend/src/stores/settings-store";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     useAuthStore.getState().hydrate();
+    useSettingsStore.getState().hydrate();
   }, []);
 
   useEffect(() => {
@@ -51,25 +53,23 @@ export default function LoginPage() {
     <main
       className="min-h-dvh px-4 py-5 sm:px-6 lg:grid lg:place-items-center"
       style={{
-        background:
-          "linear-gradient(135deg, #e6edf7 0%, #f7f9fd 52%, #eef2f8 100%)",
+        background: "var(--page-soft-gradient)",
       }}
     >
       <div
         className="mx-auto grid min-h-[calc(100dvh-40px)] w-full max-w-[1120px] overflow-hidden rounded-[22px] lg:min-h-[700px] lg:grid-cols-[minmax(0,1fr)_420px]"
         style={{
-          background: "rgba(255,255,255,0.78)",
-          border: "1px solid rgba(255,255,255,0.82)",
-          boxShadow: "0 24px 70px rgba(42, 53, 91, 0.16)",
+          background: "var(--surface-glass)",
+          border: "1px solid var(--shell-border)",
+          boxShadow: "var(--shell-shadow)",
         }}
       >
         <section
           className="relative hidden min-h-[700px] overflow-hidden lg:block"
           aria-label="AgentHub 品牌"
           style={{
-            background:
-              "linear-gradient(145deg, rgba(255,255,255,0.96) 0%, rgba(247,248,255,0.94) 48%, rgba(230,225,255,0.82) 100%)",
-            borderRight: "1px solid rgba(62,79,118,0.1)",
+            background: "var(--page-soft-gradient)",
+            borderRight: "1px solid var(--border)",
           }}
         >
           <div
@@ -160,9 +160,9 @@ export default function LoginPage() {
                   key={item}
                   className="rounded-full px-3 py-1.5 text-xs font-semibold"
                   style={{
-                    background: "rgba(255,255,255,0.72)",
+                    background: "var(--surface-glass)",
                     color: "var(--fg-secondary)",
-                    border: "1px solid rgba(62,79,118,0.1)",
+                    border: "1px solid var(--border)",
                   }}
                 >
                   {item}
@@ -181,7 +181,7 @@ export default function LoginPage() {
                 <span
                   className="grid h-10 w-10 shrink-0 place-items-center rounded-xl"
                   style={{
-                    background: "rgba(255,255,255,0.66)",
+                    background: "var(--surface-glass)",
                     color: "var(--accent)",
                     border: "1px solid rgba(68,86,223,0.14)",
                     boxShadow: "0 8px 22px rgba(68,86,223,0.08)",

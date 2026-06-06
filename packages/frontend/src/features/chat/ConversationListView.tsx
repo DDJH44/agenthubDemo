@@ -347,8 +347,8 @@ export function ConversationListView({
   const hasResults = pinned.length > 0 || normal.length > 0 || (showArchived && archived.length > 0);
 
   return (
-    <div className="flex h-full flex-col" style={{ background: "#f5f8fd", borderRight: "1px solid var(--divider)" }}>
-      <div className="shrink-0 px-3 py-3" style={{ background: "rgba(255,255,255,0.72)", borderBottom: "1px solid var(--divider)" }}>
+    <div className="flex h-full flex-col" style={{ background: "var(--surface-tinted)", borderRight: "1px solid var(--divider)" }}>
+      <div className="shrink-0 px-3 py-3" style={{ background: "var(--surface-glass)", borderBottom: "1px solid var(--divider)" }}>
         <div className="flex items-center justify-between gap-2">
           <div className="min-w-0">
             <h2 className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)" }}>会话</h2>
@@ -409,10 +409,10 @@ export function ConversationListView({
 
         <div className="mt-2 flex items-center justify-between gap-2">
           <div className="flex min-w-0 items-center gap-1.5">
-            <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "rgba(255,255,255,0.64)", border: "1px solid var(--border)" }}>
+            <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-glass)", border: "1px solid var(--border)" }}>
               置顶 {pinnedCount}
             </span>
-            <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "rgba(255,255,255,0.64)", border: "1px solid var(--border)" }}>
+            <span className="rounded-full px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-glass)", border: "1px solid var(--border)" }}>
               打开 {openCount}
             </span>
           </div>
@@ -422,7 +422,7 @@ export function ConversationListView({
             className="inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-white)]"
             style={{
               color: showArchived ? "var(--accent)" : "var(--fg-tertiary)",
-              background: showArchived ? "var(--surface-white)" : "rgba(255,255,255,0.48)",
+              background: showArchived ? "var(--surface-white)" : "var(--surface-glass)",
               border: `1px solid ${showArchived ? "var(--accent-border)" : "var(--border)"}`,
             }}
           >

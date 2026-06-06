@@ -166,7 +166,7 @@ export function MobileRemoteView({
     <main
       className="flex min-h-dvh flex-col overflow-hidden"
       style={{
-        background: "linear-gradient(180deg, #f4f6ff 0%, #eef3fb 54%, #f8fbff 100%)",
+        background: "var(--page-soft-gradient)",
         color: "var(--fg-primary)",
       }}
     >

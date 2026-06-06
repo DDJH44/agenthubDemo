@@ -5,6 +5,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useChatStore } from "@/stores/chat-store";
 import { useSettingsStore, type Theme } from "@/stores/settings-store";
 import { useUserAgentStore } from "@/stores/user-agent-store";
+import { useT } from "@/hooks/useT";
 import { api } from "@/lib/api-client";
 import {
   addPendingTeamInvite,
@@ -15,7 +16,6 @@ import {
 } from "@/features/team/team-invites";
 import { getContacts, subscribeContacts, upsertContact, type ContactEntry } from "@/features/team/contact-book";
 import {
-  deploymentTargetStatusLabel,
   isDeploymentTargetConfigured,
   type DeploymentTargetsResponse,
 } from "@/features/deployment/deployment-targets";
@@ -49,15 +49,15 @@ const LLM_PRESETS = [
   { key: "openai", label: "OpenAI", baseURL: "https://api.openai.com/v1", model: "gpt-4o-mini" },
   { key: "deepseek", label: "DeepSeek", baseURL: "https://api.deepseek.com/v1", model: "deepseek-chat" },
   { key: "mimo", label: "MiMo", baseURL: "https://token-plan-cn.xiaomimimo.com/v1", model: "mimo" },
-  { key: "custom", label: "自定义", baseURL: "", model: "" },
+  { key: "custom", label: "custom", baseURL: "", model: "" },
 ];
 
-const TABS: Array<{ key: SettingsTab; label: string; desc: string; icon: string }> = [
-  { key: "general", label: "通用", desc: "界面与偏好", icon: "M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" },
-  { key: "model", label: "模型", desc: "LLM 接入", icon: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" },
-  { key: "deployment", label: "部署", desc: "默认服务器", icon: "M12 3v12 M7 8l5-5 5 5 M5 21h14a2 2 0 002-2v-4 M3 15v4a2 2 0 002 2" },
-  { key: "team", label: "团队", desc: "成员邀请", icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M9 11a4 4 0 100-8 4 4 0 000 8 M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75" },
-  { key: "export", label: "导出", desc: "备份数据", icon: "M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2 M7 11l5 5 5-5 M12 4v12" },
+const TABS: Array<{ key: SettingsTab; labelKey: string; descKey: string; icon: string }> = [
+  { key: "general", labelKey: "settings.tab.general", descKey: "settings.tab.general.desc", icon: "M12 15a3 3 0 100-6 3 3 0 000 6z M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" },
+  { key: "model", labelKey: "settings.tab.model", descKey: "settings.tab.model.desc", icon: "M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" },
+  { key: "deployment", labelKey: "settings.tab.deployment", descKey: "settings.tab.deployment.desc", icon: "M12 3v12 M7 8l5-5 5 5 M5 21h14a2 2 0 002-2v-4 M3 15v4a2 2 0 002 2" },
+  { key: "team", labelKey: "settings.tab.team", descKey: "settings.tab.team.desc", icon: "M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M9 11a4 4 0 100-8 4 4 0 000 8 M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75" },
+  { key: "export", labelKey: "settings.tab.export", descKey: "settings.tab.export.desc", icon: "M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2 M7 11l5 5 5-5 M12 4v12" },
 ];
 
 function downloadJson(filename: string, data: unknown) {
@@ -82,6 +82,7 @@ function openRightPanel(tab: string) {
 export function SettingsView() {
   const [tab, setTab] = useState<SettingsTab>("general");
   const { locale, setLocale, theme, setTheme } = useSettingsStore();
+  const t = useT();
   const user = useAuthStore((state) => state.user);
   const chat = useChatStore();
   const userAgents = useUserAgentStore((state) => state.agents);
@@ -107,8 +108,8 @@ export function SettingsView() {
   const [copied, setCopied] = useState(false);
   const [checkingReadiness, setCheckingReadiness] = useState(false);
   const [backendHealth, setBackendHealth] = useState<ReadinessItem>({
-    label: "后端 API",
-    detail: "尚未检查",
+    label: "Backend API",
+    detail: "Not checked yet",
     tone: "neutral",
   });
 
@@ -146,11 +147,11 @@ export function SettingsView() {
       setDeploymentStatus(status);
     } catch (error) {
       setDeploymentStatus(null);
-      setDeploymentError(error instanceof Error ? error.message : "部署配置读取失败");
+      setDeploymentError(error instanceof Error ? error.message : t("settings.deployment.loadFailed"));
     } finally {
       setDeploymentLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,7 +164,7 @@ export function SettingsView() {
       .catch((error) => {
         if (cancelled) return;
         setDeploymentStatus(null);
-        setDeploymentError(error instanceof Error ? error.message : "部署配置读取失败");
+        setDeploymentError(error instanceof Error ? error.message : t("settings.deployment.loadFailed"));
       })
       .finally(() => {
         if (!cancelled) setDeploymentLoading(false);
@@ -171,7 +172,7 @@ export function SettingsView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (tab !== "deployment") return;
@@ -185,7 +186,7 @@ export function SettingsView() {
       .catch((error) => {
         if (cancelled) return;
         setDeploymentStatus(null);
-        setDeploymentError(error instanceof Error ? error.message : "部署配置读取失败");
+        setDeploymentError(error instanceof Error ? error.message : t("settings.deployment.loadFailed"));
       })
       .finally(() => {
         if (!cancelled) setDeploymentLoading(false);
@@ -193,7 +194,7 @@ export function SettingsView() {
     return () => {
       cancelled = true;
     };
-  }, [tab]);
+  }, [tab, t]);
 
   const stats = useMemo(() => {
     const messageCount = Object.values(chat.messages).reduce((total, messages) => total + messages.length, 0);
@@ -207,64 +208,73 @@ export function SettingsView() {
 
   const defaultTarget = deploymentStatus?.defaultTarget;
   const defaultTargetConfigured = isDeploymentTargetConfigured(defaultTarget);
-  const defaultTargetLabel = deploymentTargetStatusLabel(defaultTarget, deploymentLoading, deploymentError);
+  const defaultTargetLabel = deploymentLoading
+    ? t("settings.readiness.pending")
+    : deploymentError
+    ? t("common.error")
+    : defaultTargetConfigured
+    ? t("settings.readiness.ok")
+    : t("settings.readiness.warn");
   const defaultTargetTone = deploymentLoading ? "neutral" : defaultTargetConfigured ? "success" : "warning";
   const readinessItems = useMemo<ReadinessItem[]>(() => {
-    const clientMode = typeof window !== "undefined" && window.innerWidth < 768 ? "手机遥控器模式" : "桌面工作台模式";
+    const clientMode = typeof window !== "undefined" && window.innerWidth < 768 ? t("settings.readiness.mobileMode") : t("settings.readiness.desktopMode");
     const modelReady = Boolean(configStatus?.adapter.apiKeyConfigured);
     return [
       {
-        label: "前端运行环境",
-        detail: `已进入 ${clientMode}`,
+        label: t("settings.readiness.frontend"),
+        detail: `${t("settings.readiness.entered")} ${clientMode}`,
         tone: "success",
       },
-      backendHealth,
       {
-        label: "模型接入",
+        ...backendHealth,
+        label: t("settings.readiness.backend"),
+      },
+      {
+        label: t("settings.readiness.model"),
         detail: configStatus
-          ? `${configStatus.adapter.model || "未读取模型"} · ${modelReady ? "API Key 已配置" : "API Key 未配置"}`
-          : "正在读取模型配置",
+          ? `${configStatus.adapter.model || t("settings.readiness.modelUnread")} · ${modelReady ? t("settings.readiness.apiKeyReady") : t("settings.readiness.apiKeyMissing")}`
+          : t("settings.readiness.modelLoading"),
         tone: configStatus ? modelReady ? "success" : "warning" : "neutral",
       },
       {
-        label: "默认部署服务器",
+        label: t("settings.readiness.deploy"),
         detail: deploymentLoading
-          ? "正在读取默认服务器配置"
+          ? t("settings.readiness.deployLoading")
           : deploymentError || defaultTarget?.publicUrl || defaultTargetLabel,
         tone: defaultTargetTone,
       },
       {
-        label: "工作区数据",
-        detail: `${stats.conversations} 个会话 · ${stats.messages} 条消息 · ${stats.agents} 个自建智能体`,
+        label: t("settings.readiness.workspace"),
+        detail: `${stats.conversations} ${t("settings.stats.conversations")} · ${stats.messages} ${t("settings.stats.messages")} · ${stats.agents} ${t("settings.stats.agents")}`,
         tone: stats.conversations > 0 || stats.agents > 0 ? "success" : "warning",
       },
     ];
-  }, [backendHealth, configStatus, defaultTarget?.publicUrl, defaultTargetLabel, defaultTargetTone, deploymentError, deploymentLoading, stats.agents, stats.conversations, stats.messages]);
+  }, [backendHealth, configStatus, defaultTarget?.publicUrl, defaultTargetLabel, defaultTargetTone, deploymentError, deploymentLoading, stats.agents, stats.conversations, stats.messages, t]);
 
   const runReadinessCheck = useCallback(async () => {
     setCheckingReadiness(true);
     setBackendHealth({
-      label: "后端 API",
-      detail: "检查中...",
+      label: t("settings.readiness.backend"),
+      detail: t("settings.readiness.apiChecking"),
       tone: "neutral",
     });
     try {
       const health = await api.get<HealthStatus>("/api/health");
       setBackendHealth({
-        label: "后端 API",
-        detail: health.status === "ok" ? `${health.service || "agenthub-server"} 正常` : `状态：${health.status}`,
+        label: t("settings.readiness.backend"),
+        detail: health.status === "ok" ? `${health.service || "agenthub-server"} ${t("settings.readiness.apiNormal")}` : `${t("settings.readiness.status")}：${health.status}`,
         tone: health.status === "ok" ? "success" : "warning",
       });
     } catch (error) {
       setBackendHealth({
-        label: "后端 API",
-        detail: error instanceof Error ? error.message : "无法连接后端",
+        label: t("settings.readiness.backend"),
+        detail: error instanceof Error ? error.message : t("settings.readiness.apiUnavailable"),
         tone: "warning",
       });
     } finally {
       setCheckingReadiness(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -282,16 +292,16 @@ export function SettingsView() {
       if (baseURLInput.trim()) payload.baseURL = baseURLInput.trim();
       if (modelInput.trim()) payload.model = modelInput.trim();
       if (Object.keys(payload).length === 0) {
-        setSaveMsg({ ok: false, text: "至少填写一项配置" });
+        setSaveMsg({ ok: false, text: t("settings.model.needOne") });
         return;
       }
       const result = await api.post<{ success: boolean; model?: string }>("/api/config/api-key", payload);
-      setSaveMsg({ ok: true, text: `已保存 ${result.model || modelInput || "模型配置"}` });
+      setSaveMsg({ ok: true, text: `${t("settings.model.saved")} ${result.model || modelInput || t("settings.model.config")}` });
       setApiKeyInput("");
       const status = await api.get<ConfigStatus>("/api/config/status");
       setConfigStatus(status);
     } catch (err) {
-      setSaveMsg({ ok: false, text: err instanceof Error ? err.message : "保存失败" });
+      setSaveMsg({ ok: false, text: err instanceof Error ? err.message : t("settings.model.saveFailed") });
     } finally {
       setSaving(false);
     }
@@ -301,12 +311,12 @@ export function SettingsView() {
     const contact = upsertContact({
       email: emailValue,
       name: nameValue,
-      role: "成员",
+      role: t("settings.team.member"),
       source: "invite",
       invitedAt: Date.now(),
     });
     if (!contact.ok) {
-      setInviteMsg({ ok: false, text: "请输入有效邮箱" });
+      setInviteMsg({ ok: false, text: t("settings.team.invalidEmail") });
       return;
     }
     const result = addPendingTeamInvite(contact.contact.email, "settings", {
@@ -314,12 +324,12 @@ export function SettingsView() {
       contactId: contact.contact.id,
     });
     if (!result.ok) {
-      setInviteMsg({ ok: false, text: "请输入有效邮箱" });
+      setInviteMsg({ ok: false, text: t("settings.team.invalidEmail") });
       return;
     }
     setInviteMsg({
       ok: true,
-      text: result.duplicate ? "该联系人已在待确认邀请中" : `已邀请 ${contact.contact.name}`,
+      text: result.duplicate ? t("settings.team.duplicate") : `${t("settings.team.invited")} ${contact.contact.name}`,
     });
     setInviteEmail("");
     setInviteName("");
@@ -375,7 +385,7 @@ export function SettingsView() {
       <aside className="shrink-0 p-4" style={{ width: 230, borderRight: "1px solid var(--divider)", background: "var(--surface-white)" }}>
         <div className="mb-4 px-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em]" style={{ color: "var(--fg-tertiary)" }}>Settings</p>
-          <h1 className="mt-1 text-base font-bold" style={{ color: "var(--fg-primary)", fontFamily: "var(--font-heading)" }}>系统设置</h1>
+          <h1 className="mt-1 text-base font-bold" style={{ color: "var(--fg-primary)", fontFamily: "var(--font-heading)" }}>{t("settings.shell")}</h1>
         </div>
         <div className="space-y-1">
           {TABS.map((item) => (
@@ -396,8 +406,8 @@ export function SettingsView() {
                 </svg>
               </span>
               <span className="min-w-0">
-                <span className="block text-sm font-semibold">{item.label}</span>
-                <span className="block truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{item.desc}</span>
+                <span className="block text-sm font-semibold">{t(item.labelKey)}</span>
+                <span className="block truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{t(item.descKey)}</span>
               </span>
             </button>
           ))}
@@ -407,15 +417,15 @@ export function SettingsView() {
       <main className="min-w-0 flex-1 overflow-y-auto custom-scrollbar p-6" style={{ background: "var(--surface-white)" }}>
         {tab === "general" ? (
           <div className="max-w-5xl">
-            <Header title="通用设置" desc="管理工作台显示、语言和通知权限。" />
+            <Header title={t("settings.general.title")} desc={t("settings.general.desc")} />
             <div className="mb-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-              <Metric label="会话" value={stats.conversations} />
-              <Metric label="消息" value={stats.messages} />
-              <Metric label="自建智能体" value={stats.agents} />
-              <Metric label="待确认邀请" value={stats.pendingInvites} />
+              <Metric label={t("settings.stats.conversations")} value={stats.conversations} />
+              <Metric label={t("settings.stats.messages")} value={stats.messages} />
+              <Metric label={t("settings.stats.agents")} value={stats.agents} />
+              <Metric label={t("settings.stats.pendingInvites")} value={stats.pendingInvites} />
             </div>
             <Panel>
-              <SettingRow label="外观主题" desc="切换当前工作台视觉模式。">
+              <SettingRow label={t("settings.theme.label")} desc={t("settings.theme.desc")}>
                 <div className="flex rounded-lg p-1" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
                   {(["light", "dark", "coze-dark"] as Theme[]).map((mode) => (
                     <button
@@ -429,12 +439,12 @@ export function SettingsView() {
                         boxShadow: theme === mode ? "var(--shadow-xs)" : "none",
                       }}
                     >
-                      {mode === "light" ? "浅色" : mode === "dark" ? "深色" : "深色工作台"}
+                      {mode === "light" ? t("settings.theme.light") : mode === "dark" ? t("settings.theme.dark") : t("settings.theme.cozeDark")}
                     </button>
                   ))}
                 </div>
               </SettingRow>
-              <SettingRow label="界面语言" desc="侧边栏和基础控件会跟随语言切换。">
+              <SettingRow label={t("settings.language.label")} desc={t("settings.language.desc")}>
                 <select
                   value={locale}
                   onChange={(event) => setLocale(event.target.value === "en" ? "en" : "zh")}
@@ -445,32 +455,32 @@ export function SettingsView() {
                   <option value="en">English</option>
                 </select>
               </SettingRow>
-              <SettingRow label="桌面通知" desc="任务完成或部署完成时可弹出浏览器通知。">
+              <SettingRow label={t("settings.notification.label")} desc={t("settings.notification.desc")}>
                 <button type="button" onClick={handleNotification} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}>
-                  {notificationPermission === "granted" ? "已允许" : notificationPermission === "denied" ? "已拒绝" : notificationPermission === "unsupported" ? "不支持" : "请求权限"}
+                  {notificationPermission === "granted" ? t("settings.notification.granted") : notificationPermission === "denied" ? t("settings.notification.denied") : notificationPermission === "unsupported" ? t("settings.notification.unsupported") : t("settings.notification.request")}
                 </button>
               </SettingRow>
-              <SettingRow label="手机端模式" desc="窄屏访问时自动进入 Remote 遥控器视图。">
-                <StatusPill tone="success">已启用</StatusPill>
+              <SettingRow label={t("settings.mobile.label")} desc={t("settings.mobile.desc")}>
+                <StatusPill tone="success">{t("settings.enabled")}</StatusPill>
               </SettingRow>
             </Panel>
-            <ReadinessPanel items={readinessItems} checking={checkingReadiness} onCheck={runReadinessCheck} />
+            <ReadinessPanel items={readinessItems} checking={checkingReadiness} onCheck={runReadinessCheck} t={t} />
           </div>
         ) : null}
 
         {tab === "model" ? (
           <div className="max-w-5xl">
-            <Header title="模型接入" desc="配置主 Agent 和自建智能体默认使用的大模型接口。" />
+            <Header title={t("settings.model.title")} desc={t("settings.model.desc")} />
             <Panel>
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <StatusPill tone={configStatus?.adapter.apiKeyConfigured ? "success" : "warning"}>
-                  {configStatus?.adapter.apiKeyConfigured ? "API Key 已配置" : "API Key 未配置"}
+                  {configStatus?.adapter.apiKeyConfigured ? t("settings.model.keyConfigured") : t("settings.model.keyMissing")}
                 </StatusPill>
                 <span className="text-xs" style={{ color: "var(--fg-tertiary)" }}>
-                  当前模型：{configStatus?.adapter.model || "未读取"} · {configStatus?.adapter.baseURL || "默认地址"}
+                  {t("settings.model.current")}：{configStatus?.adapter.model || t("settings.model.unread")} · {configStatus?.adapter.baseURL || t("settings.model.defaultUrl")}
                 </span>
               </div>
-              <FieldLabel label="模型提供方" />
+              <FieldLabel label={t("settings.model.provider")} />
               <div className="mb-4 flex flex-wrap gap-2">
                 {LLM_PRESETS.map((preset) => (
                   <button
@@ -489,18 +499,18 @@ export function SettingsView() {
                       border: `1px solid ${selectedPreset === preset.key ? "var(--accent)" : "var(--border)"}`,
                     }}
                   >
-                    {preset.label}
+                    {preset.key === "custom" ? t("settings.model.custom") : preset.label}
                   </button>
                 ))}
               </div>
               <div className="grid gap-3">
                 <TextInput label="API Key" type="password" value={apiKeyInput} onChange={setApiKeyInput} placeholder="sk-... / ark-..." />
                 <TextInput label="Base URL" value={baseURLInput} onChange={setBaseURLInput} placeholder="https://ark.cn-beijing.volces.com/api/v3" />
-                <TextInput label={selectedPreset === "volc-doubao" ? "接入点 ID" : "模型名称"} value={modelInput} onChange={setModelInput} placeholder={selectedPreset === "volc-doubao" ? "ep-xxxxxxxx" : "gpt-4o-mini"} />
+                <TextInput label={selectedPreset === "volc-doubao" ? t("settings.model.endpoint") : t("settings.model.name")} value={modelInput} onChange={setModelInput} placeholder={selectedPreset === "volc-doubao" ? "ep-xxxxxxxx" : "gpt-4o-mini"} />
               </div>
               <div className="mt-4 flex items-center gap-3">
                 <button type="button" disabled={saving} onClick={handleSaveModel} className="rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-55" style={{ background: "var(--accent)" }}>
-                  {saving ? "保存中..." : "保存模型配置"}
+                  {saving ? t("settings.model.saving") : t("settings.model.save")}
                 </button>
                 {saveMsg ? <span className="text-xs" style={{ color: saveMsg.ok ? "var(--success)" : "var(--danger)" }}>{saveMsg.text}</span> : null}
               </div>
@@ -510,26 +520,26 @@ export function SettingsView() {
 
         {tab === "deployment" ? (
           <div className="max-w-5xl">
-            <Header title="部署设置" desc="查看 AgentHub 默认服务器与个人部署目标状态。" />
+            <Header title={t("settings.deployment.title")} desc={t("settings.deployment.desc")} />
             <Panel>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{defaultTarget?.name || "AgentHub 默认服务器"}</h2>
+                    <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{defaultTarget?.name || t("settings.deployment.defaultServer")}</h2>
                     <StatusPill tone={defaultTargetTone}>
                       {defaultTargetLabel}
                     </StatusPill>
                   </div>
                   <p className="mt-2 text-xs leading-5" style={{ color: "var(--fg-secondary)" }}>
-                    {deploymentLoading ? "正在读取默认服务器配置..." : deploymentError ? deploymentError : defaultTarget?.host ? `${defaultTarget.username}@${defaultTarget.host}:${defaultTarget.port}` : "未读取到服务器地址"}
+                    {deploymentLoading ? t("settings.deployment.loading") : deploymentError ? deploymentError : defaultTarget?.host ? `${defaultTarget.username}@${defaultTarget.host}:${defaultTarget.port}` : t("settings.deployment.noHost")}
                   </p>
                   <p className="mt-1 break-all text-xs" style={{ color: "var(--fg-tertiary)" }}>
-                    {defaultTarget?.publicUrl || "暂无公开访问模板"}
+                    {defaultTarget?.publicUrl || t("settings.deployment.noPublicUrl")}
                   </p>
                 </div>
                 <div className="flex gap-2">
                   <button type="button" onClick={refreshDeploymentStatus} className="rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--border)", color: "var(--fg-primary)" }}>
-                    刷新
+                    {t("common.refresh")}
                   </button>
                   <button
                     type="button"
@@ -540,15 +550,15 @@ export function SettingsView() {
                     className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white"
                     style={{ background: "var(--accent)" }}
                   >
-                    打开部署面板
+                    {t("settings.deployment.openPanel")}
                   </button>
                 </div>
               </div>
               {!deploymentLoading && !defaultTargetConfigured && defaultTarget?.missingEnv?.length ? (
                 <div className="mt-4 rounded-lg p-3" style={{ background: "var(--warning-subtle)", border: "1px solid var(--warning-border)" }}>
-                  <p className="text-xs font-semibold" style={{ color: "var(--warning)" }}>缺少环境变量：{defaultTarget.missingEnv.join(" / ")}</p>
+                  <p className="text-xs font-semibold" style={{ color: "var(--warning)" }}>{t("settings.deployment.missingEnv")}：{defaultTarget.missingEnv.join(" / ")}</p>
                   <button type="button" onClick={copyDeploymentTemplate} className="mt-2 rounded-lg px-3 py-1.5 text-xs font-semibold" style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}>
-                    {copied ? "已复制" : "复制环境变量模板"}
+                    {copied ? t("settings.deployment.copied") : t("settings.deployment.copyTemplate")}
                   </button>
                 </div>
               ) : null}
@@ -566,8 +576,8 @@ export function SettingsView() {
               ))}
               {deploymentStatus && deploymentStatus.targets.length === 0 ? (
                 <Panel>
-                  <p className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>暂无个人服务器目标</p>
-                  <p className="mt-1 text-xs leading-5" style={{ color: "var(--fg-tertiary)" }}>当前会优先使用 AgentHub 默认服务器，适合答辩演示和轻量静态产物发布。</p>
+                  <p className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{t("settings.deployment.noPersonal")}</p>
+                  <p className="mt-1 text-xs leading-5" style={{ color: "var(--fg-tertiary)" }}>{t("settings.deployment.noPersonalHint")}</p>
                 </Panel>
               ) : null}
             </div>
@@ -576,8 +586,9 @@ export function SettingsView() {
 
         {tab === "team" ? (
           <TeamSettingsPanel
-            userName={user?.name || "当前用户"}
-            userEmail={user?.email || "未登录"}
+            t={t}
+            userName={user?.name || t("settings.team.currentUser")}
+            userEmail={user?.email || t("settings.team.notLoggedIn")}
             contacts={contacts}
             pendingInvites={pendingInvites}
             selectedContactEmail={selectedContactEmail}
@@ -599,7 +610,7 @@ export function SettingsView() {
             onInviteContact={() => {
               const contact = contacts.find((item) => item.email === selectedContactEmail);
               if (!contact) {
-                setInviteMsg({ ok: false, text: "请先选择联系人" });
+                setInviteMsg({ ok: false, text: t("settings.team.selectFirst") });
                 return;
               }
               handleInviteMember(contact.email, contact.name);
@@ -610,55 +621,13 @@ export function SettingsView() {
           />
         ) : null}
 
-        {false ? (
-          <div className="max-w-5xl">
-            <Header title="团队管理" desc="管理本地待确认邀请，用于演示多人协作流程。" />
-            <Panel>
-              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-                <MemberCard name={user?.name || "当前用户"} email={user?.email || "未登录"} role="所有者" />
-                <MemberCard name="PMO 主 Agent" email="system@agenthub.local" role="系统智能体" />
-              </div>
-              <div className="mt-4 flex flex-wrap items-center gap-2">
-                <input
-                  value={inviteEmail}
-                  onChange={(event) => {
-                    setInviteEmail(event.target.value);
-                    setInviteMsg(null);
-                  }}
-                  placeholder="member@example.com"
-                  className="h-9 min-w-[240px] flex-1 rounded-lg px-3 text-sm outline-none"
-                  style={{ border: "1px solid var(--border)", background: "var(--surface-low)", color: "var(--fg-primary)" }}
-                />
-                <button type="button" onClick={() => handleInviteMember()} className="rounded-lg px-4 py-2 text-sm font-semibold text-white" style={{ background: "var(--accent)" }}>
-                  添加邀请
-                </button>
-                {inviteMsg ? <span className="text-xs" style={{ color: inviteMsg?.ok ? "var(--success)" : "var(--danger)" }}>{inviteMsg?.text}</span> : null}
-              </div>
-            </Panel>
-            <Panel className="mt-3">
-              <h2 className="mb-3 text-sm font-bold" style={{ color: "var(--fg-primary)" }}>待确认邀请</h2>
-              <div className="space-y-2">
-                {pendingInvites.length > 0 ? pendingInvites.map((invite) => (
-                  <div key={invite.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: "var(--surface-low)" }}>
-                    <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--fg-primary)" }}>{invite.email}</span>
-                    <StatusPill tone="warning">待确认</StatusPill>
-                    <button type="button" onClick={() => removePendingTeamInvite(invite.id)} className="rounded-lg px-2 py-1 text-xs font-semibold" style={{ color: "var(--danger)" }}>
-                      移除
-                    </button>
-                  </div>
-                )) : <p className="text-sm" style={{ color: "var(--fg-tertiary)" }}>暂无待确认邀请</p>}
-              </div>
-            </Panel>
-          </div>
-        ) : null}
-
         {tab === "export" ? (
           <div className="max-w-5xl">
-            <Header title="数据导出" desc="导出会话、智能体和设置快照，方便备份或答辩展示。" />
+            <Header title={t("settings.export.title")} desc={t("settings.export.desc")} />
             <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
-              <ExportCard title="工作区快照" desc="会话列表、消息记录、任务状态。" format="JSON" onClick={() => exportBundle("workspace")} />
-              <ExportCard title="智能体配置" desc="自建智能体名称、能力标签和配置。" format="JSON" onClick={() => exportBundle("agents")} />
-              <ExportCard title="系统设置" desc="语言、主题、模型和部署状态。" format="JSON" onClick={() => exportBundle("settings")} />
+              <ExportCard title={t("settings.export.workspace")} desc={t("settings.export.workspaceDesc")} format="JSON" actionLabel={t("common.export")} onClick={() => exportBundle("workspace")} />
+              <ExportCard title={t("settings.export.agents")} desc={t("settings.export.agentsDesc")} format="JSON" actionLabel={t("common.export")} onClick={() => exportBundle("agents")} />
+              <ExportCard title={t("settings.export.settings")} desc={t("settings.export.settingsDesc")} format="JSON" actionLabel={t("common.export")} onClick={() => exportBundle("settings")} />
             </div>
           </div>
         ) : null}
@@ -676,17 +645,27 @@ function Header({ title, desc }: { title: string; desc: string }) {
   );
 }
 
-function ReadinessPanel({ items, checking, onCheck }: { items: ReadinessItem[]; checking: boolean; onCheck: () => void }) {
+function ReadinessPanel({
+  items,
+  checking,
+  onCheck,
+  t,
+}: {
+  items: ReadinessItem[];
+  checking: boolean;
+  onCheck: () => void;
+  t: (key: string) => string;
+}) {
   const readyCount = items.filter((item) => item.tone === "success").length;
   return (
     <Panel className="mt-3">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>结题演示自检</h2>
-          <p className="mt-1 text-xs leading-5" style={{ color: "var(--fg-tertiary)" }}>答辩前快速确认核心链路，不展示任何密钥内容。</p>
+          <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{t("settings.readiness.title")}</h2>
+          <p className="mt-1 text-xs leading-5" style={{ color: "var(--fg-tertiary)" }}>{t("settings.readiness.desc")}</p>
         </div>
         <div className="flex items-center gap-2">
-          <StatusPill tone={readyCount === items.length ? "success" : "warning"}>{readyCount}/{items.length} 就绪</StatusPill>
+          <StatusPill tone={readyCount === items.length ? "success" : "warning"}>{readyCount}/{items.length} {t("settings.readiness.ready")}</StatusPill>
           <button
             type="button"
             disabled={checking}
@@ -694,7 +673,7 @@ function ReadinessPanel({ items, checking, onCheck }: { items: ReadinessItem[]; 
             className="rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-55"
             style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}
           >
-            {checking ? "检查中..." : "重新检查"}
+            {checking ? t("settings.readiness.checking") : t("settings.readiness.recheck")}
           </button>
         </div>
       </div>
@@ -703,7 +682,7 @@ function ReadinessPanel({ items, checking, onCheck }: { items: ReadinessItem[]; 
           <div key={item.label} className="rounded-lg p-3" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
             <div className="mb-1 flex items-center justify-between gap-2">
               <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{item.label}</p>
-              <StatusPill tone={item.tone}>{item.tone === "success" ? "正常" : item.tone === "warning" ? "需确认" : "检查中"}</StatusPill>
+              <StatusPill tone={item.tone}>{item.tone === "success" ? t("settings.readiness.ok") : item.tone === "warning" ? t("settings.readiness.warn") : t("settings.readiness.pending")}</StatusPill>
             </div>
             <p className="truncate text-xs" title={item.detail} style={{ color: "var(--fg-tertiary)" }}>{item.detail}</p>
           </div>
@@ -714,6 +693,7 @@ function ReadinessPanel({ items, checking, onCheck }: { items: ReadinessItem[]; 
 }
 
 function TeamSettingsPanel({
+  t,
   userName,
   userEmail,
   contacts,
@@ -730,6 +710,7 @@ function TeamSettingsPanel({
   onOpenContacts,
   onRemoveInvite,
 }: {
+  t: (key: string) => string;
   userName: string;
   userEmail: string;
   contacts: ContactEntry[];
@@ -748,16 +729,16 @@ function TeamSettingsPanel({
 }) {
   return (
     <div className="max-w-5xl">
-      <Header title="团队管理" desc="从通讯录选择成员或手动输入邮箱，邀请会同步沉淀到通讯录。" />
+      <Header title={t("settings.team.title")} desc={t("settings.team.desc")} />
       <Panel>
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-          <MemberCard name={userName} email={userEmail} role="所有者" />
-          <MemberCard name="PMO 主 Agent" email="system@agenthub.local" role="系统智能体" />
+          <MemberCard name={userName} email={userEmail} role={t("settings.team.owner")} />
+          <MemberCard name={t("settings.team.pmoAgent")} email="system@agenthub.local" role={t("settings.team.systemAgent")} />
         </div>
 
         <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))" }}>
           <div className="rounded-lg p-3" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
-            <p className="mb-2 text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>从通讯录邀请</p>
+            <p className="mb-2 text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>{t("settings.team.fromContacts")}</p>
             <div className="flex gap-2">
               <select
                 value={selectedContactEmail}
@@ -765,13 +746,13 @@ function TeamSettingsPanel({
                 className="h-9 min-w-0 flex-1 rounded-lg px-3 text-sm outline-none"
                 style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}
               >
-                <option value="">选择联系人</option>
+                <option value="">{t("settings.team.selectContact")}</option>
                 {contacts.map((contact) => (
                   <option key={contact.id} value={contact.email}>{contact.name} · {contact.email}</option>
                 ))}
               </select>
               <button type="button" onClick={onInviteContact} className="rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ background: "var(--accent)" }}>
-                邀请
+                {t("settings.team.invite")}
               </button>
             </div>
             <button
@@ -780,17 +761,17 @@ function TeamSettingsPanel({
               className="mt-2 rounded-lg px-3 py-1.5 text-xs font-semibold"
               style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}
             >
-              打开通讯录
+              {t("settings.team.openContacts")}
             </button>
           </div>
 
           <div className="rounded-lg p-3" style={{ background: "var(--surface-low)", border: "1px solid var(--border)" }}>
-            <p className="mb-2 text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>手动邀请</p>
+            <p className="mb-2 text-xs font-semibold" style={{ color: "var(--fg-secondary)" }}>{t("settings.team.manualInvite")}</p>
             <div className="grid gap-2">
               <input
                 value={inviteName}
                 onChange={(event) => onInviteNameChange(event.target.value)}
-                placeholder="姓名，如 张三"
+                placeholder={t("settings.team.namePlaceholder")}
                 className="h-9 rounded-lg px-3 text-sm outline-none"
                 style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}
               />
@@ -803,7 +784,7 @@ function TeamSettingsPanel({
                   style={{ border: "1px solid var(--border)", background: "var(--surface-white)", color: "var(--fg-primary)" }}
                 />
                 <button type="button" onClick={onInviteManual} className="rounded-lg px-3 py-2 text-xs font-semibold text-white" style={{ background: "var(--accent)" }}>
-                  添加邀请
+                  {t("settings.team.addInvite")}
                 </button>
               </div>
             </div>
@@ -814,19 +795,19 @@ function TeamSettingsPanel({
       </Panel>
 
       <Panel className="mt-3">
-        <h2 className="mb-3 text-sm font-bold" style={{ color: "var(--fg-primary)" }}>待确认邀请</h2>
+        <h2 className="mb-3 text-sm font-bold" style={{ color: "var(--fg-primary)" }}>{t("settings.team.pending")}</h2>
         <div className="space-y-2">
           {pendingInvites.length > 0 ? pendingInvites.map((invite) => (
             <div key={invite.id} className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: "var(--surface-low)" }}>
               <span className="min-w-0 flex-1 truncate text-sm" style={{ color: "var(--fg-primary)" }}>
                 {invite.name ? `${invite.name} · ` : ""}{invite.email}
               </span>
-              <StatusPill tone="warning">待确认</StatusPill>
+              <StatusPill tone="warning">{t("settings.team.pendingBadge")}</StatusPill>
               <button type="button" onClick={() => onRemoveInvite(invite.id)} className="rounded-lg px-2 py-1 text-xs font-semibold" style={{ color: "var(--danger)" }}>
-                移除
+                {t("settings.team.remove")}
               </button>
             </div>
-          )) : <p className="text-sm" style={{ color: "var(--fg-tertiary)" }}>暂无待确认邀请</p>}
+          )) : <p className="text-sm" style={{ color: "var(--fg-tertiary)" }}>{t("settings.team.noPending")}</p>}
         </div>
       </Panel>
     </div>
@@ -907,7 +888,19 @@ function MemberCard({ name, email, role }: { name: string; email: string; role: 
   );
 }
 
-function ExportCard({ title, desc, format, onClick }: { title: string; desc: string; format: string; onClick: () => void }) {
+function ExportCard({
+  title,
+  desc,
+  format,
+  actionLabel,
+  onClick,
+}: {
+  title: string;
+  desc: string;
+  format: string;
+  actionLabel: string;
+  onClick: () => void;
+}) {
   return (
     <Panel>
       <div className="flex items-start justify-between gap-3">
@@ -918,7 +911,7 @@ function ExportCard({ title, desc, format, onClick }: { title: string; desc: str
         <StatusPill tone="neutral">{format}</StatusPill>
       </div>
       <button type="button" onClick={onClick} className="mt-4 rounded-lg px-3 py-2 text-xs font-semibold" style={{ border: "1px solid var(--accent-border)", background: "var(--accent-subtle)", color: "var(--accent)" }}>
-        导出
+        {actionLabel}
       </button>
     </Panel>
   );

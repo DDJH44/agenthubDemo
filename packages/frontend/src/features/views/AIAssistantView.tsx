@@ -1174,7 +1174,7 @@ export function AIAssistantView() {
       {/* Main Chat Area */}
       <div className="flex flex-col flex-1 min-w-0" style={{ display: isFullscreen ? "none" : undefined }}>
         {/* Header */}
-        <div className="shrink-0 px-4 py-3" style={{ borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,0.94)" }}>
+        <div className="shrink-0 px-4 py-3" style={{ borderBottom: "1px solid var(--border)", background: "var(--surface-glass-strong)" }}>
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
               <AssistantAvatar size={38} />
@@ -1233,12 +1233,12 @@ export function AIAssistantView() {
                 transition={{ duration: 0.35 }}
                 className="grid w-full max-w-5xl gap-4 lg:grid-cols-[1.15fr_0.85fr]"
               >
-                <section className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.98)", border: "1px solid rgba(210, 218, 234, 0.95)", boxShadow: "0 16px 46px rgba(39, 49, 84, 0.08)" }}>
+                <section className="rounded-xl p-4" style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-md)" }}>
                   <div className="mb-4 flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs font-semibold" style={{ color: "var(--accent)" }}>工作助理</p>
-                      <h2 className="mt-1 text-xl font-bold" style={{ color: "#202124" }}>从一个清晰任务开始</h2>
-                      <p className="mt-2 max-w-xl text-sm" style={{ color: "#5f6878", lineHeight: 1.7 }}>
+                      <h2 className="mt-1 text-xl font-bold" style={{ color: "var(--fg-primary)" }}>从一个清晰任务开始</h2>
+                      <p className="mt-2 max-w-xl text-sm" style={{ color: "var(--fg-secondary)", lineHeight: 1.7 }}>
                         适合临时问答、文档草稿、代码计划和产品体验审查。文档型回复会自动保存到右侧文件面板。
                       </p>
                     </div>
@@ -1246,7 +1246,7 @@ export function AIAssistantView() {
                   </div>
                 </section>
 
-                <aside className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.78)", border: "1px solid rgba(210, 218, 234, 0.88)" }}>
+                <aside className="rounded-xl p-4" style={{ background: "var(--surface-glass)", border: "1px solid var(--border)" }}>
                   <div className="mb-4 flex items-center justify-between gap-2">
                     <div>
                       <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>助手能力</p>
@@ -1330,9 +1330,9 @@ export function AIAssistantView() {
                         <div
                           className={`rounded-xl px-4 py-3 ${msg.role === "user" ? "text-right" : ""}`}
                           style={{
-                            background: msg.role === "user" ? "#eef5ff" : "var(--surface-white)",
-                            color: msg.role === "user" ? "#173a7a" : "var(--fg-primary)",
-                            border: `1px solid ${msg.role === "user" ? "rgba(68, 86, 223, 0.10)" : "var(--border)"}`,
+                            background: msg.role === "user" ? "var(--accent-subtle)" : "var(--surface-white)",
+                            color: msg.role === "user" ? "var(--fg-primary)" : "var(--fg-primary)",
+                            border: `1px solid ${msg.role === "user" ? "var(--accent-border)" : "var(--border)"}`,
                           }}
                         >
                           {msg.role === "user" ? (
@@ -1387,7 +1387,7 @@ export function AIAssistantView() {
         </div>
 
         {/* Input */}
-        <div className="shrink-0 px-4 pb-4 pt-2" style={{ background: "linear-gradient(to top, var(--surface-white), rgba(255,255,255,0.82))" }}>
+        <div className="shrink-0 px-4 pb-4 pt-2" style={{ background: "linear-gradient(to top, var(--surface-white), var(--surface-glass))" }}>
           <div className="mx-auto max-w-3xl">
             <div
               className="rounded-xl px-3 py-2 transition-all"
