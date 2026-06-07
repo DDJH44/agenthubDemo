@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { Message } from "@agenthub/shared";
 import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
@@ -48,6 +48,28 @@ function formatDate(ts: number): string {
   if (date.toDateString() === today.toDateString()) return "今天";
   if (date.toDateString() === yesterday.toDateString()) return "昨天";
   return `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function normalizeSelectionText(text: string) {
+  return text
+    .replace(/\r\n/g, "\n")
+    .replace(/\u00a0/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, 1800);
+}
+
+function selectionFingerprint(text: string) {
+  let hash = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) - hash + text.charCodeAt(index)) | 0;
+  }
+  return Math.abs(hash).toString(36);
 }
 
 function getSenderMeta(message: Message): SenderMeta {
@@ -790,6 +812,7 @@ const MessageBubble = memo(function MessageBubble({
 
           <div
             className="overflow-hidden rounded-lg"
+            data-context-message-id={message.id}
             style={{
               background: isUser ? "#eef5ff" : "rgba(255, 255, 255, 0.82)",
               color: isUser ? "#173a7a" : "var(--fg-primary)",
@@ -960,6 +983,61 @@ function AgentTypingIndicator() {
   );
 }
 
+interface SelectionContextTarget {
+  messageId: string;
+  text: string;
+  x: number;
+  y: number;
+  added?: boolean;
+}
+
+function SelectionContextToolbar({
+  target,
+  onAdd,
+}: {
+  target: SelectionContextTarget | null;
+  onAdd: () => void;
+}) {
+  if (!target) return null;
+
+  return (
+    <div
+      className="fixed z-[70] -translate-x-1/2 select-none"
+      style={{ left: target.x, top: target.y }}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onMouseUp={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <button
+        type="button"
+        onClick={onAdd}
+        className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition hover:-translate-y-0.5"
+        style={{
+          color: target.added ? "var(--success)" : "var(--fg-primary)",
+          background: "var(--surface-white)",
+          border: `1px solid ${target.added ? "rgba(24, 128, 56, 0.28)" : "var(--border)"}`,
+          boxShadow: "0 12px 30px rgba(34, 48, 84, 0.18)",
+        }}
+      >
+        {target.added ? (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M20 6 9 17l-5-5" />
+          </svg>
+        ) : (
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 5v14" />
+            <path d="M5 12h14" />
+          </svg>
+        )}
+        {target.added ? "已添加" : "添加到对话"}
+      </button>
+    </div>
+  );
+}
+
 export const MessageList = memo(function MessageList({
   messages,
   isStreaming,
@@ -968,7 +1046,10 @@ export const MessageList = memo(function MessageList({
   onUndo,
   onStop,
 }: MessageListProps) {
+  const listRef = useRef<HTMLDivElement>(null);
+  const [selectionTarget, setSelectionTarget] = useState<SelectionContextTarget | null>(null);
   const { messageFilter, messageSearchQuery, activeConversationId, streamingMessages } = useChatStore();
+  const addContextReference = useChatStore((state) => state.addContextReference);
   const activeStreamingMessages = activeConversationId ? (streamingMessages[activeConversationId] ?? {}) : {};
   const hasInlineStreamingMessages = Object.keys(activeStreamingMessages).length > 0;
   const hasAgentOutput = messages.some((message) => message.type === "agent_message");
@@ -988,8 +1069,97 @@ export const MessageList = memo(function MessageList({
       });
   }, [messageFilter, messageSearchQuery, messages]);
 
+  const filteredById = useMemo(() => new Map(filtered.map((message) => [message.id, message])), [filtered]);
+
+  const updateSelectionTarget = useCallback(() => {
+    const selection = window.getSelection();
+    const root = listRef.current;
+    if (!selection || !root || selection.isCollapsed || selection.rangeCount === 0) {
+      setSelectionTarget(null);
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const commonNode = range.commonAncestorContainer;
+    const commonElement = commonNode.nodeType === Node.TEXT_NODE ? commonNode.parentElement : commonNode as Element | null;
+    const messageElement = commonElement?.closest<HTMLElement>("[data-context-message-id]");
+    if (!messageElement || !root.contains(messageElement)) {
+      setSelectionTarget(null);
+      return;
+    }
+
+    const messageId = messageElement.dataset.contextMessageId;
+    if (!messageId || !filteredById.has(messageId)) {
+      setSelectionTarget(null);
+      return;
+    }
+
+    const selectedText = normalizeSelectionText(selection.toString());
+    if (selectedText.length < 2) {
+      setSelectionTarget(null);
+      return;
+    }
+
+    const rects = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+    const rect = rects[0] ?? range.getBoundingClientRect();
+    if (!rect || rect.width === 0 || rect.height === 0) {
+      setSelectionTarget(null);
+      return;
+    }
+
+    const estimatedWidth = 112;
+    const x = clamp(rect.left + rect.width / 2, estimatedWidth / 2 + 12, window.innerWidth - estimatedWidth / 2 - 12);
+    const y = rect.top > 48 ? rect.top - 42 : rect.bottom + 10;
+    setSelectionTarget({ messageId, text: selectedText, x, y });
+  }, [filteredById]);
+
+  const handleSelectionEvent = useCallback(() => {
+    window.setTimeout(updateSelectionTarget, 0);
+  }, [updateSelectionTarget]);
+
+  const handleAddSelectionToContext = useCallback(() => {
+    if (!selectionTarget) return;
+    const message = filteredById.get(selectionTarget.messageId);
+    if (!message) return;
+    const conversationId = message.conversationId || activeConversationId;
+    if (!conversationId) return;
+
+    const meta = getSenderMeta(message);
+    const fingerprint = selectionFingerprint(selectionTarget.text);
+    addContextReference(conversationId, {
+      id: `selection-${message.id}-${fingerprint}`,
+      messageId: `${message.id}:selection:${fingerprint}`,
+      sourceType: "quote",
+      sender: meta.label,
+      senderId: message.senderId,
+      title: `选区 · ${meta.label} · ${formatTime(message.timestamp)}`,
+      content: selectionTarget.text,
+    });
+    setSelectionTarget((current) => current ? { ...current, added: true } : current);
+    window.setTimeout(() => {
+      window.getSelection()?.removeAllRanges();
+      setSelectionTarget(null);
+    }, 850);
+  }, [activeConversationId, addContextReference, filteredById, selectionTarget]);
+
+  useEffect(() => {
+    const hide = () => setSelectionTarget(null);
+    const handleSelectionChange = () => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) setSelectionTarget(null);
+    };
+    document.addEventListener("scroll", hide, true);
+    document.addEventListener("selectionchange", handleSelectionChange);
+    window.addEventListener("resize", hide);
+    return () => {
+      document.removeEventListener("scroll", hide, true);
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      window.removeEventListener("resize", hide);
+    };
+  }, []);
+
   return (
-    <div className="flex flex-col pb-3">
+    <div ref={listRef} className="flex flex-col pb-3" onMouseUp={handleSelectionEvent} onKeyUp={handleSelectionEvent}>
       {filtered.map((message, index) => (
         <MessageBubble
           key={message.id}
@@ -1021,6 +1191,7 @@ export const MessageList = memo(function MessageList({
           </div>
         </div>
       )}
+      <SelectionContextToolbar target={selectionTarget} onAdd={handleAddSelectionToContext} />
     </div>
   );
 });
