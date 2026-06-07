@@ -72,6 +72,14 @@ function selectionFingerprint(text: string) {
   return Math.abs(hash).toString(36);
 }
 
+function quoteForComposer(text: string) {
+  return text
+    .split("\n")
+    .map((line) => `> ${line}`)
+    .join("\n")
+    .slice(0, 1400);
+}
+
 function getSenderMeta(message: Message): SenderMeta {
   if (message.type === "user_message" || message.sender === "user") {
     return { label: "我", badge: "我", role: "用户", color: "var(--accent)" };
@@ -999,6 +1007,11 @@ function SelectionContextToolbar({
   onAdd: () => void;
 }) {
   if (!target) return null;
+  const activate = (event: { preventDefault: () => void; stopPropagation: () => void }) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onAdd();
+  };
 
   return (
     <div
@@ -1013,7 +1026,11 @@ function SelectionContextToolbar({
     >
       <button
         type="button"
-        onClick={onAdd}
+        onPointerDown={activate}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+        }}
         className="inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold transition hover:-translate-y-0.5"
         style={{
           color: target.added ? "var(--success)" : "var(--fg-primary)",
@@ -1126,6 +1143,7 @@ export const MessageList = memo(function MessageList({
 
     const meta = getSenderMeta(message);
     const fingerprint = selectionFingerprint(selectionTarget.text);
+    const composerQuote = `引用 ${meta.label}：\n${quoteForComposer(selectionTarget.text)}`;
     addContextReference(conversationId, {
       id: `selection-${message.id}-${fingerprint}`,
       messageId: `${message.id}:selection:${fingerprint}`,
@@ -1135,6 +1153,12 @@ export const MessageList = memo(function MessageList({
       title: `选区 · ${meta.label} · ${formatTime(message.timestamp)}`,
       content: selectionTarget.text,
     });
+    window.dispatchEvent(new CustomEvent("chat:compose", {
+      detail: {
+        mode: "append",
+        text: composerQuote,
+      },
+    }));
     setSelectionTarget((current) => current ? { ...current, added: true } : current);
     window.setTimeout(() => {
       window.getSelection()?.removeAllRanges();
