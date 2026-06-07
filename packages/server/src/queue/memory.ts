@@ -150,6 +150,109 @@ function hasInlineCodeArtifact(result: string) {
   return /```[^\r\n`]*[ \t]*(?:\r?\n)[\s\S]*?```|<!doctype html|<html[\s>]/i.test(result);
 }
 
+type DeliverableKind = "document" | "slides";
+
+function stripMentions(text: string) {
+  return text
+    .replace(/@\S+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function detectDeliverableKind(task: string): DeliverableKind | null {
+  const normalized = stripMentions(task).replace(/\s+/g, "");
+  const complaintPatterns = [
+    /为什么.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+    /为何.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+    /不是.*(要|想).*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+    /不要.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+  ];
+  if (complaintPatterns.some((pattern) => pattern.test(normalized))) return null;
+
+  if (/(PPT|PPTX|幻灯片|演示文稿|演示稿|汇报稿|路演稿)/i.test(normalized)) return "slides";
+
+  const deliverable = "(文档|报告|手册|方案|指南|PRD|需求|设计文档|技术文档|接口文档|用户手册|白皮书|材料|说明书|[\\u4e00-\\u9fa5A-Za-z0-9]{1,12}(报告|文档|方案|手册|指南))";
+  const patterns = [
+    new RegExp(`生成(一份|一个|一篇)?${deliverable}`),
+    new RegExp(`写(一份|一个|一篇)?${deliverable}`),
+    new RegExp(`整理(一份)?${deliverable}`),
+    new RegExp(`创建(一份)?${deliverable}`),
+    new RegExp(`帮我(写|生成|整理|做)(一个|一份|一篇)?${deliverable}`),
+    new RegExp(`(起草|拟定|编写)(一份)?${deliverable}`),
+  ];
+  return patterns.some((pattern) => pattern.test(normalized)) ? "document" : null;
+}
+
+function firstHeading(markdown: string) {
+  const heading = markdown.match(/^#{1,3}\s+(.+)$/m);
+  return heading?.[1]?.trim();
+}
+
+function cleanTitle(text: string, fallback: string) {
+  const source = stripMentions(text)
+    .replace(/^(请|帮我|麻烦|需要|生成|写|整理|创建|做|起草|拟定|编写)+/g, "")
+    .replace(/[：:，,。.!！?？]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (source || fallback).slice(0, 28);
+}
+
+function filenameBase(title: string, fallback: string) {
+  const base = title
+    .replace(/[\\/:*?"<>|`~#%&{}$!@+'=]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48);
+  return base || fallback;
+}
+
+function ensureDocumentMarkdown(summary: string, task: string) {
+  const trimmed = summary.trim();
+  const title = firstHeading(trimmed) ?? cleanTitle(task, "AI 生成文档");
+  if (/^#{1,2}\s+/m.test(trimmed)) return { title, content: trimmed };
+  return {
+    title,
+    content: `# ${title}\n\n${trimmed}`,
+  };
+}
+
+function extractBulletCandidates(markdown: string) {
+  const lines = markdown
+    .replace(/```[\s\S]*?```/g, "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const bullets = lines
+    .map((line) => line.replace(/^[-*]\s+/, "").replace(/^\d+[.)]\s+/, "").replace(/^#{1,4}\s+/, "").trim())
+    .filter((line) => line.length >= 8 && line.length <= 120);
+  return [...new Set(bullets)].slice(0, 12);
+}
+
+function buildSlidesMarkdown(summary: string, task: string) {
+  const trimmed = summary.trim();
+  const title = firstHeading(trimmed) ?? cleanTitle(task, "AI 生成演示稿");
+  if (/^---+$/m.test(trimmed) || (trimmed.match(/^#{1,2}\s+/gm) ?? []).length >= 3) {
+    return { title, content: trimmed };
+  }
+
+  const bullets = extractBulletCandidates(trimmed);
+  const groups = [
+    bullets.slice(0, 4),
+    bullets.slice(4, 8),
+    bullets.slice(8, 12),
+  ].filter((items) => items.length > 0);
+
+  const bodySections = groups.length > 0
+    ? groups.map((items, index) => `## ${index === 0 ? "核心内容" : index === 1 ? "执行方案" : "补充说明"}\n\n${items.map((item) => `- ${item}`).join("\n")}`)
+    : [`## 核心内容\n\n${trimmed}`];
+
+  return {
+    title,
+    content: [`# ${title}\n\nAgentHub 多 Agent 协作生成`, ...bodySections, "## 下一步\n\n- 根据反馈继续补充细节\n- 在工作台中预览、编辑并导出 PPTX"].join("\n\n---\n\n"),
+  };
+}
+
 export class MemoryQueue implements IJobQueue {
   private handlers: Array<(result: JobResult) => void> = [];
   private statuses = new Map<string, "pending" | "running" | "completed" | "failed">();
@@ -389,6 +492,7 @@ export class MemoryQueue implements IJobQueue {
         case "final": {
           const final = msg;
           const stepResults = (final.stepResults as Array<{ id: string; task: string; result: string; toolUsed?: string }>) ?? [];
+          const publishedArtifactTypes = new Set<Artifact["type"]>();
 
           for (const sr of stepResults) {
             emit({
@@ -416,6 +520,7 @@ export class MemoryQueue implements IJobQueue {
               metadata: parseArtifactMetadata(storedArtifact.metadata, artifact.metadata),
               createdAt: storedArtifact.createdAt.getTime(),
             };
+            publishedArtifactTypes.add(persistedArtifact.type);
 
             emit({ type: "artifact:created", artifact: persistedArtifact });
             if (!payload.conversationId) return;
@@ -517,6 +622,34 @@ export class MemoryQueue implements IJobQueue {
               createdAt: Date.now(),
             });
             codeIdx++;
+          }
+
+          const summaryTextForDeliverable = String(final.summary || "").trim();
+          const deliverableKind = detectDeliverableKind(payload.task);
+          if (summaryTextForDeliverable && deliverableKind === "document" && !publishedArtifactTypes.has("document")) {
+            const document = ensureDocumentMarkdown(summaryTextForDeliverable, payload.task);
+            await publishArtifactMessage({
+              id: `artifact-${jobId}-document`,
+              jobId,
+              type: "document",
+              filename: `${filenameBase(document.title, "agenthub-document")}.md`,
+              content: document.content,
+              metadata: { autoDeliverable: true, deliverableKind: "document" },
+              createdAt: Date.now(),
+            });
+          }
+
+          if (summaryTextForDeliverable && deliverableKind === "slides" && !publishedArtifactTypes.has("slides")) {
+            const slides = buildSlidesMarkdown(summaryTextForDeliverable, payload.task);
+            await publishArtifactMessage({
+              id: `artifact-${jobId}-slides`,
+              jobId,
+              type: "slides",
+              filename: `${filenameBase(slides.title, "agenthub-slides")}.slides.md`,
+              content: slides.content,
+              metadata: { autoDeliverable: true, deliverableKind: "slides" },
+              createdAt: Date.now(),
+            });
           }
 
           steps.push(...stepResults);
