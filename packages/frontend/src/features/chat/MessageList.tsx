@@ -2,11 +2,15 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { Message } from "@agenthub/shared";
+import type { Conversation, ConversationAgentStatus, Message, UserAgent } from "@agenthub/shared";
 import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
 import { createId } from "@/lib/id";
+import { getGlobalSend } from "@/lib/ws-client";
 import { useChatStore } from "@/stores/chat-store";
+import { useConversationAgentStore } from "@/stores/conversation-agent-store";
+import { useUserAgentStore } from "@/stores/user-agent-store";
 import { ArtifactCard, type ArtifactCardType } from "./ArtifactCard";
+import { getAgentMeta, getConversationAgents } from "./agent-directory";
 import { getCodeFilename, inferCodeLanguage, splitMessageContent } from "./message-content-parser";
 
 interface SenderMeta {
@@ -34,6 +38,7 @@ const AGENT_META: Record<string, SenderMeta> = {
 };
 
 const ARTIFACT_TYPES = new Set<ArtifactCardType>(["code", "html", "json", "markdown", "document", "slides", "preview_url", "deploy_url", "diff"]);
+const EMPTY_CONVERSATION_AGENT_STATUSES: ConversationAgentStatus[] = [];
 
 function formatTime(ts: number): string {
   const date = new Date(ts);
@@ -459,6 +464,70 @@ function ActionButton({
   );
 }
 
+interface MessageHandoffAgent {
+  agentName: string;
+  label: string;
+  badge: string;
+  color: string;
+  enabled: boolean;
+}
+
+function normalizeAgentOptionKey(value: string) {
+  return value.toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function compactAgentBadge(value: string) {
+  const compact = value.replace(/\s+/g, "");
+  if (!compact) return "AI";
+  if (/^[A-Za-z0-9]+$/.test(compact)) return compact.slice(0, 3).toUpperCase();
+  return compact.slice(0, 2).toUpperCase();
+}
+
+function mentionTargetForAgent(agentName: string, metaId: string) {
+  if (metaId === "pmo" || agentName.trim() === "__main__") return "planner";
+  return agentName;
+}
+
+function buildHandoffAgents(
+  conversation: Conversation | null | undefined,
+  statuses: ConversationAgentStatus[],
+  userAgents: UserAgent[]
+): MessageHandoffAgent[] {
+  const options = new Map<string, MessageHandoffAgent>();
+  const statusByKey = new Map(statuses.map((status) => [normalizeAgentOptionKey(status.agentName), status]));
+
+  const addOption = (agentName: string, enabled?: boolean) => {
+    const meta = getAgentMeta(agentName, userAgents);
+    const target = mentionTargetForAgent(agentName, meta.id);
+    const key = normalizeAgentOptionKey(target);
+    if (!key || options.has(key)) return;
+    const status = statusByKey.get(normalizeAgentOptionKey(agentName)) ?? statusByKey.get(key);
+    options.set(key, {
+      agentName: target,
+      label: meta.name || agentName,
+      badge: compactAgentBadge(meta.badge || meta.name || agentName),
+      color: meta.color,
+      enabled: enabled ?? status?.enabled ?? true,
+    });
+  };
+
+  statuses.forEach((status) => addOption(status.agentName, status.enabled));
+  if (conversation) {
+    getConversationAgents(conversation, userAgents).forEach((agent) => {
+      addOption(agent.id === "pmo" ? "planner" : agent.name);
+    });
+  }
+
+  return [...options.values()]
+    .sort((a, b) => {
+      if (a.agentName === "planner") return -1;
+      if (b.agentName === "planner") return 1;
+      if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+      return a.label.localeCompare(b.label);
+    })
+    .slice(0, 5);
+}
+
 function MessageActions({
   message,
   isUser,
@@ -475,9 +544,20 @@ function MessageActions({
   const [copied, setCopied] = useState(false);
   const [referenced, setReferenced] = useState(false);
   const [pinned, setPinned] = useState(false);
+  const [handoffTarget, setHandoffTarget] = useState<string | null>(null);
   const addContextReference = useChatStore((state) => state.addContextReference);
-  const addMessage = useChatStore((state) => state.addMessage);
   const deleteMessage = useChatStore((state) => state.deleteMessage);
+  const conversations = useChatStore((state) => state.conversations);
+  const userAgents = useUserAgentStore((state) => state.agents);
+  const conversationAgentStatuses = useConversationAgentStore((state) => state.agentsByConversation[message.conversationId] ?? EMPTY_CONVERSATION_AGENT_STATUSES);
+  const conversation = useMemo(
+    () => conversations.find((item) => item.id === message.conversationId) ?? null,
+    [conversations, message.conversationId]
+  );
+  const handoffAgents = useMemo(
+    () => buildHandoffAgents(conversation, conversationAgentStatuses, userAgents),
+    [conversation, conversationAgentStatuses, userAgents]
+  );
 
   const copy = async () => {
     await navigator.clipboard.writeText(message.content);
@@ -530,71 +610,33 @@ function MessageActions({
 
   const regenerateMessage = () => {
     const meta = getSenderMeta(message);
+    const targetAgent = message.senderId || message.sender || "planner";
     addToContext();
-    addMessage(message.conversationId, {
-      id: createId(),
+    getGlobalSend()({
+      type: "message:send",
       conversationId: message.conversationId,
-      type: "user_message",
-      sender: "user",
-      content: `请重新生成 ${meta.label} 在 ${formatTime(message.timestamp)} 的这条回复，保留原上下文但给出更清晰的方案：\n\n> ${quoteContent()}`,
-      mentions: [message.senderId || message.sender || "assistant"],
-      payload: {
-        contextAction: "regenerate",
-        sourceMessageId: message.id,
-        sourceSender: meta.label,
-      },
-      timestamp: Date.now(),
-    });
-    addMessage(message.conversationId, {
-      id: createId(),
-      conversationId: message.conversationId,
-      type: "agent_message",
-      sender: "planner",
-      senderId: "pmo",
-      content: `PMO 已创建重生成请求：将引用 ${meta.label} 的原回复，并要求执行 Agent 产出更清晰版本。`,
-      payload: {
-        contextAction: "regenerate-queued",
-        sourceMessageId: message.id,
-      },
-      timestamp: Date.now(),
+      clientMsgId: createId(),
+      text: `@${targetAgent} 请重新生成 ${meta.label} 在 ${formatTime(message.timestamp)} 的这条回复，保留原上下文但给出更清晰的版本：\n\n> ${quoteContent().replace(/\n/g, "\n> ")}`,
     });
   };
 
-  const handoffToAgent = (agentId: string, label: string, sender: string) => {
+  const handoffToAgent = (agent: MessageHandoffAgent) => {
     const meta = getSenderMeta(message);
     addToContext();
-    addMessage(message.conversationId, {
-      id: createId(),
+    const quoted = message.content.slice(0, 1200).replace(/\n/g, "\n> ");
+    getGlobalSend()({
+      type: "message:send",
       conversationId: message.conversationId,
-      type: "user_message",
-      sender: "user",
-      content: `@${agentId} 请基于这条消息继续处理：\n\n> ${message.content.slice(0, 1200)}`,
-      mentions: [agentId],
-      payload: {
-        contextAction: "message-handoff",
-        sourceMessageId: message.id,
-        sourceSender: meta.label,
-      },
-      timestamp: Date.now(),
+      clientMsgId: createId(),
+      text: `@${agent.agentName} 请基于这条消息继续处理：\n\n引用 ${meta.label}（${formatTime(message.timestamp)}）：\n> ${quoted}`,
     });
-    addMessage(message.conversationId, {
-      id: createId(),
-      conversationId: message.conversationId,
-      type: "agent_message",
-      sender,
-      senderId: agentId,
-      content: `${label} 已接收该消息引用，会把它作为后续处理上下文。`,
-      payload: {
-        contextAction: "message-accepted",
-        sourceMessageId: message.id,
-      },
-      timestamp: Date.now(),
-    });
+    setHandoffTarget(agent.agentName);
+    window.setTimeout(() => setHandoffTarget(null), 1400);
   };
 
   return (
     <div
-      className={`mt-0 flex h-0 w-fit items-center overflow-hidden rounded-lg border px-1 py-0 opacity-0 transition-[height,margin,opacity,padding] group-hover:mt-1 group-hover:h-8 group-hover:py-0.5 group-hover:opacity-100 group-focus-within:mt-1 group-focus-within:h-8 group-focus-within:py-0.5 group-focus-within:opacity-100 ${isUser ? "ml-auto" : ""}`}
+      className={`mb-1 flex w-fit max-w-full items-center gap-0.5 overflow-x-auto rounded-lg border px-1 py-0.5 ${isUser ? "ml-auto" : ""}`}
       style={{ background: "var(--surface-glass-strong)", borderColor: "var(--border)", boxShadow: "var(--shadow-xs)" }}
     >
       <ActionButton title={copied ? "已复制" : "复制"} onClick={copy} tone={copied ? "success" : "neutral"}>
@@ -633,9 +675,20 @@ function MessageActions({
           </svg>
         </ActionButton>
       )}
-      <ActionButton title="交给 PMO" onClick={() => handoffToAgent("pmo", "PMO", "planner")} tone="accent">PMO</ActionButton>
-      <ActionButton title="交给 Codex" onClick={() => handoffToAgent("codex", "Codex", "coder")} tone="accent">CX</ActionButton>
-      <ActionButton title="交给 UX Reviewer" onClick={() => handoffToAgent("ux-reviewer", "UX Reviewer", "refiner")} tone="accent">UX</ActionButton>
+      {handoffAgents.length > 0 && (
+        <span className="mx-0.5 h-4 w-px shrink-0" style={{ background: "var(--border)" }} />
+      )}
+      {handoffAgents.map((agent) => (
+        <ActionButton
+          key={agent.agentName}
+          title={agent.enabled ? `交给 ${agent.label}` : `${agent.label} 已静音`}
+          onClick={() => handoffToAgent(agent)}
+          disabled={!agent.enabled}
+          tone={handoffTarget === agent.agentName ? "success" : "accent"}
+        >
+          {agent.badge}
+        </ActionButton>
+      ))}
       {isStreaming && onStop && (
         <ActionButton title="暂停生成" onClick={onStop} tone="accent">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -818,6 +871,14 @@ const MessageBubble = memo(function MessageBubble({
             </div>
           )}
 
+          <MessageActions
+            message={message}
+            isUser={isUser}
+            isStreaming={isStreaming}
+            onUndo={onUndo}
+            onStop={onStop}
+          />
+
           <div
             className="overflow-hidden rounded-lg"
             data-context-message-id={message.id}
@@ -909,14 +970,6 @@ const MessageBubble = memo(function MessageBubble({
               </div>
             )}
           </div>
-
-          <MessageActions
-            message={message}
-            isUser={isUser}
-            isStreaming={isStreaming}
-            onUndo={onUndo}
-            onStop={onStop}
-          />
         </div>
 
         {isUser && (
