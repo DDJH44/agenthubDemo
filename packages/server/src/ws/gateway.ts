@@ -29,7 +29,7 @@ import { deploymentTargetRepo } from "../db/repositories/deployment-target";
 import { decryptSecret } from "../deploy/credentials";
 import { validateConversationId, validateWorkspaceId, validateMessageText, validateConversationTitle, validateConversationType, validateParticipants, validateSearchQuery, validateString } from "../utils/validators";
 import { validateSession } from "../auth/session";
-import { isArtifactGenerationTask, isLightweightMentionChat, isSimpleChat } from "../utils/task-classifier";
+import { isArtifactGenerationTask, isContextualQuoteChat, isLightweightMentionChat, isSimpleChat, parseComposerQuoteIntent } from "../utils/task-classifier";
 
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
@@ -1254,6 +1254,108 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const mentionCleanText = originalMentionParse.cleanText.trim();
             const isMentionOnlyInput = originalMentionParse.hasMention && !mentionCleanText && !workflowRef && !agentExecution;
             const isLightweightMentionInput = originalMentionParse.hasMention && !workflowRef && !agentExecution && isLightweightMentionChat(mentionCleanText);
+            const quoteIntent = parseComposerQuoteIntent(text);
+            const contextualQuoteChat = !workflowRef && !agentExecution && isContextualQuoteChat(text);
+
+            if (contextualQuoteChat && !originalMentionParse.hasMention) {
+              const payload = {
+                kind: quoteIntent.quoteOnly ? "context_quote" : "context_quote_chat",
+                quoteOnly: quoteIntent.quoteOnly,
+                quotedText: quoteIntent.quotedText.slice(0, 1200),
+                promptText: quoteIntent.promptText.slice(0, 500),
+              };
+              const userMsg = await messageRepo.createAndUpdateConv({
+                conversationId,
+                type: "user_message",
+                sender: userName,
+                senderId: userId,
+                content: text,
+                mentions: [],
+                id: clientMsgId,
+                payload,
+              });
+              broadcast(conversationId, {
+                type: "message:created",
+                message: {
+                  id: userMsg.id,
+                  conversationId,
+                  type: userMsg.type,
+                  sender: userMsg.sender,
+                  senderId: userId,
+                  content: userMsg.content,
+                  mentions: [],
+                  payload,
+                  timestamp: userMsg.timestamp.getTime(),
+                },
+              });
+
+              const sender = isDirectConv ? agentName : "planner";
+              let reply = "已把这段引用加入当前对话，我会把它作为后续上下文，不会直接启动任务流程。";
+              if (!quoteIntent.quoteOnly) {
+                let adapter: IAdapter | null = null;
+                try {
+                  adapter = createAdapterFromEnv();
+                  await adapter.connect();
+                  reply = await adapter.sendMessage(
+                    [
+                      "用户引用了一段会话内容，并希望你基于这段引用做轻量解释或回应。",
+                      `引用内容：${quoteIntent.quotedText || "（无可见引用内容）"}`,
+                      `用户补充：${quoteIntent.promptText}`,
+                    ].join("\n"),
+                    {
+                      temperature: 0.5,
+                      maxTokens: 220,
+                      systemPrompt: [
+                        "你是 AgentHub 群聊助手。",
+                        "当前消息是引用上下文，不是执行任务。除非用户明确要求生成、修改、部署或执行，否则不要进入任务流程。",
+                        "请自然解释或回应，最多 120 字。",
+                        "不要输出标题、步骤列表、任务完成总览、代码块或 Markdown 表格。",
+                      ].join("\n"),
+                    }
+                  );
+                  reply = reply
+                    .replace(/```[\s\S]*?```/g, "")
+                    .replace(/^#+\s*/gm, "")
+                    .replace(/\*\*/g, "")
+                    .split(/\n{2,}/)[0]
+                    .trim()
+                    .slice(0, 240);
+                  if (!reply || /任务完成总览|完成状态|交付内容|步骤\d|技术方案/i.test(reply)) {
+                    reply = "这段引用已经放进上下文了。你可以继续问它的含义，或者说明希望我怎么处理它。";
+                  }
+                } catch (err) {
+                  logger.warn(`Failed to answer contextual quote chat: ${err}`, "WebSocket");
+                  reply = "这段引用已经放进上下文了。你可以继续问它的含义，或者说明希望我怎么处理它。";
+                } finally {
+                  await adapter?.disconnect().catch(() => undefined);
+                }
+              }
+
+              const agentMsg = await messageRepo.createAndUpdateConv({
+                conversationId,
+                type: "agent_message",
+                sender,
+                senderId: sender,
+                content: reply,
+                mentions: [],
+                payload: { kind: "context_quote_ack", quoteOnly: quoteIntent.quoteOnly },
+              });
+              broadcast(conversationId, {
+                type: "message:created",
+                message: {
+                  id: agentMsg.id,
+                  conversationId: agentMsg.conversationId,
+                  type: agentMsg.type,
+                  sender: agentMsg.sender,
+                  senderId: agentMsg.senderId ?? undefined,
+                  content: agentMsg.content,
+                  mentions: [],
+                  payload: { kind: "context_quote_ack", quoteOnly: quoteIntent.quoteOnly },
+                  timestamp: agentMsg.timestamp.getTime(),
+                },
+              });
+              break;
+            }
 
             if (!agentExecution && !groupAgentsEnabled && !originalMentionParse.hasMention && (simpleChat || ((!hasEnabledAgents || isDirectConv) && !artifactTask))) {
               const userMsg = await messageRepo.createAndUpdateConv({

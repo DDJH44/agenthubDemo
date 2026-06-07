@@ -1,4 +1,4 @@
-import { isArtifactGenerationTask, isLightweightMentionChat, isSimpleChat } from "../task-classifier";
+import { isArtifactGenerationTask, isContextualQuoteChat, isLightweightMentionChat, isSimpleChat, parseComposerQuoteIntent } from "../task-classifier";
 
 describe("task classifier", () => {
   describe("isSimpleChat", () => {
@@ -45,6 +45,28 @@ describe("task classifier", () => {
       expect(isLightweightMentionChat("生成一个网站")).toBe(false);
       expect(isLightweightMentionChat("修复这个 bug")).toBe(false);
       expect(isLightweightMentionChat("部署到默认服务器")).toBe(false);
+    });
+  });
+
+  describe("parseComposerQuoteIntent", () => {
+    it("keeps quote-only snippets out of task execution", () => {
+      const quote = parseComposerQuoteIntent("引用 PMO 主 Agent：\n> 「选区 · index.html · L4-7」，");
+      expect(quote.hasQuote).toBe(true);
+      expect(quote.quoteOnly).toBe(true);
+      expect(quote.shouldExecute).toBe(false);
+      expect(isContextualQuoteChat("引用 PMO 主 Agent：\n> 「选区 · index.html · L4-7」，")).toBe(true);
+    });
+
+    it("treats quote questions as lightweight contextual chat", () => {
+      expect(isContextualQuoteChat("引用 PMO 主 Agent：\n> 「选区 · index.html · L4-7」，\n\n这是什么意思")).toBe(true);
+    });
+
+    it("allows explicit quote execution requests to continue into the task flow", () => {
+      const quote = parseComposerQuoteIntent("引用 Frontend Builder：\n> <meta charset=\"UTF-8\">\n\n把这段优化一下并更新到代码里");
+      expect(quote.hasQuote).toBe(true);
+      expect(quote.quoteOnly).toBe(false);
+      expect(quote.shouldExecute).toBe(true);
+      expect(isContextualQuoteChat("引用 Frontend Builder：\n> <meta charset=\"UTF-8\">\n\n把这段优化一下并更新到代码里")).toBe(false);
     });
   });
 });

@@ -47,6 +47,80 @@ const MENTION_TASK_HINTS = [
   /帮我|请你|麻烦|生成|创建|开发|制作|实现|编写|构建|搭建|设计|修复|优化|重构|检查|审查|review|测试|部署|运行|执行|分析|总结|整理|输出|改成|改一下|写一下|做一下|看一下|看下|看看|解释一下|评价一下|代码|网页|网站|文档|ppt|系统|页面|功能|bug|diff|接口|数据库|需求|方案/i,
 ];
 
+const QUOTE_HEADER_RE = /^引用\s+.{1,80}[：:]\s*$/;
+
+const QUOTE_EXECUTION_HINTS = [
+  /生成|创建|开发|制作|实现|编写|构建|搭建|设计|修复|优化|重构|测试|部署|运行|执行|输出完整|产物|代码|网页|网站|页面|系统/i,
+  /改成|改一下|修改|替换|应用到|写入|更新|继续做|继续执行|按这个做/i,
+  /\b(build|create|generate|make|develop|implement|fix|deploy|run|execute|refactor|update)\b/i,
+];
+
+const QUOTE_CHAT_HINTS = [
+  /什么意思|什么含义|解释|说明|为什么|怎么理解|这是什么|这个呢|这段呢|有问题吗|怎么看|对吗|是不是|可以吗|行吗/i,
+  /\b(what|why|explain|meaning|means|understand)\b/i,
+];
+
+export interface ComposerQuoteIntent {
+  hasQuote: boolean;
+  quoteOnly: boolean;
+  promptText: string;
+  quotedText: string;
+  shouldExecute: boolean;
+}
+
+function compactLines(lines: string[]) {
+  return lines
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
+export function parseComposerQuoteIntent(text: string): ComposerQuoteIntent {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const promptLines: string[] = [];
+  const quoteLines: string[] = [];
+  let hasQuote = false;
+  let insideQuote = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (QUOTE_HEADER_RE.test(trimmed)) {
+      hasQuote = true;
+      insideQuote = true;
+      continue;
+    }
+
+    if (insideQuote && /^>\s?/.test(trimmed)) {
+      quoteLines.push(trimmed.replace(/^>\s?/, ""));
+      continue;
+    }
+
+    if (insideQuote && !trimmed) continue;
+    promptLines.push(line);
+  }
+
+  const promptText = compactLines(promptLines);
+  const quotedText = compactLines(quoteLines);
+  const shouldExecute = hasQuote && QUOTE_EXECUTION_HINTS.some((pattern) => pattern.test(promptText));
+
+  return {
+    hasQuote,
+    quoteOnly: hasQuote && !promptText,
+    promptText,
+    quotedText,
+    shouldExecute,
+  };
+}
+
+export function isContextualQuoteChat(text: string): boolean {
+  const quote = parseComposerQuoteIntent(text);
+  if (!quote.hasQuote || quote.shouldExecute) return false;
+  if (quote.quoteOnly) return true;
+  if (QUOTE_CHAT_HINTS.some((pattern) => pattern.test(quote.promptText))) return true;
+  return quote.promptText.length <= 80 && !TASK_PATTERNS.some((pattern) => pattern.test(quote.promptText));
+}
+
 export function isSimpleChat(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.length > 80) return false;
