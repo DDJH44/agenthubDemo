@@ -8,6 +8,7 @@ import { useAuthStore } from "../../stores/auth-store";
 import { createId } from "../../lib/id";
 import { buildApiUrl } from "../../lib/runtime-config";
 import { renderMarkdown } from "../../lib/markdown-utils";
+import { downloadDOCX, downloadMarkdown, downloadPDF } from "../../lib/download-utils";
 import { isDocument, isDocumentRequest, shouldRenderDocumentCompletion } from "./assistant-intent";
 import { DocumentPreviewPanel } from "./DocumentPreviewPanel";
 
@@ -481,6 +482,17 @@ function extractDocTitle(content: string, fallback: string): string {
   return fallback.length > 40 ? fallback.slice(0, 40) + "..." : fallback;
 }
 
+function safeDownloadTitle(title: string): string {
+  return title.replace(/[\\/:*?"<>|]/g, "").replace(/\.(md|markdown|docx?|pdf)$/i, "").trim() || "文档";
+}
+
+function downloadDocumentContent(content: string, title: string, format: "md" | "docx" | "pdf" = "md") {
+  const safeTitle = safeDownloadTitle(title);
+  if (format === "md") downloadMarkdown(content, safeTitle);
+  else if (format === "docx") downloadDOCX(content, safeTitle);
+  else downloadPDF(content, safeTitle);
+}
+
 function stripMarkdownInline(text: string): string {
   return text
     .replace(/^#{1,6}\s*/, "")
@@ -634,6 +646,17 @@ function FileTreeView({ onFileClick, fileSearch, setFileSearch }: { onFileClick:
                             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.title}.md</span>
                           </button>
                           <div className="hidden group-hover:flex items-center gap-0.5 shrink-0">
+                            <button
+                              type="button"
+                              title="下载 Markdown"
+                              onClick={(e) => { e.stopPropagation(); downloadDocumentContent(file.content, file.title, "md"); }}
+                              className="p-1 rounded hover:bg-opacity-10 hover:bg-white"
+                              style={{ color: "var(--fg-disabled)" }}
+                            >
+                              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                              </svg>
+                            </button>
                             <button onClick={(e) => { e.stopPropagation(); toggleStar(file.id); }}
                               className="p-1 rounded hover:bg-opacity-10 hover:bg-white" style={{ color: file.starred ? "#f59e0b" : "var(--fg-disabled)" }}>
                               <svg width="10" height="10" viewBox="0 0 24 24" fill={file.starred ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
@@ -745,6 +768,23 @@ function DocumentCompletionView({
       <div>
         <p className="mb-2 text-sm" style={{ color: "var(--fg-primary)" }}>文件在这里：</p>
         <DocumentCardTrigger title={fileTitle} onClick={onPreview} />
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {[
+            { format: "md" as const, label: "下载 MD" },
+            { format: "docx" as const, label: "Word" },
+            { format: "pdf" as const, label: "PDF" },
+          ].map((item) => (
+            <button
+              key={item.format}
+              type="button"
+              onClick={() => downloadDocumentContent(content, fileTitle, item.format)}
+              className="rounded-md px-2 py-1 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]"
+              style={{ color: item.format === "md" ? "#174ea6" : "var(--fg-tertiary)", background: item.format === "md" ? "rgba(23,78,166,0.07)" : "var(--surface-tinted)", border: "1px solid var(--border)" }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       <p className="text-sm font-semibold" style={{ color: "var(--fg-primary)", lineHeight: 1.65 }}>

@@ -6,6 +6,7 @@ import type { OnMount } from "@monaco-editor/react";
 import type { Artifact, Message, ResourceItem, SessionAgentStatus, StepResult } from "@agenthub/shared";
 import { BrandMascot, type BrandMascotVariant } from "@/components/BrandMascot";
 import { createId } from "@/lib/id";
+import { downloadDOCX, downloadMarkdown, downloadPDF } from "@/lib/download-utils";
 import { useChatStore } from "@/stores/chat-store";
 import { useWorkspaceStore } from "@/stores/workspace-store";
 import { DeployPanel as DeployWorkflowPanel } from "./DeployPanel";
@@ -113,6 +114,13 @@ function documentShell(title: string, body: string) {
 </head>
 <body>${body}</body>
 </html>`;
+}
+
+function safeDocumentDownloadTitle(filename?: string) {
+  return (filename || "document")
+    .replace(/\.(md|markdown|docx?|pdf)$/i, "")
+    .replace(/[\\/:*?"<>|]/g, "")
+    .trim() || "document";
 }
 
 function EmptyState({ title, desc, mascot = "search" }: { title: string; desc?: string; mascot?: BrandMascotVariant }) {
@@ -1146,6 +1154,8 @@ function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
   } else {
     src = item.artifact.content;
   }
+  const isDocumentPreview = item.type === "document";
+  const documentDownloadTitle = safeDocumentDownloadTitle(item.artifact.filename || item.artifact.type);
 
   return (
     <div className="flex h-full min-h-[560px] flex-col">
@@ -1155,11 +1165,26 @@ function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
           <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{item.artifact.filename || item.artifact.type}</p>
           <p className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{currentPreview ? "临时预览" : item.artifact.version ? `v${item.artifact.version}` : "当前版本"}</p>
         </div>
-        {src && (
-          <a href={src} target="_blank" rel="noopener noreferrer" className="rounded-md px-2 py-1 text-[10px] font-semibold no-underline" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
-            新窗口
-          </a>
-        )}
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          {isDocumentPreview && (
+            <>
+              <button type="button" onClick={() => downloadMarkdown(item.artifact.content, documentDownloadTitle)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+                下载 MD
+              </button>
+              <button type="button" onClick={() => downloadDOCX(item.artifact.content, documentDownloadTitle)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+                Word
+              </button>
+              <button type="button" onClick={() => downloadPDF(item.artifact.content, documentDownloadTitle)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
+                PDF
+              </button>
+            </>
+          )}
+          {src && (
+            <a href={src} target="_blank" rel="noopener noreferrer" className="rounded-md px-2 py-1 text-[10px] font-semibold no-underline" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+              新窗口
+            </a>
+          )}
+        </div>
       </div>
       <SelectionHandoffBar
         selection={visibleSelectedPreview}

@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import type { Artifact } from "@agenthub/shared";
 import { createId } from "@/lib/id";
 import { renderMarkdown } from "@/lib/markdown-utils";
+import { downloadDOCX, downloadMarkdown, downloadPDF } from "@/lib/download-utils";
 import { useChatStore } from "@/stores/chat-store";
 import { downloadSlidesAsPptx, getPptxFilename } from "./pptx-export";
 import { parseSlidesArtifact } from "./slide-parser";
@@ -104,6 +105,77 @@ function CopyButton({ text }: { text: string }) {
     >
       {copied ? "已复制" : "复制"}
     </button>
+  );
+}
+
+function safeDownloadTitle(filename?: string) {
+  return (filename || "document")
+    .replace(/\.(md|markdown|docx?|pdf)$/i, "")
+    .replace(/[\\/:*?"<>|]/g, "")
+    .trim() || "document";
+}
+
+function DocumentDownloadMenu({
+  content,
+  filename,
+}: {
+  content: string;
+  filename?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const safeTitle = safeDownloadTitle(filename);
+
+  const handleDownload = (format: "md" | "docx" | "pdf") => {
+    if (format === "md") downloadMarkdown(content, safeTitle);
+    else if (format === "docx") downloadDOCX(content, safeTitle);
+    else downloadPDF(content, safeTitle);
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]"
+        style={{ color: "#174ea6" }}
+      >
+        下载
+      </button>
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-label="关闭下载菜单"
+            className="fixed inset-0 z-10 cursor-default"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            className="absolute right-0 top-full z-20 mt-1 min-w-[132px] overflow-hidden rounded-lg py-1"
+            style={{ background: "var(--surface-white)", border: "1px solid var(--border)", boxShadow: "var(--shadow-md)" }}
+          >
+            {[
+              { format: "md" as const, label: "Markdown", badge: "MD" },
+              { format: "docx" as const, label: "Word 文档", badge: "DOC" },
+              { format: "pdf" as const, label: "PDF 打印", badge: "PDF" },
+            ].map((item) => (
+              <button
+                key={item.format}
+                type="button"
+                onClick={() => handleDownload(item.format)}
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors hover:bg-[var(--surface-low)]"
+                style={{ color: "var(--fg-secondary)" }}
+              >
+                <span className="grid h-5 min-w-7 place-items-center rounded text-[9px] font-black" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.08)" }}>
+                  {item.badge}
+                </span>
+                <span className="whitespace-nowrap">{item.label}</span>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -282,6 +354,7 @@ function MarkdownView({ content, filename }: { content: string; filename?: strin
       actions={
         <>
           <CopyButton text={content} />
+          <DocumentDownloadMenu content={content} filename={filename} />
           <button
             type="button"
             onClick={() => setSourceMode((value) => !value)}
@@ -395,6 +468,7 @@ function DocumentView({
       actions={
         <>
           <CopyButton text={content} />
+          <DocumentDownloadMenu content={content} filename={title} />
           {onPreview && (
             <button
               type="button"
