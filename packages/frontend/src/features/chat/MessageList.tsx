@@ -1006,15 +1006,24 @@ function SelectionContextToolbar({
   target: SelectionContextTarget | null;
   onAdd: () => void;
 }) {
+  const activatedRef = useRef(false);
+
+  useEffect(() => {
+    activatedRef.current = false;
+  }, [target?.messageId, target?.text]);
+
   if (!target) return null;
   const activate = (event: { preventDefault: () => void; stopPropagation: () => void }) => {
     event.preventDefault();
     event.stopPropagation();
+    if (target.added || activatedRef.current) return;
+    activatedRef.current = true;
     onAdd();
   };
 
   return (
     <div
+      data-selection-context-toolbar
       className="fixed z-[70] -translate-x-1/2 select-none"
       style={{ left: target.x, top: target.y }}
       onMouseDown={(event) => {
@@ -1027,6 +1036,7 @@ function SelectionContextToolbar({
       <button
         type="button"
         onPointerDown={activate}
+        onMouseDown={activate}
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -1168,22 +1178,24 @@ export const MessageList = memo(function MessageList({
 
   useEffect(() => {
     const hide = () => setSelectionTarget(null);
-    const handleSelectionChange = () => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed) setSelectionTarget(null);
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest("[data-selection-context-toolbar]")) return;
+      hide();
     };
     document.addEventListener("scroll", hide, true);
-    document.addEventListener("selectionchange", handleSelectionChange);
+    document.addEventListener("pointerdown", handlePointerDown, true);
     window.addEventListener("resize", hide);
     return () => {
       document.removeEventListener("scroll", hide, true);
-      document.removeEventListener("selectionchange", handleSelectionChange);
+      document.removeEventListener("pointerdown", handlePointerDown, true);
       window.removeEventListener("resize", hide);
     };
   }, []);
 
   return (
-    <div ref={listRef} className="flex flex-col pb-3" onMouseUp={handleSelectionEvent} onKeyUp={handleSelectionEvent}>
+    <div ref={listRef} className="flex flex-col pb-3" onMouseUp={handleSelectionEvent} onTouchEnd={handleSelectionEvent} onKeyUp={handleSelectionEvent}>
       {filtered.map((message, index) => (
         <MessageBubble
           key={message.id}
