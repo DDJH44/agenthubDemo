@@ -215,6 +215,82 @@ function getArtifactType(payload: Record<string, unknown> | undefined): Artifact
   return ARTIFACT_TYPES.has(normalized as ArtifactCardType) ? normalized as ArtifactCardType : null;
 }
 
+function normalizeDeliverableRequest(text: string) {
+  return text
+    .replace(/@\S+/g, " ")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function requestedDeliverableType(text: string): Extract<ArtifactCardType, "document" | "slides"> | null {
+  const normalized = normalizeDeliverableRequest(text);
+  if (!normalized) return null;
+  const complaintPatterns = [
+    /为什么.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+    /为何.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+    /不是.*(要|想).*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+    /不要.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+  ];
+  if (complaintPatterns.some((pattern) => pattern.test(normalized))) return null;
+
+  const hasAction = /(帮我|请|生成|重新生成|写|重新写|整理|重新整理|创建|制作|做|编写|撰写|起草|拟定|输出|导出|补一份|补充一份|create|generate|write|make|build)/i.test(normalized);
+  if (!hasAction) return null;
+  if (/(PPT|PPTX|幻灯片|演示文稿|演示稿|汇报稿|路演稿|slides?|presentation|deck)/i.test(normalized)) return "slides";
+  if (/(文档|说明文档|报告|手册|方案|指南|PRD|需求文档|设计文档|技术文档|接口文档|用户手册|白皮书|材料|说明书|document|report|manual|proposal|guide)/i.test(normalized)) return "document";
+  return null;
+}
+
+function looksLikeMarkdownDeliverable(content: string) {
+  const text = content.trim();
+  if (text.length < 80) return false;
+  if (/^#{1,3}\s+\S+/m.test(text)) return true;
+  if (/^\s*[-*]\s+\S+/m.test(text) && /\n\s*[-*]\s+\S+/m.test(text)) return true;
+  if (/^\s*\d+[.)、]\s+\S+/m.test(text)) return true;
+  return /产品|项目|说明|概述|方案|功能|技术|使用|交付/.test(text) && text.length > 180;
+}
+
+function markdownTitle(content: string) {
+  return content.match(/^#{1,3}\s+(.+)$/m)?.[1]?.trim();
+}
+
+function safeFilenameFromTitle(title: string, fallback: string) {
+  const base = title
+    .replace(/[\\/:*?"<>|`~#%&{}$!@+'=]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 42);
+  return base || fallback;
+}
+
+function getImplicitDeliverableType(
+  payload: Record<string, unknown> | undefined,
+  content: string,
+  prevMessage?: Message
+): Extract<ArtifactCardType, "document" | "slides"> | null {
+  if (payload?.deliverableArtifactCreated === true) return null;
+  const payloadKind = typeof payload?.kind === "string" ? payload.kind : "";
+  const previousRequest = prevMessage?.type === "user_message" ? prevMessage.content : "";
+  const requestText = [
+    typeof payload?.topicTitle === "string" ? payload.topicTitle : "",
+    typeof payload?.task === "string" ? payload.task : "",
+    payloadKind ? "" : previousRequest,
+  ].filter(Boolean).join("\n");
+  if (!requestText) return null;
+
+  const type = requestedDeliverableType(requestText);
+  if (!type || !looksLikeMarkdownDeliverable(content)) return null;
+  return type;
+}
+
+function inferredDeliverableFilename(type: ArtifactCardType | null, content: string, explicit?: string) {
+  if (explicit || (type !== "document" && type !== "slides")) return explicit;
+  const title = markdownTitle(content);
+  const fallback = type === "slides" ? "agenthub-slides" : "agenthub-document";
+  const extension = type === "slides" ? ".slides.md" : ".md";
+  return `${safeFilenameFromTitle(title || fallback, fallback)}${extension}`;
+}
+
 function _TaskStatusCard({ payload }: { payload?: Record<string, unknown> }) {
   const status = String(payload?.status || "running");
   const title = String(payload?.title || "任务处理中");
@@ -782,13 +858,14 @@ const MessageBubble = memo(function MessageBubble({
   const isSystem = message.type === "system";
   const senderMeta = getSenderMeta(message);
   const payload = message.payload as Record<string, unknown> | undefined;
-  const artifactType = getArtifactType(payload);
+  const explicitArtifactType = getArtifactType(payload);
   const isTaskCard = message.type === "task_card" || payload?.kind === "task_status";
   const setCurrentPreview = useChatStore((state) => state.setCurrentPreview);
   const { hasThinking, main } = extractDisplayContent(message.content);
   const displayContent = main || message.content;
+  const artifactType = explicitArtifactType ?? getImplicitDeliverableType(payload, displayContent, prevMessage);
   const artifactId = String(payload?.artifactId || payload?.modifiedArtifactId || payload?.originalArtifactId || message.id);
-  const artifactFilename = payload?.filename as string | undefined;
+  const artifactFilename = inferredDeliverableFilename(artifactType, displayContent, payload?.filename as string | undefined);
   const workflowReferenceMeta = getWorkflowReferenceMeta(payload);
   const previewArtifact = (type: string, content: string, filename?: string) => {
     setCurrentPreview({

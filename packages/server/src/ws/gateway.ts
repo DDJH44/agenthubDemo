@@ -29,7 +29,7 @@ import { deploymentTargetRepo } from "../db/repositories/deployment-target";
 import { decryptSecret } from "../deploy/credentials";
 import { validateConversationId, validateWorkspaceId, validateMessageText, validateConversationTitle, validateConversationType, validateParticipants, validateSearchQuery, validateString } from "../utils/validators";
 import { validateSession } from "../auth/session";
-import { isArtifactGenerationTask, isContextualQuoteChat, isLightweightMentionChat, isSimpleChat, parseComposerQuoteIntent } from "../utils/task-classifier";
+import { isArtifactGenerationTask, isContextualQuoteChat, isDeliverableGenerationTask, isLightweightMentionChat, isSimpleChat, parseComposerQuoteIntent } from "../utils/task-classifier";
 
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
@@ -1250,7 +1250,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const hasEnabledAgents = enabledAgentNames.length > 0;
             const originalMentionParse = resolveConversationMentions(text, enabledAgentNames);
             const simpleChat = !workflowRef && !originalMentionParse.hasMention && isSimpleChat(text);
-            const artifactTask = isArtifactGenerationTask(text);
+            const artifactTask = isArtifactGenerationTask(text) || isDeliverableGenerationTask(text);
             const mentionCleanText = originalMentionParse.cleanText.trim();
             const isMentionOnlyInput = originalMentionParse.hasMention && !mentionCleanText && !workflowRef && !agentExecution;
             const isLightweightMentionInput = originalMentionParse.hasMention && !workflowRef && !agentExecution && isLightweightMentionChat(mentionCleanText);
@@ -1357,7 +1357,8 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               break;
             }
 
-            if (!agentExecution && !groupAgentsEnabled && !originalMentionParse.hasMention && (simpleChat || ((!hasEnabledAgents || isDirectConv) && !artifactTask))) {
+            const shouldUseSimpleChat = !artifactTask && (simpleChat || !hasEnabledAgents || isDirectConv);
+            if (!agentExecution && !groupAgentsEnabled && !originalMentionParse.hasMention && shouldUseSimpleChat) {
               const userMsg = await messageRepo.createAndUpdateConv({
                 conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: [],
                 id: clientMsgId,

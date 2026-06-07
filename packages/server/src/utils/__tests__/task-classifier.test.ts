@@ -1,4 +1,4 @@
-import { isArtifactGenerationTask, isContextualQuoteChat, isLightweightMentionChat, isSimpleChat, parseComposerQuoteIntent } from "../task-classifier";
+import { isArtifactGenerationTask, isContextualQuoteChat, isDeliverableGenerationTask, isLightweightMentionChat, isSimpleChat, parseComposerQuoteIntent } from "../task-classifier";
 
 describe("task classifier", () => {
   describe("isSimpleChat", () => {
@@ -29,6 +29,21 @@ describe("task classifier", () => {
       expect(isArtifactGenerationTask("你好")).toBe(false);
       expect(isArtifactGenerationTask("请分析一下这个市场趋势")).toBe(false);
       expect(isArtifactGenerationTask("帮我写一份详细方案")).toBe(false);
+    });
+  });
+
+  describe("isDeliverableGenerationTask", () => {
+    it("detects document and slides deliverable requests", () => {
+      expect(isDeliverableGenerationTask("生成一份文档说明")).toBe(true);
+      expect(isDeliverableGenerationTask("重新生成一份文档")).toBe(true);
+      expect(isDeliverableGenerationTask("帮我整理一份项目结题报告")).toBe(true);
+      expect(isDeliverableGenerationTask("制作一个答辩 PPT")).toBe(true);
+    });
+
+    it("keeps complaints and casual chat out of task execution", () => {
+      expect(isDeliverableGenerationTask("为什么你会生成文档")).toBe(false);
+      expect(isDeliverableGenerationTask("不要生成文档")).toBe(false);
+      expect(isDeliverableGenerationTask("你好")).toBe(false);
     });
   });
 

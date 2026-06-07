@@ -130,25 +130,98 @@ function isArtifactType(value: unknown): value is Artifact["type"] {
   return typeof value === "string" && ARTIFACT_MESSAGE_TYPES.has(value as Artifact["type"]);
 }
 
+function normalizeDeliverableRequest(text: string) {
+  return text
+    .replace(/@\S+/g, " ")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function requestedDeliverableType(text: string): Extract<Artifact["type"], "document" | "slides"> | null {
+  const normalized = normalizeDeliverableRequest(text);
+  if (!normalized) return null;
+  const complaintPatterns = [
+    /为什么.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+    /为何.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+    /不是.*(要|想).*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+    /不要.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+  ];
+  if (complaintPatterns.some((pattern) => pattern.test(normalized))) return null;
+
+  const hasAction = /(帮我|请|生成|重新生成|写|重新写|整理|重新整理|创建|制作|做|编写|撰写|起草|拟定|输出|导出|补一份|补充一份|create|generate|write|make|build)/i.test(normalized);
+  if (!hasAction) return null;
+  if (/(PPT|PPTX|幻灯片|演示文稿|演示稿|汇报稿|路演稿|slides?|presentation|deck)/i.test(normalized)) return "slides";
+  if (/(文档|说明文档|报告|手册|方案|指南|PRD|需求文档|设计文档|技术文档|接口文档|用户手册|白皮书|材料|说明书|document|report|manual|proposal|guide)/i.test(normalized)) return "document";
+  return null;
+}
+
+function looksLikeMarkdownDeliverable(content: string) {
+  const text = content.trim();
+  if (text.length < 80) return false;
+  if (/^#{1,3}\s+\S+/m.test(text)) return true;
+  if (/^\s*[-*]\s+\S+/m.test(text) && /\n\s*[-*]\s+\S+/m.test(text)) return true;
+  if (/^\s*\d+[.)、]\s+\S+/m.test(text)) return true;
+  return /产品|项目|说明|概述|方案|功能|技术|使用|交付/.test(text) && text.length > 180;
+}
+
+function markdownTitle(content: string) {
+  return content.match(/^#{1,3}\s+(.+)$/m)?.[1]?.trim();
+}
+
+function safeFilenameFromTitle(title: string, fallback: string) {
+  const base = title
+    .replace(/[\\/:*?"<>|`~#%&{}$!@+'=]/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 42);
+  return base || fallback;
+}
+
+function inferFinalSummaryArtifactType(payload: Record<string, unknown> | undefined, content: string): Extract<Artifact["type"], "document" | "slides"> | null {
+  if (payload?.kind !== "final_summary" || payload.deliverableArtifactCreated === true) return null;
+  const requestText = [
+    typeof payload.topicTitle === "string" ? payload.topicTitle : "",
+    typeof payload.task === "string" ? payload.task : "",
+  ].filter(Boolean).join("\n");
+  if (!requestText) return null;
+  const type = requestedDeliverableType(requestText);
+  if (!type || !looksLikeMarkdownDeliverable(content)) return null;
+  return type;
+}
+
+function inferredDeliverableFilename(type: Artifact["type"], content: string, explicit?: string) {
+  if (explicit) return explicit;
+  if (type !== "document" && type !== "slides") return undefined;
+  const fallback = type === "slides" ? "agenthub-slides" : "agenthub-document";
+  const extension = type === "slides" ? ".slides.md" : ".md";
+  return `${safeFilenameFromTitle(markdownTitle(content) || fallback, fallback)}${extension}`;
+}
+
 function artifactFromMessage(message: Message): Artifact | null {
   const payload = message.payload as Record<string, unknown> | undefined;
-  if (payload?.kind !== "artifact" || !isArtifactType(payload.artifactType)) return null;
+  const explicitType = payload?.kind === "artifact" && isArtifactType(payload.artifactType)
+    ? payload.artifactType
+    : null;
+  const inferredType = explicitType ? null : inferFinalSummaryArtifactType(payload, message.content);
+  const artifactType = explicitType ?? inferredType;
+  if (!artifactType) return null;
 
-  const artifactId = typeof payload.artifactId === "string" && payload.artifactId.trim()
+  const artifactId = typeof payload?.artifactId === "string" && payload.artifactId.trim()
     ? payload.artifactId
     : `message-artifact-${message.id}`;
-  const filename = typeof payload.filename === "string" ? payload.filename : undefined;
-  const jobId = typeof payload.jobId === "string" ? payload.jobId : message.conversationId;
+  const filename = inferredDeliverableFilename(artifactType, message.content, typeof payload?.filename === "string" ? payload.filename : undefined);
+  const jobId = typeof payload?.jobId === "string" ? payload.jobId : message.conversationId;
   const metadata: Record<string, unknown> = { sourceMessageId: message.id };
 
-  if (typeof payload.language === "string") metadata.language = payload.language;
-  if (typeof payload.topicTitle === "string") metadata.topicTitle = payload.topicTitle;
-  if (payload.workflowRef) metadata.workflowRef = payload.workflowRef;
+  if (typeof payload?.language === "string") metadata.language = payload.language;
+  if (typeof payload?.topicTitle === "string") metadata.topicTitle = payload.topicTitle;
+  if (payload?.workflowRef) metadata.workflowRef = payload.workflowRef;
 
   return {
     id: artifactId,
     jobId,
-    type: payload.artifactType,
+    type: artifactType,
     content: message.content,
     filename,
     metadata,

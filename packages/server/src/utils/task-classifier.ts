@@ -34,6 +34,19 @@ const ARTIFACT_REQUEST_HINTS = [
   /todo|待办|抽奖|轮盘|播放器|画板|白板|计算器|日历|记账|天气|音乐|相册|作品集/i,
 ];
 
+const DELIVERABLE_REQUEST_HINTS = [
+  /文档|说明文档|报告|手册|方案|指南|PRD|需求文档|设计文档|技术文档|接口文档|用户手册|白皮书|材料|说明书/i,
+  /PPT|PPTX|幻灯片|演示文稿|演示稿|汇报稿|路演稿/i,
+  /document|report|manual|proposal|guide|deck|slides?|presentation/i,
+];
+
+const DELIVERABLE_COMPLAINT_HINTS = [
+  /为什么.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+  /为何.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+  /不是.*(要|想).*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+  /不要.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
+];
+
 const BUILD_ACTION_HINTS = [
   /帮我|请|做|写|生成|创建|开发|制作|实现|编写|构建|搭建|设计/i,
 ];
@@ -151,4 +164,20 @@ export function isArtifactGenerationTask(text: string): boolean {
   const hasArtifactRequestHint = ARTIFACT_REQUEST_HINTS.some((pattern) => pattern.test(text));
 
   return hasBuildAction && (deliverableHits >= 1 || hasCodeFenceHint || hasArtifactRequestHint);
+}
+
+export function isDeliverableGenerationTask(text: string): boolean {
+  const normalized = text
+    .replace(/@\S+/g, " ")
+    .replace(/\s+/g, "")
+    .trim();
+  if (!normalized) return false;
+  if (DELIVERABLE_COMPLAINT_HINTS.some((pattern) => pattern.test(normalized))) return false;
+
+  const hasAction = BUILD_ACTIONS.some((keyword) => normalized.toLowerCase().includes(keyword.toLowerCase()))
+    || BUILD_ACTION_HINTS.some((pattern) => pattern.test(normalized))
+    || /重新生成|重新写|重新整理|补一份|补充一份|输出|导出/.test(normalized);
+  const hasDeliverable = DELIVERABLE_REQUEST_HINTS.some((pattern) => pattern.test(normalized));
+
+  return hasAction && hasDeliverable;
 }

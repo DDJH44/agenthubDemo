@@ -173,12 +173,16 @@ function detectDeliverableKind(task: string): DeliverableKind | null {
 
   const deliverable = "(文档|报告|手册|方案|指南|PRD|需求|设计文档|技术文档|接口文档|用户手册|白皮书|材料|说明书|[\\u4e00-\\u9fa5A-Za-z0-9]{1,12}(报告|文档|方案|手册|指南))";
   const patterns = [
+    new RegExp(`重新生成(一份|一个|一篇)?${deliverable}`),
+    new RegExp(`重新(写|整理|创建|制作)(一份|一个|一篇)?${deliverable}`),
     new RegExp(`生成(一份|一个|一篇)?${deliverable}`),
     new RegExp(`写(一份|一个|一篇)?${deliverable}`),
     new RegExp(`整理(一份)?${deliverable}`),
     new RegExp(`创建(一份)?${deliverable}`),
-    new RegExp(`帮我(写|生成|整理|做)(一个|一份|一篇)?${deliverable}`),
-    new RegExp(`(起草|拟定|编写)(一份)?${deliverable}`),
+    new RegExp(`制作(一份|一个|一篇)?${deliverable}`),
+    new RegExp(`输出(一份|一个|一篇)?${deliverable}`),
+    new RegExp(`帮我(写|生成|整理|做|制作|输出)(一个|一份|一篇)?${deliverable}`),
+    new RegExp(`(起草|拟定|编写|撰写)(一份)?${deliverable}`),
   ];
   return patterns.some((pattern) => pattern.test(normalized)) ? "document" : null;
 }
@@ -626,8 +630,11 @@ export class MemoryQueue implements IJobQueue {
 
           const summaryTextForDeliverable = String(final.summary || "").trim();
           const deliverableKind = detectDeliverableKind(payload.task);
+          let deliverableArtifactCreated = false;
+          let deliverableTitle = "";
           if (summaryTextForDeliverable && deliverableKind === "document" && !publishedArtifactTypes.has("document")) {
             const document = ensureDocumentMarkdown(summaryTextForDeliverable, payload.task);
+            deliverableTitle = document.title;
             await publishArtifactMessage({
               id: `artifact-${jobId}-document`,
               jobId,
@@ -637,10 +644,12 @@ export class MemoryQueue implements IJobQueue {
               metadata: { autoDeliverable: true, deliverableKind: "document" },
               createdAt: Date.now(),
             });
+            deliverableArtifactCreated = true;
           }
 
           if (summaryTextForDeliverable && deliverableKind === "slides" && !publishedArtifactTypes.has("slides")) {
             const slides = buildSlidesMarkdown(summaryTextForDeliverable, payload.task);
+            deliverableTitle = slides.title;
             await publishArtifactMessage({
               id: `artifact-${jobId}-slides`,
               jobId,
@@ -650,6 +659,7 @@ export class MemoryQueue implements IJobQueue {
               metadata: { autoDeliverable: true, deliverableKind: "slides" },
               createdAt: Date.now(),
             });
+            deliverableArtifactCreated = true;
           }
 
           steps.push(...stepResults);
@@ -664,15 +674,25 @@ export class MemoryQueue implements IJobQueue {
           if (payload.conversationId) {
             if (final.summary) {
               const summarySender = visibleAgentForRole("refiner");
+              const finalSummaryText = deliverableArtifactCreated
+                ? `${deliverableKind === "slides" ? "演示稿" : "文档"}已生成：${deliverableTitle || cleanTitle(payload.task, "AI 生成文档")}\n\n文件已放入上方产物卡片，可预览、继续编辑或导出。`
+                : String(final.summary).slice(0, 2000);
+              const summaryPayload = {
+                ...(final as Record<string, unknown>),
+                kind: "final_summary",
+                jobId,
+                workflowRef: payload.workflowRef,
+                ...(deliverableKind ? { deliverableKind, deliverableArtifactCreated } : {}),
+              };
               const summaryMsg = await messageRepo.createAndUpdateConv({
                 conversationId: payload.conversationId,
                 type: "agent_message",
                 sender: summarySender,
                 senderId: summarySender,
-                content: String(final.summary).slice(0, 2000),
-                payload: { ...(final as Record<string, unknown>), kind: "final_summary", jobId, workflowRef: payload.workflowRef },
+                content: finalSummaryText,
+                payload: summaryPayload,
               });
-              emit({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, senderId: summaryMsg.senderId ?? undefined, content: summaryMsg.content, payload: { ...(final as Record<string, unknown>), kind: "final_summary", jobId, workflowRef: payload.workflowRef }, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
+              emit({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, senderId: summaryMsg.senderId ?? undefined, content: summaryMsg.content, payload: summaryPayload, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
             }
           }
 
