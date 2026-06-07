@@ -74,6 +74,7 @@ APP_URL=http://localhost:3000 API_URL=http://localhost:3002 npm run smoke:accept
 
 ## 文档入口
 
+- [结题交付说明](docs/FINAL_DELIVERY.md)
 - [产品规格](docs/SPEC.md)
 - [架构说明](docs/ARCHITECTURE.md)
 - [演示脚本](docs/DEMO_SCRIPT.md)
