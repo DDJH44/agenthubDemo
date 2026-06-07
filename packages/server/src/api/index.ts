@@ -1134,12 +1134,12 @@ function platformDeploymentTarget() {
   const missingEnv = requiredEnv.filter((key) => !envValues[key]);
   const envTemplate = [
     "# AgentHub default deployment target",
-    `SELF_HOSTED_SSH_HOST=${host || "8.160.170.169"}`,
+    `SELF_HOSTED_SSH_HOST=${host || "your-server.example.com"}`,
     `SELF_HOSTED_SSH_PORT=${envValues.SELF_HOSTED_SSH_PORT}`,
-    `SELF_HOSTED_SSH_USER=${user || "admin"}`,
-    `SELF_HOSTED_SSH_KEY=${sshKey || "C:\\Users\\Lenovo\\.ssh\\id_rsa"}`,
+    `SELF_HOSTED_SSH_USER=${user || "deploy"}`,
+    `SELF_HOSTED_SSH_KEY=${sshKey || "/home/agenthub/.ssh/agenthub_default"}`,
     `SELF_HOSTED_DEPLOY_PATH=${deployPath}`,
-    `SELF_HOSTED_PUBLIC_URL=${publicUrl || "http://8.160.170.169/{userId}/{deployId}"}`,
+    `SELF_HOSTED_PUBLIC_URL=${publicUrl || "https://your-server.example.com/{userId}/{deployId}"}`,
     "# SELF_HOSTED_POST_DEPLOY_COMMAND=sudo -n nginx -s reload",
   ].join("\n");
 

@@ -21,7 +21,7 @@ DEPLOYMENT_TARGET_SECRET=replace-with-a-long-random-secret
 SELF_HOSTED_SSH_HOST=your-server.example.com
 SELF_HOSTED_SSH_PORT=22
 SELF_HOSTED_SSH_USER=deploy
-SELF_HOSTED_SSH_KEY=C:\Users\Lenovo\.ssh\id_rsa
+SELF_HOSTED_SSH_KEY=/home/agenthub/.ssh/agenthub_default
 SELF_HOSTED_DEPLOY_PATH=/var/www/agenthub-sites/{userId}/{deployId}
 SELF_HOSTED_PUBLIC_URL=https://your-server.example.com/{userId}/{deployId}
 ```
