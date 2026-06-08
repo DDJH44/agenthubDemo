@@ -14,7 +14,7 @@ export interface AgentDirectoryEntry {
   connection: AgentConnection;
 }
 
-export type AgentConnectionState = "local" | "live" | "demo" | "fallback" | "unconfigured";
+export type AgentConnectionState = "local" | "live" | "managed" | "fallback" | "unconfigured";
 
 export interface AgentConnection {
   state: AgentConnectionState;
@@ -31,7 +31,7 @@ interface ConversationAgentOptions {
 export const CONNECTION_STATE_META: Record<AgentConnectionState, { label: string; shortLabel: string; color: string; bg: string; border: string }> = {
   local: { label: "内置可用", shortLabel: "内置", color: "#174ea6", bg: "rgba(23, 78, 166, 0.07)", border: "rgba(23, 78, 166, 0.16)" },
   live: { label: "真实适配器", shortLabel: "真实", color: "var(--success)", bg: "var(--success-subtle)", border: "var(--success-border)" },
-  demo: { label: "内置适配器", shortLabel: "内置", color: "#7c3aed", bg: "rgba(124, 58, 237, 0.08)", border: "rgba(124, 58, 237, 0.18)" },
+  managed: { label: "系统托管", shortLabel: "托管", color: "#7c3aed", bg: "rgba(124, 58, 237, 0.08)", border: "rgba(124, 58, 237, 0.18)" },
   fallback: { label: "降级接管", shortLabel: "降级", color: "#9a6700", bg: "rgba(154, 103, 0, 0.10)", border: "rgba(154, 103, 0, 0.18)" },
   unconfigured: { label: "待配置", shortLabel: "待配", color: "var(--fg-tertiary)", bg: "var(--surface-low)", border: "var(--border)" },
 };
@@ -94,41 +94,6 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
       adapter: "packages/adapter/src/claude-code",
       boundary: "已内置 Claude Code 适配器入口；可用于失败降级、冲突复核和接管策略，实际可用性以 CLI 检测结果为准。",
       lastChecked: "平台页检测",
-    },
-  },
-  {
-    id: "open-code",
-    aliases: ["open code", "opencode", "open-code"],
-    name: "Open Code",
-    provider: "Open Code",
-    role: "部署 Agent",
-    badge: "OC",
-    color: "#7c3aed",
-    capabilities: ["构建部署", "发布回调", "日志诊断"],
-    connection: {
-      state: "demo",
-      label: "内置部署通道",
-      adapter: "deploy sandbox adapter",
-      boundary: "当前通过内置部署通道完成状态卡片、日志回写和预览链接；真实 Open Code 执行器按同一 adapter 接口接入。",
-      lastChecked: "部署面板执行时",
-    },
-  },
-  {
-    id: "ux-reviewer",
-    aliases: ["ux reviewer", "自建 ux reviewer", "ux-reviewer"],
-    name: "自建 UX Reviewer",
-    provider: "Custom",
-    role: "自建 Agent",
-    badge: "UX",
-    color: "#a50e0e",
-    capabilities: ["体验审查", "验收路径", "文案建议"],
-    isCustom: true,
-    connection: {
-      state: "demo",
-      label: "自建样例",
-      adapter: "user-agent-store",
-      boundary: "作为用户自建 Agent 样例参与群聊，证明头像、名称、能力标签和上下文派发能力。",
-      lastChecked: "随会话更新",
     },
   },
   {
@@ -221,11 +186,11 @@ export function summarizeAgentConnections(agents: AgentDirectoryEntry[]) {
     const state = getAgentConnection(agent).state;
     acc[state] += 1;
     return acc;
-  }, { local: 0, live: 0, demo: 0, fallback: 0, unconfigured: 0 });
+  }, { local: 0, live: 0, managed: 0, fallback: 0, unconfigured: 0 });
 
   const state: AgentConnectionState =
     counts.fallback > 0 ? "fallback" :
-    counts.demo > 0 ? "demo" :
+    counts.managed > 0 ? "managed" :
     counts.unconfigured > 0 ? "unconfigured" :
     counts.live > 0 ? "live" :
     "local";

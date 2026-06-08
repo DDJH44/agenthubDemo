@@ -511,11 +511,11 @@ function OrchestrationBoard({
     },
     {
       title: "发布与复核",
-      desc: "部署完成后进入 UX 验收",
-      agents: ["Open Code", "UX Reviewer"],
+      desc: "部署完成后进入质量检查",
+      agents: ["部署服务", "质量检查"],
       progress: Math.round(
         items
-          .filter((item) => /Open Code|UX Reviewer/.test(item.agentName))
+          .filter((item) => /部署|质量|QA|Reviewer|UX/.test(item.agentName))
           .reduce((sum, item, _, list) => sum + item.progress / Math.max(1, list.length), 0)
       ),
     },

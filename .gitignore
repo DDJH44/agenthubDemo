@@ -15,6 +15,7 @@
 /test-screenshots/
 /test_screenshots/
 /screenshots/
+/logs/
 /tmp/
 __pycache__/
 *.py[cod]

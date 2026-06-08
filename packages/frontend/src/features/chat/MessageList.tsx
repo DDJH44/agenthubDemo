@@ -29,7 +29,7 @@ const AGENT_META: Record<string, SenderMeta> = {
   codex: { label: "Codex", badge: "CX", role: "代码生成", color: "#0f766e" },
   worker: { label: "Worker Agent", badge: "W", role: "执行", color: "#5f6368" },
   "claude-code": { label: "Claude Code", badge: "CL", role: "冲突处理", color: "#9a6700" },
-  "open-code": { label: "Open Code", badge: "OC", role: "部署", color: "#7c3aed" },
+  deploy: { label: "部署服务", badge: "DP", role: "部署", color: "#7c3aed" },
   critic: { label: "Critic", badge: "CR", role: "审查", color: "#a50e0e" },
   refiner: { label: "UX Reviewer", badge: "UX", role: "体验审查", color: "#a50e0e" },
   "ux-reviewer": { label: "自建 UX Reviewer", badge: "UX", role: "自建 Agent", color: "#a50e0e" },

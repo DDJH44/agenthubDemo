@@ -49,7 +49,7 @@ export function CommandPalette() {
     const navCommands: Array<{ id: string; title: string; nav: NavKey; keywords: string }> = [
       { id: "nav-dashboard", title: "工作台", nav: "dashboard", keywords: "dashboard 首页 控制台" },
       { id: "nav-chat", title: "会话", nav: "chat", keywords: "chat 对话 群聊 单聊" },
-      { id: "nav-agents", title: "Agent 平台", nav: "agents", keywords: "agent codex claude open code" },
+      { id: "nav-agents", title: "Agent 平台", nav: "agents", keywords: "agent codex claude custom" },
       { id: "nav-my-agents", title: "自建 Agent", nav: "my-agents", keywords: "custom agent 自建" },
       { id: "nav-tasks", title: "任务队列", nav: "tasks", keywords: "task 任务 队列" },
       { id: "nav-assistant", title: "AI 助手", nav: "ai-assistant", keywords: "assistant 助手" },

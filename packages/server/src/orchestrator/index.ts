@@ -109,10 +109,10 @@ export class Orchestrator {
 2. 必须使用代码块标记，例如 \`\`\`html
 3. 代码不能省略，不能写“此处省略”
 4. 产物要包含基础交互、响应式适配和清晰注释
-5. 如果用户要求后端、数据库、CRUD、管理系统或后台，默认生成可直接预览和部署的单文件轻量版本，用 localStorage 和函数模拟 API/数据库，并在代码注释里标明“本地模拟后端”；除非用户明确要求真实服务端项目，否则不要输出需要额外启动的服务端
+5. 如果用户要求后端、数据库、CRUD、管理系统或后台，但当前交付目标是静态预览，请只生成浏览器端轻量原型，并明确标注“非真实后端”；不要声称已经接入真实 API 或数据库。若用户明确要求真实服务端项目，请输出真实项目结构、接口代码和运行说明
 6. 除代码块外，只允许有一句很短的交付说明`;
 
-    const generationPrompt = `${enrichedTask}\n\n请生成 index.html。若用户没有指定技术栈，使用原生 HTML/CSS/JavaScript；如果是烟花、动画、游戏或可视化类需求，优先使用 Canvas 实现；如果是轻量管理系统、后端、CRUD 或数据库需求，生成一个包含列表、表单、搜索、状态统计、本地模拟 API/localStorage 持久化的单文件可预览版本。`;
+    const generationPrompt = `${enrichedTask}\n\n请生成 index.html。若用户没有指定技术栈，使用原生 HTML/CSS/JavaScript；如果是烟花、动画、游戏或可视化类需求，优先使用 Canvas 实现；如果是轻量管理系统、后端、CRUD 或数据库需求，生成一个包含列表、表单、搜索、状态统计和浏览器本地存储的单文件可预览版本，并在界面或注释中标明这是静态原型而不是真实后端。`;
 
     let reply = "";
     for await (const chunk of this.adapter!.streamResponse(generationPrompt, { systemPrompt, temperature: 0.35, maxTokens: 8192, signal })) {

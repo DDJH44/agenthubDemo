@@ -91,8 +91,7 @@ const AGENT_LABELS: Record<string, string> = {
   worker: "Worker",
   refiner: "UX Reviewer",
   critic: "Critic",
-  deploy: "Open Code",
-  "open-code": "Open Code",
+  deploy: "部署服务",
   "claude-code": "Claude Code",
 };
 

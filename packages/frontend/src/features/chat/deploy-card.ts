@@ -48,7 +48,7 @@ export function upsertDeployCard(conversationId: string | undefined, deployId: s
     conversationId,
     type: "deploy_card",
     sender: normalizedStatus === "deploying" ? "system" : "worker",
-    senderId: normalizedStatus === "deploying" ? "deploy" : "open-code",
+    senderId: "deploy",
     content: options.content ?? defaultContent(normalizedStatus, platformLabel, options.url, options.error),
     mentions: [],
     payload: {

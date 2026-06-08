@@ -14,9 +14,7 @@ export class OpenAIAdapter extends BaseAdapter {
   async connect(): Promise<void> {
     const apiKey = this.config.apiKey ?? process.env.OPENAI_API_KEY;
     if (!apiKey || apiKey === "sk-missing") {
-      console.warn("[OpenAIAdapter] No API key configured, running in mock mode");
-      this.connected = true;
-      return;
+      throw new Error("OpenAI adapter is not configured. Set OPENAI_API_KEY or configure a user agent API key.");
     }
     this.client = new OpenAI({ apiKey, baseURL: this.config.baseURL ?? process.env.OPENAI_BASE_URL });
     this.connected = true;
@@ -24,7 +22,7 @@ export class OpenAIAdapter extends BaseAdapter {
 
   async sendMessage(content: string, context?: AdapterContext): Promise<string> {
     this.ensureConnected();
-    if (!this.client) return this.mockResponse(content);
+    if (!this.client) throw new Error("OpenAI adapter is not connected to a real client.");
     const ctx = this.buildContext(context);
     const messages = this.buildMessages(content, ctx);
     const controller = new AbortController();
@@ -60,7 +58,7 @@ export class OpenAIAdapter extends BaseAdapter {
 
   async *streamResponse(content: string, context?: AdapterContext): AsyncGenerator<string, string, unknown> {
     this.ensureConnected();
-    if (!this.client) { yield* this.mockStream(); return ""; }
+    if (!this.client) throw new Error("OpenAI adapter is not connected to a real client.");
     const ctx = this.buildContext(context);
     const controller = new AbortController();
     const externalSignal = ctx.signal;
@@ -97,8 +95,8 @@ export class OpenAIAdapter extends BaseAdapter {
     }
   }
 
-  async executeTool(name: string, params: Record<string, unknown>): Promise<unknown> {
-    return { result: `Tool ${name} executed`, params };
+  async executeTool(name: string, _params: Record<string, unknown>): Promise<unknown> {
+    throw new Error(`OpenAI adapter cannot execute tool "${name}" directly. Use AgentHub's registered tool layer.`);
   }
 
   async disconnect(): Promise<void> { this.client = null; this.connected = false; }
@@ -144,14 +142,4 @@ export class OpenAIAdapter extends BaseAdapter {
     }
   }
 
-  private mockResponse(content: string): string {
-    if (content.includes("规划") || content.includes("plan")) return JSON.stringify({ steps: [{ id: "1", task: "分析需求", dependsOn: [] }, { id: "2", task: "执行任务", dependsOn: ["1"] }, { id: "3", task: "输出结果", dependsOn: ["2"] }] });
-    return "任务执行完成。（mock mode）";
-  }
-
-  private async *mockStream(): AsyncGenerator<string, string, unknown> {
-    const c = ["分析中...", "\n处理中...", "\n完成。"];
-    for (const t of c) { await this.sleep(200); yield t; }
-    return c.join("");
-  }
 }

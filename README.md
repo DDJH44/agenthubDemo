@@ -1,6 +1,6 @@
 # AgentHub
 
-AgentHub 是一个面向多 Agent 协作的软件生成工作台。它以会话为入口，让 PMO 主 Agent 拆解复杂任务，并调度 Codex、Claude Code、Open Code 和用户自建 Agent 完成网页、文档、PPT、代码、预览、Diff、版本历史与部署。
+AgentHub 是一个面向多 Agent 协作的软件生成工作台。它以会话为入口，让 PMO 主 Agent 拆解复杂任务，并调度 Codex、Claude Code 和用户自建 Agent 完成网页、文档、PPT、代码、预览、Diff、版本历史与部署。
 
 ## 快速启动
 
@@ -35,7 +35,7 @@ npm run dev:server
 4. 展示消息流里的文字回复、代码卡片、部署状态卡片。
 5. 打开右侧产物工作台，演示预览、代码、Diff、PPT、历史、部署、上下文。
 6. 打开我的智能体，展示自建 Agent 和 LLM 配置能力。
-7. 打开设置页，使用“结题演示自检”确认后端、模型、部署服务器和工作区状态。
+7. 打开设置页，使用“运行自检”确认后端、模型、部署服务器和工作区状态。
 
 详细脚本见 [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md)，最终检查清单见 [docs/final-acceptance-checklist.md](docs/final-acceptance-checklist.md)。
 

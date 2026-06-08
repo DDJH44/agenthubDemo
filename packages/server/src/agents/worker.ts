@@ -132,8 +132,6 @@ export class WorkerAgent extends BaseAgent {
       return { task, result: result.trim(), toolUsed: "llm-only", toolResult: null };
     }
 
-    const mockResult = `[mock] 执行完成: ${task}`;
-    this.memory.set(`result:${task.slice(0, 50)}`, mockResult);
-    return { task, result: mockResult, toolUsed: null, toolResult: null };
+    throw new Error("Worker Agent has no real adapter configured. Configure a model API key or a CLI adapter before running tasks.");
   }
 }

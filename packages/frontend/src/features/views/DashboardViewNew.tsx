@@ -63,7 +63,7 @@ const CONNECTED_AGENTS = [
   { name: "PMO 主 Agent", tag: "协调器", desc: "拆解、调度、降级、冲突处理" },
   { name: "Codex", tag: "代码", desc: "生成网页、代码和版本产物" },
   { name: "Claude Code", tag: "冲突", desc: "接管失败任务与 Diff 合并" },
-  { name: "Open Code", tag: "部署", desc: "处理第三方平台部署状态" },
+  { name: "部署服务", tag: "部署", desc: "处理默认服务器和第三方平台部署状态" },
   { name: "UX Reviewer", tag: "自建", desc: "复核体验路径与交互问题" },
 ];
 
@@ -76,8 +76,7 @@ const AGENT_LABELS: Record<string, string> = {
   worker: "Worker",
   refiner: "UX Reviewer",
   critic: "Critic",
-  deploy: "Open Code",
-  "open-code": "Open Code",
+  deploy: "部署服务",
   "claude-code": "Claude Code",
 };
 

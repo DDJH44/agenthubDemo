@@ -133,7 +133,6 @@ const AGENT_ROLE_ALIASES: Record<string, AgentRole> = {
   worker: "worker",
   codex: "worker",
   coder: "worker",
-  "open-code": "worker",
   critic: "critic",
   reviewer: "critic",
   "ux-reviewer": "critic",

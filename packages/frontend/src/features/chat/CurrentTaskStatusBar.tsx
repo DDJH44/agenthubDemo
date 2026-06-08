@@ -46,10 +46,9 @@ const AGENT_LABELS: Record<string, string> = {
   worker: "Worker",
   refiner: "UX Reviewer",
   "ux-reviewer": "UX Reviewer",
-  "open-code": "Open Code",
   "claude-code": "Claude Code",
   critic: "Critic",
-  deploy: "Open Code",
+  deploy: "部署服务",
 };
 
 function getPayload(message: Message | undefined): Record<string, unknown> {

@@ -7,7 +7,7 @@ const AGENT_META: Record<string, { role: string; color: string }> = {
   pm: { role: "协调器", color: "var(--accent)" },
   codex: { role: "代码生成", color: "#0f766e" },
   "claude-code": { role: "冲突处理", color: "#9a6700" },
-  "open-code": { role: "部署", color: "#7c3aed" },
+  deploy: { role: "部署", color: "#7c3aed" },
   "ux-reviewer": { role: "自建 Agent", color: "#a50e0e" },
 };
 

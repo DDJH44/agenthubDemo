@@ -105,19 +105,6 @@ const PLATFORM_AGENTS: PlatformAgent[] = [
     tools: ["review", "merge", "diff"],
   },
   {
-    id: "open-code",
-    name: "Open Code",
-    provider: "Open Source",
-    role: "部署执行",
-    status: "online",
-    color: "#7c3aed",
-    desc: "负责构建、部署、部署状态卡片和第三方平台访问链接。",
-    capabilities: ["构建", "部署", "状态回传", "产物链接"],
-    adapter: "packages/adapter/src/generic",
-    fallback: "部署失败时返回日志给 PMO，并提示 Codex 修复构建问题。",
-    tools: ["build", "deploy", "logs"],
-  },
-  {
     id: "researcher",
     name: "Researcher",
     provider: "AgentHub",
@@ -300,7 +287,7 @@ export function AgentsView() {
       const state = health ? connectionFromHealth(agent.id, health)?.state ?? "unconfigured" : getPlatformConnection(agent.id)?.state ?? "unconfigured";
       acc[state] += 1;
       return acc;
-    }, { local: 0, live: 0, demo: 0, fallback: 0, unconfigured: 0 });
+    }, { local: 0, live: 0, managed: 0, fallback: 0, unconfigured: 0 });
     const ready = counts.local + counts.live;
     const total = PLATFORM_AGENTS.length;
     return {
@@ -310,7 +297,7 @@ export function AgentsView() {
       items: [
         { state: "live" as const, label: "真实适配器", value: counts.live, desc: "已具备真实平台入口，运行时按环境配置校验。" },
         { state: "local" as const, label: "内置能力", value: counts.local, desc: "由 AgentHub 本地流程直接支撑，无需外部密钥。" },
-        { state: "demo" as const, label: "内置适配器", value: counts.demo, desc: "用于承接暂未连接外部平台的执行链路，真实执行器可按同一接口替换。" },
+        { state: "managed" as const, label: "系统托管", value: counts.managed, desc: "由 AgentHub 服务端托管的能力，运行边界会在状态中明确展示。" },
         { state: "fallback" as const, label: "降级通道", value: counts.fallback, desc: "外部执行失败时保留接管、冲突和回滚证据。" },
       ],
     };
@@ -324,7 +311,7 @@ export function AgentsView() {
             <p className="text-xs font-semibold" style={{ color: "var(--fg-tertiary)" }}>多 Agent 接入</p>
             <h1 className="mt-1 text-2xl font-bold" style={{ color: "var(--fg-primary)" }}>Agent 平台与能力</h1>
             <p className="mt-2 max-w-2xl text-sm" style={{ color: "var(--fg-tertiary)", lineHeight: 1.7 }}>
-              展示主 Agent、Codex、Claude Code、Open Code 和自建 Agent 的联系人式信息，包含头像、名称、能力标签和降级策略。
+              展示主 Agent、Codex、Claude Code 和自建 Agent 的联系人式信息，包含头像、名称、能力标签和降级策略。
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

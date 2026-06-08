@@ -295,7 +295,7 @@ function ChatEmptyState({
           {[
             ["PMO", "主 Agent 调度"],
             ["Codex", "代码生成"],
-            ["Open Code", "部署接入"],
+            ["部署服务", "部署接入"],
           ].map(([name, desc]) => (
             <div key={name} className="rounded-xl px-3 py-2" style={{ background: "var(--surface-glass)", border: "1px solid var(--border)" }}>
               <p className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{name}</p>

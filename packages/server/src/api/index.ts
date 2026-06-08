@@ -695,18 +695,6 @@ registerRoute("POST", "/api/auth/register", async (req, res) => {
   const hashed = await hashPassword(password);
   const user = await userRepo.create({ name, email, password: hashed });
 
-  // 为新用户创建默认智能体
-  const defaultAgents = [
-    { name: "PM Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是项目管理智能体。负责分析用户需求、拆解任务、制定执行计划，并协调其他智能体完成项目。你擅长需求分析、任务分解、进度跟踪和风险管理。用中文回复。" }), permissions: JSON.stringify(["chat", "task"]) },
-    { name: "Frontend Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是前端开发智能体。精通 HTML、CSS、JavaScript、TypeScript、React、Vue、Next.js 等前端技术栈。你负责实现用户界面、交互逻辑和响应式设计。生成的代码要完整可运行，注重用户体验和视觉效果。用中文回复。" }), permissions: JSON.stringify(["chat", "task", "file"]) },
-    { name: "Backend Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是后端开发智能体。精通 Node.js、Python、Go、数据库设计、API 开发、系统架构。你负责设计数据模型、开发 RESTful API、处理业务逻辑和性能优化。用中文回复。" }), permissions: JSON.stringify(["chat", "task", "file"]) },
-    { name: "Design Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是 UI/UX 设计智能体。精通界面设计、用户体验、配色方案、布局设计。你负责提供设计建议、优化界面视觉效果、确保设计一致性和可用性。用中文回复。" }), permissions: JSON.stringify(["chat"]) },
-    { name: "Test Agent", type: "custom", config: JSON.stringify({ model: "gpt-4o-mini", systemPrompt: "你是测试智能体。精通单元测试、集成测试、端到端测试。你负责编写测试用例、发现 bug、验证功能完整性、提供测试报告。用中文回复。" }), permissions: JSON.stringify(["chat", "task"]) },
-  ];
-  for (const agent of defaultAgents) {
-    await userAgentConfigRepo.create({ userId: user.id, ...agent });
-  }
-
   const { token, expiresAt } = await createSession(user.id);
 
   res.writeHead(201, { "Content-Type": "application/json" });
@@ -1031,7 +1019,7 @@ registerRoute("GET", "/api/download/:id", async (req, res) => {
   }));
 });
 
-/* ── GET /api/preview/:id (Mock Preview 预览) ── */
+/* ── GET /api/preview/:id (local preview) ── */
 registerRoute("GET", "/api/preview/:id", async (req, res) => {
   const deployId = (req as RequestWithParams).params?.id;
   if (!deployId || !/^[a-zA-Z0-9._-]+$/.test(deployId)) {

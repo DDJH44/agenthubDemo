@@ -17,7 +17,7 @@ import {
   type DeploymentTargetsResponse,
 } from "@/features/deployment/deployment-targets";
 
-type Platform = "mock-preview" | "vercel" | "miaoda" | "self-hosted" | "static-download" | "container-package";
+type Platform = "local-preview" | "vercel" | "miaoda" | "self-hosted" | "static-download" | "container-package";
 
 interface PlatformOption {
   key: Platform;
@@ -38,7 +38,7 @@ const PLATFORMS: PlatformOption[] = [
     icon: "M4 6h16v4H4z M4 14h16v4H4z M8 8h.01 M8 16h.01",
   },
   {
-    key: "mock-preview",
+    key: "local-preview",
     label: "预览 URL",
     desc: "生成轻量预览链接，用于快速检查页面效果。",
     hint: "适合先看效果，不依赖第三方密钥",

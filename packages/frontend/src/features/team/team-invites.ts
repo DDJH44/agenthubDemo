@@ -104,7 +104,7 @@ async function createRemoteInvite(invite: TeamInvite) {
       }),
     });
   } catch {
-    // Local invite state remains available when the demo backend is offline.
+    console.warn("[team-invites] Failed to sync invite to the server.");
   }
 }
 
@@ -194,7 +194,6 @@ export function addPendingTeamInvite(
       fromName: fromName || existing.fromName,
     };
     writeInvites(current.map((invite) => (invite.id === existing.id ? updated : invite)));
-    upsertInboxInvite(updated);
     void createRemoteInvite(updated);
     return { ok: true, invite: updated, duplicate: true };
   }
@@ -211,25 +210,8 @@ export function addPendingTeamInvite(
     status: "pending",
   };
   writeInvites([invite, ...current]);
-  upsertInboxInvite(invite);
   void createRemoteInvite(invite);
   return { ok: true, invite, duplicate: false };
-}
-
-function upsertInboxInvite(invite: TeamInvite) {
-  if (!invite.fromEmail || invite.fromEmail === invite.email) return;
-  const inbox = readInbox();
-  const existing = inbox.find((item) => (
-    item.email === invite.email &&
-    item.fromEmail === invite.fromEmail &&
-    inviteStatus(item) === "pending"
-  ));
-  const incomingInvite: TeamInvite = { ...invite, status: "pending" };
-  if (existing) {
-    writeInbox(inbox.map((item) => (item.id === existing.id ? { ...existing, ...incomingInvite, id: existing.id } : item)));
-    return;
-  }
-  writeInbox([incomingInvite, ...inbox]);
 }
 
 export function removePendingTeamInvite(id: string) {

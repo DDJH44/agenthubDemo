@@ -205,7 +205,10 @@ class VercelProvider implements IDeployProvider {
           const readyState = status.readyState ?? status.state ?? status.status;
           logs.push(`Vercel 状态: ${readyState ?? "UNKNOWN"}`);
           if (readyState === "READY") {
-            const url = this.formatUrl(status.alias?.[0] ?? status.url ?? deployment.url) ?? "https://unknown.vercel.app";
+            const url = this.formatUrl(status.alias?.[0] ?? status.url ?? deployment.url);
+            if (!url) {
+              throw new Error("Vercel 部署完成但未返回公开访问地址");
+            }
             onProgress(100, `部署成功: ${url}`);
             logs.push(`部署成功: ${url}`);
             return {
@@ -515,9 +518,9 @@ class ContainerPackageProvider implements IDeployProvider {
   }
 }
 
-class MockPreviewProvider implements IDeployProvider {
-  readonly id = "mock-preview";
-  readonly name = "Mock Preview";
+class LocalPreviewProvider implements IDeployProvider {
+  readonly id = "local-preview";
+  readonly name = "Local Preview";
 
   private outputDir: string;
 
@@ -918,7 +921,7 @@ class DeployManager {
   private providers = new Map<string, IDeployProvider>();
 
   constructor() {
-    this.register(new MockPreviewProvider());
+    this.register(new LocalPreviewProvider());
     this.register(new VercelProvider());
     this.register(new MiaodaProvider());
     this.register(new StaticDownloadProvider());

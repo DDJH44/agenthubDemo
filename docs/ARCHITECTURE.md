@@ -9,7 +9,7 @@
 | 状态管理 | Zustand |
 | 服务端 | Node.js、tsx、WebSocket |
 | Agent 适配 | OpenAI SDK、Generic OpenAI、Claude Code、Codex 适配器 |
-| 数据与共享类型 | `packages/shared`、本地 store、演示数据 |
+| 数据与共享类型 | `packages/shared`、数据库、本地 store |
 | 验证 | ESLint、TypeScript、Jest、acceptance smoke script |
 
 ## 2. 仓库结构
@@ -20,7 +20,7 @@
 | `packages/server` | WebSocket 服务和 Agent 请求入口 |
 | `packages/adapter` | 多模型/多 Agent 平台适配层 |
 | `packages/shared` | 前后端共享类型和协议 |
-| `scripts/acceptance-smoke.mjs` | 验收演示数据冒烟检查 |
+| `scripts/acceptance-smoke.mjs` | 核心页面与后端健康冒烟检查 |
 | `docs` | 产品、架构、AI 协作和答辩材料 |
 
 ## 3. 前端模块
@@ -31,8 +31,7 @@
 | `src/app/login/page.tsx` | 登录与品牌入口 |
 | `src/features/chat` | 聊天主界面、消息流、会话列表、输入区 |
 | `src/features/workspace` | 右侧工作台，承载预览、代码、Diff、部署、上下文 |
-| `src/features/views` | Agent 页面、任务页面、验收指南等 |
-| `src/features/demo/acceptance-demo.ts` | 注入答辩演示会话、消息、Agent、产物和部署状态 |
+| `src/features/views` | Agent 页面、任务页面、设置、帮助等 |
 | `src/stores` | 会话、Agent、工作台、导航等 Zustand store |
 
 ## 4. Agent 调度模型
@@ -41,7 +40,7 @@ AgentHub 的产品模型分为三层：
 
 1. 用户层：用户在单聊或群聊中提出需求。
 2. PMO 层：主 Agent 解析需求、拆任务、选择子 Agent、跟踪状态。
-3. 执行层：Codex、Claude Code、Open Code、自建 Agent 等执行具体任务。
+3. 执行层：Codex、Claude Code、自建 Agent 等执行具体任务。
 
 简化流程：
 
@@ -87,8 +86,6 @@ Agent Response
 - Claude Code。
 - Codex。
 
-Open Code 在前端 Agent 联系人和验收演示中作为主流 Agent 平台概念展示，后续可以继续补齐真实执行适配器。
-
 运行时相关环境变量只应写在本地 `.env` 或部署平台密钥中：
 
 - `ADAPTER_TYPE`
@@ -121,7 +118,7 @@ Select Artifact
   -> Public URL or Failure Retry
 ```
 
-当前重点是把“部署到三方平台”的交互闭环演示清楚；真实平台可继续接入 Vercel、飞书妙搭或静态托管服务。
+当前已支持默认服务器静态部署、源码打包、容器化部署包和 Vercel / Miaoda 扩展入口；未配置密钥时会展示明确的失败或待配置状态。
 
 ## 9. 质量保障
 

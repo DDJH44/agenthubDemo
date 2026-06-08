@@ -46,7 +46,7 @@ const FAQ_ITEMS = [
   },
 ];
 
-const DEMO_CHECKS = [
+const READINESS_CHECKS = [
   "模型 API 已配置",
   "默认服务器可部署",
   "会话能流式回复",
@@ -180,9 +180,9 @@ export function HelpView() {
 
           <aside className="space-y-4">
             <Panel>
-              <SectionTitle title="演示检查" desc="答辩前建议确认。" />
+              <SectionTitle title="运行检查" desc="使用前建议确认。" />
               <div className="space-y-2">
-                {DEMO_CHECKS.map((item, index) => (
+                {READINESS_CHECKS.map((item, index) => (
                   <div key={item} className="flex items-center gap-2 rounded-lg px-2.5 py-2" style={{ background: "var(--surface-low)" }}>
                     <span className="grid h-5 w-5 place-items-center rounded-full text-[11px] font-bold text-white" style={{ background: "var(--accent)" }}>{index + 1}</span>
                     <span className="text-xs font-medium" style={{ color: "var(--fg-primary)" }}>{item}</span>

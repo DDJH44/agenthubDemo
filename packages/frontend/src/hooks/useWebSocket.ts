@@ -248,7 +248,6 @@ const AGENT_LABELS: Record<string, string> = {
   codex: "Codex",
   coder: "Codex",
   "ux-reviewer": "UX Reviewer",
-  "open-code": "Open Code",
   "claude-code": "Claude Code",
 };
 
@@ -912,7 +911,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
               filename: `${msg.providerId}-deployment.url`,
               content: msg.url,
               version: 1,
-              createdBy: "Open Code",
+              createdBy: "部署服务",
               createdAt: Date.now(),
               metadata: {
                 providerId: msg.providerId,

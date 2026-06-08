@@ -50,7 +50,7 @@ const EMPTY_ACTIONS = [
   { title: "PMO 拆解任务", desc: "请把这个课题拆成可验收的多 Agent 协作流程" },
   { title: "生成网页产物", desc: "用 Codex 生成一个可预览和可编辑的 HTML 产物" },
   { title: "处理代码冲突", desc: "让 Claude Code 接管同文件冲突并输出 Diff" },
-  { title: "部署到预览环境", desc: "让 Open Code 生成部署状态卡片和访问链接" },
+  { title: "部署到预览环境", desc: "通过 AgentHub 部署服务生成状态卡片和访问链接" },
 ];
 
 function isNearScrollBottom(element: HTMLElement, threshold = 72) {
@@ -359,7 +359,7 @@ export function AgentChatPanel({
                     <BrandMascot variant="wave" size={126} className="mb-4" priority />
                     <h2 className="text-lg font-bold" style={{ color: "var(--fg-primary)" }}>从一个任务开始</h2>
                     <p className="mt-2 max-w-md text-sm" style={{ color: "var(--fg-tertiary)", lineHeight: 1.7 }}>
-                      描述目标，PMO 主 Agent 会拆解任务并分配给 Codex、Claude Code、Open Code 或自建 Agent。
+                      描述目标，PMO 主 Agent 会拆解任务并分配给 Codex、Claude Code 或自建 Agent。
                     </p>
                     <div className="mt-6 grid w-full max-w-2xl gap-2 sm:grid-cols-2">
                       {EMPTY_ACTIONS.map((action) => (

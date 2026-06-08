@@ -573,7 +573,7 @@ interface DeployCardState {
 function getDeployProviderLabel(providerId: string) {
   const labels: Record<string, string> = {
     "self-hosted": "静态站点部署",
-    "mock-preview": "预览 URL",
+    "local-preview": "预览 URL",
     "static-download": "源码打包下载",
     "container-package": "容器化部署包",
     vercel: "Vercel",
@@ -636,15 +636,15 @@ async function upsertDeployCardMessage(conversationId: string, state: DeployCard
         id: deployCardMessageId(state.deployId),
         conversationId,
         type: "deploy_card",
-        sender: state.status === "deploying" ? "system" : "Open Code",
-        senderId: state.status === "deploying" ? "deploy" : "open-code",
+        sender: "部署服务",
+        senderId: "deploy",
         content,
         payload: JSON.stringify(payload),
         mentions: "[]",
       },
       update: {
-        sender: state.status === "deploying" ? "system" : "Open Code",
-        senderId: state.status === "deploying" ? "deploy" : "open-code",
+        sender: "部署服务",
+        senderId: "deploy",
         content,
         payload: JSON.stringify(payload),
       },
@@ -751,7 +751,7 @@ function parseDeployIntent(text: string): DeployIntent | null {
   if (/(miaoda|妙搭)/i.test(source)) return { providerId: "miaoda" };
   if (/(容器|镜像|docker|container)/i.test(source)) return { providerId: "container-package" };
   if (/(源码|源代码|打包|下载|压缩|zip|package)/i.test(source)) return { providerId: "static-download" };
-  if (/(预览|preview|url)/i.test(source)) return { providerId: "mock-preview" };
+  if (/(预览|preview|url)/i.test(source)) return { providerId: "local-preview" };
   if (/(静态|站点|网站|服务器|上线|发布|部署|deploy|publish)/i.test(source) || lowered === "deploy") {
     return { providerId: "self-hosted" };
   }
