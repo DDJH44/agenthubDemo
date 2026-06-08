@@ -17,7 +17,6 @@ const eslintConfig = defineConfig([
     "test_*.js",
     "tmp_*",
     "*.py",
-    "start-brainstorm-server.js",
     "packages/**/node_modules/**",
     "packages/**/tsconfig.tsbuildinfo",
   ]),
