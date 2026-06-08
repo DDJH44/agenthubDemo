@@ -10,7 +10,7 @@
 | 服务端 | Node.js、tsx、WebSocket |
 | Agent 适配 | OpenAI SDK、Generic OpenAI、Claude Code、Codex 适配器 |
 | 数据与共享类型 | `packages/shared`、数据库、本地 store |
-| 验证 | ESLint、TypeScript、Jest、acceptance smoke script |
+| 验证 | ESLint、TypeScript、Jest、smoke script |
 
 ## 2. 仓库结构
 
@@ -21,7 +21,7 @@
 | `packages/adapter` | 多模型/多 Agent 平台适配层 |
 | `packages/shared` | 前后端共享类型和协议 |
 | `scripts/acceptance-smoke.mjs` | 核心页面与后端健康冒烟检查 |
-| `docs` | 产品、架构、AI 协作和答辩材料 |
+| `docs` | 产品、架构、AI 协作和交付文档 |
 
 ## 3. 前端模块
 
