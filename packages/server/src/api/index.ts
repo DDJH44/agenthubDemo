@@ -181,7 +181,11 @@ async function readCliVersion(command: string) {
   const versionArgs = [["--version"], ["-v"]];
   for (const args of versionArgs) {
     try {
-      const result = await execFileAsync(command, args, { timeout: 2500, windowsHide: true });
+      const result = await execFileAsync(command, args, {
+        timeout: 2500,
+        windowsHide: true,
+        shell: process.platform === "win32",
+      });
       const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
       const firstLine = output.split(/\r?\n/).find(Boolean);
       return firstLine?.slice(0, 120) || "version command ok";
