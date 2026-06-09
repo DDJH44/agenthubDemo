@@ -1,4 +1,4 @@
-import { isArtifactGenerationTask, isContextualQuoteChat, isDeliverableGenerationTask, isLightweightMentionChat, isSimpleChat, parseComposerQuoteIntent } from "../task-classifier";
+import { isArtifactEditTask, isArtifactGenerationTask, isContextualQuoteChat, isDeliverableGenerationTask, isLightweightMentionChat, isSimpleChat, parseComposerQuoteIntent } from "../task-classifier";
 
 describe("task classifier", () => {
   describe("isSimpleChat", () => {
@@ -34,6 +34,19 @@ describe("task classifier", () => {
     it("keeps duplicate artifact questions out of artifact generation", () => {
       expect(isArtifactGenerationTask("\u4e3a\u4ec0\u4e48\u751f\u62103\u4efd\u76f8\u540c\u7684index.html")).toBe(false);
       expect(isArtifactGenerationTask("why did you generate duplicate index.html files?")).toBe(false);
+    });
+  });
+
+  describe("isArtifactEditTask", () => {
+    it("detects local artifact edit requests", () => {
+      expect(isArtifactEditTask("\u6211\u53ea\u9700\u8981\u4f60\u66f4\u6362\u5b57\u4f53\u989c\u8272\u6216\u8005\u80cc\u666f\u989c\u8272")).toBe(true);
+      expect(isArtifactEditTask("\u4e0d\u8981\u91cd\u65b0\u751f\u6210\uff0c\u53ea\u4fee\u6539\u6309\u94ae\u989c\u8272")).toBe(true);
+      expect(isArtifactEditTask("only change the button color, do not rewrite everything")).toBe(true);
+    });
+
+    it("does not treat fresh generation as artifact edit", () => {
+      expect(isArtifactEditTask("create a pomodoro timer")).toBe(false);
+      expect(isArtifactEditTask("\u751f\u6210\u4e00\u4e2a\u7b80\u5355\u7684\u756a\u8304\u949f\u7f51\u9875")).toBe(false);
     });
   });
 

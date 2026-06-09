@@ -8,6 +8,14 @@ export interface JobPayload {
   userId: string;
   task: string;
   mentions: string[];
+  baseArtifact?: {
+    id?: string;
+    jobId?: string;
+    type?: string;
+    filename?: string;
+    language?: string;
+    content: string;
+  };
   plan?: PlanNode[];
   edges?: Array<{ source: string; target: string; label?: string }>;
   workflowRef?: WorkflowReferencePayload;

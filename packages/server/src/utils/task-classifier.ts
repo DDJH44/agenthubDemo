@@ -1,3 +1,13 @@
+const ARTIFACT_EDIT_HINTS = [
+  /(?:\u53ea|\u4ec5|\u4ec5\u4ec5).{0,12}(?:\u4fee\u6539|\u6539|\u66f4\u6362|\u66ff\u6362|\u8c03\u6574)/,
+  /(?:\u4e0d\u8981|\u522b|\u4e0d\u7528).{0,16}(?:\u91cd\u5199|\u91cd\u505a|\u91cd\u65b0\u751f\u6210|\u5168\u90e8\u91cd\u65b0|\u5168\u91cf)/,
+  /(?:\u4fdd\u7559|\u4e0d\u6539).{0,16}(?:\u539f\u6709|\u5176\u4ed6|\u529f\u80fd|\u6837\u5f0f|\u7ed3\u6784|\u903b\u8f91)/,
+  /(?:\u4fee\u6539|\u66f4\u6362|\u66ff\u6362|\u8c03\u6574|\u4fee\u590d|\u6539\u6210).{0,24}(?:\u5b57\u4f53|\u5b57\u53f7|\u6587\u5b57|\u989c\u8272|\u80cc\u666f|\u6309\u94ae|\u6837\u5f0f|\u5bf9\u6bd4\u5ea6|\u95f4\u8ddd|\u5e03\u5c40)/,
+  /(?:only|just).{0,24}(?:change|update|replace|adjust|modify)/i,
+  /(?:do not|don't|dont|no need to).{0,24}(?:rewrite|regenerate|rebuild|recreate|start over)/i,
+  /(?:keep|preserve).{0,24}(?:existing|original|other|logic|style|layout|functionality)/i,
+];
+
 const CHAT_PATTERNS = [
   /^(你好|hi|hello|hey|嗨|哈喽|早上好|下午好|晚上好|早安|晚安|在吗|在不在|谢谢|感谢|ok|好的|嗯|是|否|对|再见|拜拜)\s*[!！?？。.~～]*$/i,
   /^(你是谁|你叫什么|介绍|介绍一下你自己|what|how are you|who are you)\s*[!！?？。.~～]*$/i,
@@ -178,6 +188,12 @@ export function isArtifactGenerationTask(text: string): boolean {
   const hasArtifactRequestHint = ARTIFACT_REQUEST_HINTS.some((pattern) => pattern.test(text));
 
   return hasBuildAction && (deliverableHits >= 1 || hasCodeFenceHint || hasArtifactRequestHint);
+}
+
+export function isArtifactEditTask(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return ARTIFACT_EDIT_HINTS.some((pattern) => pattern.test(trimmed));
 }
 
 export function isDeliverableGenerationTask(text: string): boolean {

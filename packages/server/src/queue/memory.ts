@@ -168,6 +168,36 @@ function hasInlineCodeArtifact(result: string) {
   return /```[^\r\n`]*[ \t]*(?:\r?\n)[\s\S]*?```|<!doctype html|<html[\s>]/i.test(result);
 }
 
+function normalizeComparableLines(content: string) {
+  return content
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function changedLineRatio(before: string, after: string) {
+  const a = normalizeComparableLines(before);
+  const b = normalizeComparableLines(after);
+  const total = Math.max(a.length, b.length, 1);
+  let changed = Math.abs(a.length - b.length);
+  for (let i = 0; i < Math.min(a.length, b.length); i += 1) {
+    if (a[i] !== b[i]) changed += 1;
+  }
+  return changed / total;
+}
+
+function stepResultLooksFailed(result: string) {
+  return /步骤执行异常|执行失败|任务失败|Error:\s|429|TPM|timed out|rate limit|quota|Request id:/i.test(result);
+}
+
+function summarizeStepFailure(stepResults: Array<{ id: string; task: string; result: string }>) {
+  const failed = stepResults.filter((step) => stepResultLooksFailed(step.result));
+  if (failed.length === 0) return "";
+  const first = failed[0];
+  return `任务执行失败，未生成新的产物。\n\n失败步骤：${first.task}\n原因：${first.result.slice(0, 500)}`;
+}
+
 type DeliverableKind = "document" | "slides";
 
 function stripMentions(text: string) {
@@ -339,6 +369,209 @@ export class MemoryQueue implements IJobQueue {
     }
   }
 
+  private async executeArtifactEditJob(
+    jobId: string,
+    payload: JobPayload,
+    adapter: ReturnType<typeof createAdapterFromEnv>,
+    emit: (data: Record<string, unknown>) => void,
+    visibleAgentForRole: (role: string) => string,
+    signal?: AbortSignal,
+  ) {
+    const base = payload.baseArtifact;
+    if (!base) throw new Error("Missing base artifact for artifact edit task");
+
+    const workerAgent = visibleAgentForRole("worker");
+    const filename = base.filename || "index.html";
+    const language = base.language || (base.type === "html" ? "html" : "text");
+    const plan = [
+      { id: "1", task: `读取上一版 ${filename} 并定位需要局部修改的位置` },
+      { id: "2", task: "只修改用户指定的颜色/样式/文案等局部内容，保留其余结构和逻辑" },
+      { id: "3", task: "输出可预览的新版本产物并校验改动范围" },
+    ];
+    emit({ type: "plan:created", plan });
+    for (const step of plan) {
+      emit({ type: "step:started", stepId: step.id, task: step.task, agentRole: workerAgent });
+    }
+    emit({
+      type: "agent:stream",
+      agentId: workerAgent,
+      chunk: `已进入局部编辑模式，正在基于上一版 ${filename} 修改。`,
+      messageId: `${jobId}-artifact-edit`,
+    });
+
+    const systemPrompt = [
+      "你是 AgentHub 的产物编辑 Agent，正在修改一份已经生成过的代码产物。",
+      "用户要求的是局部修改，不是重新设计或重新生成。",
+      "必须尽量保留原文件的 HTML 结构、CSS 类名、JavaScript 逻辑、功能和布局。",
+      "只允许修改用户明确指出的颜色、背景、字体、按钮样式、文案或小范围样式。",
+      "输出必须是完整更新后的文件，放在一个代码块中。",
+      "不要输出多个版本，不要解释大段方案，不要声称已经全量重做。",
+    ].join("\n");
+    const prompt = [
+      `用户修改要求：${payload.task}`,
+      `基准文件：${filename}`,
+      `语言：${language}`,
+      "请基于下面的原文件做最小必要修改，并输出完整更新后的文件。",
+      "如果用户只要求改颜色或背景，只改对应 CSS 属性。",
+      `\`\`\`${language} filename=${filename}`,
+      base.content,
+      "```",
+    ].join("\n\n");
+
+    const reply = await adapter.sendMessage(prompt, {
+      systemPrompt,
+      temperature: 0.1,
+      maxTokens: 12000,
+      signal,
+    });
+    const preferredType = base.type === "html" ? "html" : base.type === "json" ? "json" : "code";
+    const artifacts = extractCodeArtifacts(reply, "edit");
+    const editedArtifact = artifacts.find((artifact) => artifact.type === preferredType)
+      ?? artifacts.find((artifact) => artifact.filename === filename)
+      ?? artifacts[0];
+    if (!editedArtifact?.content?.trim()) {
+      throw new Error("Artifact edit did not return an updated file");
+    }
+
+    const editedContent = editedArtifact.content.trim();
+    const ratio = changedLineRatio(base.content, editedContent);
+    if (ratio > 0.45) {
+      throw new Error(`Artifact edit changed too much (${Math.round(ratio * 100)}%). Refusing to replace the existing artifact with a likely rewrite.`);
+    }
+
+    const storedArtifact = await jobRepo.addArtifact(jobId, {
+      type: editedArtifact.type,
+      content: editedContent,
+      filename: editedArtifact.filename || filename,
+      metadata: {
+        mode: "artifact_edit",
+        baseArtifactId: base.id,
+        baseJobId: base.jobId,
+        changeRatio: ratio,
+        topicTitle: payload.task,
+      },
+    });
+    const persistedArtifact: Artifact = {
+      id: storedArtifact.id,
+      jobId: storedArtifact.jobId,
+      type: storedArtifact.type as Artifact["type"],
+      content: storedArtifact.content,
+      filename: storedArtifact.filename ?? filename,
+      metadata: parseArtifactMetadata(storedArtifact.metadata, {
+        mode: "artifact_edit",
+        baseArtifactId: base.id,
+        changeRatio: ratio,
+      }),
+      createdAt: storedArtifact.createdAt.getTime(),
+    };
+    emit({ type: "artifact:created", artifact: persistedArtifact });
+
+    if (payload.conversationId) {
+      const artifactMsg = await messageRepo.createAndUpdateConv({
+        conversationId: payload.conversationId,
+        type: "agent_message",
+        sender: workerAgent,
+        senderId: workerAgent,
+        content: persistedArtifact.content,
+        payload: {
+          kind: "artifact",
+          artifactType: persistedArtifact.type,
+          artifactId: persistedArtifact.id,
+          filename: persistedArtifact.filename,
+          language: artifactLanguage(persistedArtifact),
+          jobId,
+          topicTitle: payload.task,
+          editMode: "patch",
+          baseArtifactId: base.id,
+          baseJobId: base.jobId,
+          changeRatio: ratio,
+          workflowRef: payload.workflowRef,
+        },
+      });
+      emit({
+        type: "message:created",
+        message: {
+          id: artifactMsg.id,
+          conversationId: artifactMsg.conversationId,
+          type: artifactMsg.type,
+          sender: artifactMsg.sender,
+          senderId: artifactMsg.senderId ?? undefined,
+          content: artifactMsg.content,
+          payload: {
+            kind: "artifact",
+            artifactType: persistedArtifact.type,
+            artifactId: persistedArtifact.id,
+            filename: persistedArtifact.filename,
+            language: artifactLanguage(persistedArtifact),
+            jobId,
+            editMode: "patch",
+            baseArtifactId: base.id,
+            baseJobId: base.jobId,
+            changeRatio: ratio,
+            workflowRef: payload.workflowRef,
+          },
+          mentions: [],
+          timestamp: artifactMsg.timestamp.getTime(),
+        },
+      });
+
+      const summary = `已基于上一版 ${filename} 完成局部修改，保留原有结构和逻辑，改动范围约 ${Math.round(ratio * 100)}%。`;
+      const summaryMsg = await messageRepo.createAndUpdateConv({
+        conversationId: payload.conversationId,
+        type: "agent_message",
+        sender: visibleAgentForRole("refiner"),
+        senderId: visibleAgentForRole("refiner"),
+        content: summary,
+        payload: {
+          kind: "final_summary",
+          jobId,
+          task: payload.task,
+          editMode: "patch",
+          baseArtifactId: base.id,
+          artifactId: persistedArtifact.id,
+          changeRatio: ratio,
+        },
+      });
+      emit({
+        type: "message:created",
+        message: {
+          id: summaryMsg.id,
+          conversationId: summaryMsg.conversationId,
+          type: summaryMsg.type,
+          sender: summaryMsg.sender,
+          senderId: summaryMsg.senderId ?? undefined,
+          content: summaryMsg.content,
+          payload: {
+            kind: "final_summary",
+            jobId,
+            editMode: "patch",
+            baseArtifactId: base.id,
+            artifactId: persistedArtifact.id,
+            changeRatio: ratio,
+          },
+          mentions: [],
+          timestamp: summaryMsg.timestamp.getTime(),
+        },
+      });
+    }
+
+    const steps = plan.map((step) => ({
+      id: step.id,
+      task: step.task,
+      result: step.id === "3" ? `局部修改完成，changeRatio=${ratio.toFixed(3)}` : "completed",
+    }));
+    for (const step of steps) {
+      emit({ type: "step:completed", stepId: step.id, task: step.task, result: step.result, toolUsed: "code" });
+    }
+    const summary = `Artifact edited with minimal patch. Changed ${Math.round(ratio * 100)}% of comparable lines.`;
+    await jobRepo.updateStatus(jobId, "completed", { summary, plan, stepResults: steps, stats: { mode: "artifact_edit", changeRatio: ratio } });
+    emit({ type: "job:completed", summary, stats: { mode: "artifact_edit", changeRatio: ratio } });
+
+    this.statuses.set(jobId, "completed");
+    const jobResult: JobResult = { jobId, status: "completed", summary, steps };
+    for (const handler of this.handlers) handler(jobResult);
+  }
+
   private async executeJob(jobId: string, payload: JobPayload) {
     const controller = new AbortController();
     this.controllers.set(jobId, controller);
@@ -406,6 +639,16 @@ export class MemoryQueue implements IJobQueue {
 
     try {
       await adapter.connect();
+      if (payload.baseArtifact) {
+        await Promise.race([
+          this.executeArtifactEditJob(jobId, payload, adapter, emit, visibleAgentForRole, controller.signal),
+          new Promise<never>((_, reject) => controller.signal.addEventListener("abort", () => {
+            reject(new DOMException("Job cancelled", "AbortError"));
+          })),
+        ]);
+        return;
+      }
+
       await Promise.race([
         orchestrator.run(
           payload.task,
@@ -525,6 +768,45 @@ export class MemoryQueue implements IJobQueue {
               toolUsed: sr.toolUsed ?? undefined,
               duration: undefined,
             });
+          }
+
+          const failureSummary = summarizeStepFailure(stepResults);
+          if (failureSummary) {
+            await jobRepo.updateStatus(jobId, "failed", {
+              error: failureSummary,
+              summary: failureSummary,
+              plan: final.plan,
+              stepResults: final.stepResults,
+              stats: { blockedArtifactPublish: true },
+            });
+            if (payload.conversationId) {
+              const failedMsg = await messageRepo.createAndUpdateConv({
+                conversationId: payload.conversationId,
+                type: "error",
+                sender: "system",
+                content: failureSummary,
+                payload: { kind: "job_failed", jobId, blockedArtifactPublish: true },
+              });
+              emit({
+                type: "message:created",
+                message: {
+                  id: failedMsg.id,
+                  conversationId: failedMsg.conversationId,
+                  type: failedMsg.type,
+                  sender: failedMsg.sender,
+                  senderId: failedMsg.senderId ?? undefined,
+                  content: failedMsg.content,
+                  payload: { kind: "job_failed", jobId, blockedArtifactPublish: true },
+                  mentions: [],
+                  timestamp: failedMsg.timestamp.getTime(),
+                },
+              });
+            }
+            emit({ type: "job:failed", error: failureSummary });
+            this.statuses.set(jobId, "failed");
+            const jobResult: JobResult = { jobId, status: "failed", error: failureSummary, steps };
+            for (const handler of this.handlers) handler(jobResult);
+            break;
           }
 
           const publishArtifactMessage = async (artifact: Artifact) => {

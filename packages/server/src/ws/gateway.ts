@@ -29,7 +29,7 @@ import { deploymentTargetRepo } from "../db/repositories/deployment-target";
 import { decryptSecret } from "../deploy/credentials";
 import { validateConversationId, validateWorkspaceId, validateMessageText, validateConversationTitle, validateConversationType, validateParticipants, validateSearchQuery, validateString } from "../utils/validators";
 import { validateSession } from "../auth/session";
-import { isArtifactGenerationTask, isContextualQuoteChat, isDeliverableGenerationTask, isLightweightMentionChat, isSimpleChat, parseComposerQuoteIntent } from "../utils/task-classifier";
+import { isArtifactEditTask, isArtifactGenerationTask, isContextualQuoteChat, isDeliverableGenerationTask, isLightweightMentionChat, isSimpleChat, parseComposerQuoteIntent } from "../utils/task-classifier";
 
 interface AuthenticatedWebSocket extends WebSocket {
   userId?: string;
@@ -112,6 +112,45 @@ function getParticipants(conv: { participants: string | string[] }): string[] {
 function parseJsonField<T>(raw: unknown, fallback: T): T {
   if (typeof raw !== "string" || raw.length === 0) return fallback;
   try { return JSON.parse(raw) as T; } catch { return fallback; }
+}
+
+type EditableArtifactContext = {
+  id?: string;
+  jobId?: string;
+  type?: string;
+  filename?: string;
+  language?: string;
+  content: string;
+};
+
+function isEditableArtifactPayload(payload: Record<string, unknown> | undefined) {
+  if (!payload || payload.kind !== "artifact") return false;
+  return ["html", "code", "json"].includes(String(payload.artifactType ?? ""));
+}
+
+async function findLatestEditableArtifact(conversationId: string): Promise<EditableArtifactContext | null> {
+  const messages = await prisma.message.findMany({
+    where: { conversationId, type: "agent_message" },
+    orderBy: { timestamp: "desc" },
+    take: 80,
+  });
+
+  for (const message of messages) {
+    const payload = parseJsonField<Record<string, unknown> | undefined>(message.payload, undefined);
+    if (!isEditableArtifactPayload(payload)) continue;
+    const content = message.content.trim();
+    if (content.length < 20) continue;
+    return {
+      id: typeof payload?.artifactId === "string" ? payload.artifactId : message.id,
+      jobId: typeof payload?.jobId === "string" ? payload.jobId : undefined,
+      type: typeof payload?.artifactType === "string" ? payload.artifactType : undefined,
+      filename: typeof payload?.filename === "string" ? payload.filename : undefined,
+      language: typeof payload?.language === "string" ? payload.language : undefined,
+      content,
+    };
+  }
+
+  return null;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1250,7 +1289,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const hasEnabledAgents = enabledAgentNames.length > 0;
             const originalMentionParse = resolveConversationMentions(text, enabledAgentNames);
             const simpleChat = !workflowRef && !originalMentionParse.hasMention && isSimpleChat(text);
-            const artifactTask = isArtifactGenerationTask(text) || isDeliverableGenerationTask(text);
+            const artifactEditIntent = !workflowRef && !agentExecution && isArtifactEditTask(text);
+            const baseArtifact = artifactEditIntent ? await findLatestEditableArtifact(conversationId) : null;
+            const artifactTask = isArtifactGenerationTask(text) || isDeliverableGenerationTask(text) || Boolean(baseArtifact);
             const mentionCleanText = originalMentionParse.cleanText.trim();
             const isMentionOnlyInput = originalMentionParse.hasMention && !mentionCleanText && !workflowRef && !agentExecution;
             const isLightweightMentionInput = originalMentionParse.hasMention && !workflowRef && !agentExecution && isLightweightMentionChat(mentionCleanText);
@@ -1351,6 +1392,60 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                   content: agentMsg.content,
                   mentions: [],
                   payload: { kind: "context_quote_ack", quoteOnly: quoteIntent.quoteOnly },
+                  timestamp: agentMsg.timestamp.getTime(),
+                },
+              });
+              break;
+            }
+
+            if (artifactEditIntent && !baseArtifact && !originalMentionParse.hasMention) {
+              const userMsg = await messageRepo.createAndUpdateConv({
+                conversationId,
+                type: "user_message",
+                sender: userName,
+                senderId: userId,
+                content: text,
+                mentions: [],
+                id: clientMsgId,
+                payload: { kind: "artifact_edit_without_base" },
+              });
+              broadcast(conversationId, {
+                type: "message:created",
+                message: {
+                  id: userMsg.id,
+                  conversationId,
+                  type: userMsg.type,
+                  sender: userMsg.sender,
+                  senderId: userId,
+                  content: userMsg.content,
+                  mentions: [],
+                  payload: { kind: "artifact_edit_without_base" },
+                  timestamp: userMsg.timestamp.getTime(),
+                },
+              });
+
+              const sender = isDirectConv ? agentName : "planner";
+              const reply = "我没有找到当前会话里可修改的上一版代码产物。请先生成或选择一个代码产物，再说“只改按钮颜色/背景色”这类局部修改要求。";
+              const agentMsg = await messageRepo.createAndUpdateConv({
+                conversationId,
+                type: "agent_message",
+                sender,
+                senderId: sender,
+                content: reply,
+                mentions: [],
+                payload: { kind: "artifact_edit_missing_base" },
+              });
+              broadcast(conversationId, {
+                type: "message:created",
+                message: {
+                  id: agentMsg.id,
+                  conversationId: agentMsg.conversationId,
+                  type: agentMsg.type,
+                  sender: agentMsg.sender,
+                  senderId: agentMsg.senderId ?? undefined,
+                  content: agentMsg.content,
+                  mentions: [],
+                  payload: { kind: "artifact_edit_missing_base" },
                   timestamp: agentMsg.timestamp.getTime(),
                 },
               });
@@ -1458,7 +1553,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             } else if (matchedAgents.length === 0) {
               const matched = matchByKeywords(cleanText || routingText);
               matchedAgents = matched.map((m) => m.agentId);
-              matchSummary = artifactTask
+              matchSummary = baseArtifact
+                ? `产物局部修改 · 已绑定 ${baseArtifact.filename ?? "最近代码产物"}`
+                : artifactTask
                 ? "产物型任务 · 已切换为 PMO 编排流程"
                 : matched.length > 0
                 ? `AI 自动匹配: ${matched.map((m) => m.label).join("、")}`
@@ -1470,11 +1567,21 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             matchedAgents = selectEnabledAgentsForTask(matchedAgents, enabledAgentNames);
             const isMentionOnlyTask = isMentionOnlyInput && !executionSummary;
             const isLightweightMentionTask = isLightweightMentionInput && !executionSummary;
+            const artifactEditPayload = baseArtifact ? {
+              artifactEdit: {
+                mode: "patch",
+                baseArtifactId: baseArtifact.id,
+                baseJobId: baseArtifact.jobId,
+                filename: baseArtifact.filename,
+                artifactType: baseArtifact.type,
+              },
+            } : {};
 
             const userMsg = await messageRepo.createAndUpdateConv({
               conversationId, type: "user_message", sender: userName, senderId: userId, content: text, mentions: matchedAgents,
               id: clientMsgId,
               payload: {
+                ...artifactEditPayload,
                 ...(workflowRef ? { workflowRef: compactWorkflowReference(workflowRef) } : {}),
                 ...(executionSummary ? { agentExecution: { mode: "execute", task: executionSummary.goal, contextSummary: executionSummary } } : {}),
               },
@@ -1487,6 +1594,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                 type: userMsg.type, sender: userMsg.sender, senderId: userId, content: userMsg.content,
                 mentions: matchedAgents,
                 payload: {
+                  ...artifactEditPayload,
                   ...(workflowRef ? { workflowRef: compactWorkflowReference(workflowRef) } : {}),
                   ...(executionSummary ? { agentExecution: { mode: "execute", task: executionSummary.goal, contextSummary: executionSummary } } : {}),
                 },
@@ -1556,6 +1664,7 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
               userId,
               task: queueTask,
               mentions: matchedAgents,
+              baseArtifact: baseArtifact ?? undefined,
               plan: workflowRef?.plan,
               edges: workflowRef?.edges,
               workflowRef,
