@@ -582,16 +582,6 @@ export default function Page() {
 
       const targetConversationId = detail.conversationId ?? useChatStore.getState().activeConversationId;
       forceChatNavigation(setActiveNav);
-      try {
-        useChatStore.getState().setCurrentPreview({
-          artifactId: detail.artifactId,
-          type: detail.type,
-          content: detail.content,
-          filename: detail.filename,
-        });
-      } catch {
-        // Navigation should still work if the preview store is temporarily unavailable.
-      }
       if (targetConversationId) {
         useChatStore.getState().setActiveConversation(targetConversationId);
         try {
@@ -600,6 +590,17 @@ export default function Page() {
           // Keep navigation and preview opening intact even if local workspace persistence fails.
         }
         window.dispatchEvent(new CustomEvent("conversation:select", { detail: { conversationId: targetConversationId } }));
+        try {
+          useChatStore.getState().setCurrentPreview({
+            conversationId: targetConversationId,
+            artifactId: detail.artifactId,
+            type: detail.type,
+            content: detail.content,
+            filename: detail.filename,
+          });
+        } catch {
+          // Navigation should still work if the preview store is temporarily unavailable.
+        }
       }
       setShowCreateModal(false);
       if (isMobile) {
@@ -646,16 +647,6 @@ export default function Page() {
       if (!artifact) return;
 
       forceChatNavigation(setActiveNav);
-      try {
-        useChatStore.getState().setCurrentPreview({
-          artifactId: artifact.id,
-          type: artifact.type,
-          content: artifact.content,
-          filename: artifact.filename,
-        });
-      } catch {
-        // Navigation should still work if the preview store is temporarily unavailable.
-      }
       if (targetConversationId) {
         useChatStore.getState().setActiveConversation(targetConversationId);
         try {
@@ -664,6 +655,17 @@ export default function Page() {
           // Keep navigation and preview opening intact even if local workspace persistence fails.
         }
         window.dispatchEvent(new CustomEvent("conversation:select", { detail: { conversationId: targetConversationId } }));
+        try {
+          useChatStore.getState().setCurrentPreview({
+            conversationId: targetConversationId,
+            artifactId: artifact.id,
+            type: artifact.type,
+            content: artifact.content,
+            filename: artifact.filename,
+          });
+        } catch {
+          // Navigation should still work if the preview store is temporarily unavailable.
+        }
       }
       setShowCreateModal(false);
       if (isMobile) {

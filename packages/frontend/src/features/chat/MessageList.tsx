@@ -194,6 +194,7 @@ function InlineCodeBlock({
       artifactId={`${messageId}-${displayFilename}`}
       conversationId={conversationId}
       onPreview={isHtml && !isOpen ? () => setCurrentPreview({
+        conversationId,
         artifactId: `${messageId}-${displayFilename}`,
         type: "html",
         content: code,
@@ -869,6 +870,7 @@ const MessageBubble = memo(function MessageBubble({
   const workflowReferenceMeta = getWorkflowReferenceMeta(payload);
   const previewArtifact = (type: string, content: string, filename?: string) => {
     setCurrentPreview({
+      conversationId: message.conversationId,
       artifactId,
       type,
       content,

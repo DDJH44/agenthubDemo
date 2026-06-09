@@ -36,7 +36,11 @@ export function requestOpenArtifact(detail: OpenArtifactRequestDetail) {
     window.dispatchEvent(new CustomEvent("conversation:select", { detail: { conversationId: targetConversationId } }));
   }
 
+  const previewConversationId = targetConversationId ?? detail.conversationId;
+  if (!previewConversationId) return;
+
   useChatStore.getState().setCurrentPreview({
+    conversationId: previewConversationId,
     artifactId: detail.artifactId,
     type: detail.type,
     content: detail.content,

@@ -953,7 +953,9 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
       delete next[activeItem.id];
       return next;
     });
+    if (!activeConversationId) return;
     setCurrentPreview({
+      conversationId: activeConversationId,
       artifactId: created.id,
       type: previewTypeForArtifact(created),
       content: created.content,
@@ -1094,21 +1096,23 @@ function findPreviewArtifact(artifacts: Artifact[]) {
 }
 
 function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
+  const activeConversationId = useChatStore((state) => state.activeConversationId);
   const currentPreview = useChatStore((state) => state.currentPreview);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [selectedPreview, setSelectedPreview] = useState<SelectionDraft | null>(null);
-  const previewArtifact = currentPreview
+  const scopedCurrentPreview = currentPreview?.conversationId === activeConversationId ? currentPreview : null;
+  const previewArtifact = scopedCurrentPreview
     ? {
         artifact: {
-          id: currentPreview.artifactId,
+          id: scopedCurrentPreview.artifactId,
           jobId: "local-preview",
-          type: (["html", "markdown", "document", "preview_url", "deploy_url", "code"].includes(currentPreview.type) ? currentPreview.type : "code") as Artifact["type"],
-          filename: currentPreview.filename,
-          content: currentPreview.content,
+          type: (["html", "markdown", "document", "preview_url", "deploy_url", "code"].includes(scopedCurrentPreview.type) ? scopedCurrentPreview.type : "code") as Artifact["type"],
+          filename: scopedCurrentPreview.filename,
+          content: scopedCurrentPreview.content,
           createdAt: 0,
           version: undefined,
         } as Artifact,
-        type: currentPreview.type === "url" ? "url" as const : currentPreview.type === "html" ? "html" as const : "document" as const,
+        type: scopedCurrentPreview.type === "url" ? "url" as const : scopedCurrentPreview.type === "html" ? "html" as const : "document" as const,
       }
     : null;
   const item = previewArtifact ?? findPreviewArtifact(artifacts);
@@ -1128,7 +1132,7 @@ function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
         filename: item.artifact.filename || item.artifact.type,
         sourceLabel: `${item.type === "html" ? "页面选区" : "文档选区"} · ${item.artifact.filename || item.artifact.type}`,
         content,
-        detail: currentPreview ? "临时预览" : item.artifact.version ? `v${item.artifact.version}` : "当前版本",
+        detail: scopedCurrentPreview ? "临时预览" : item.artifact.version ? `v${item.artifact.version}` : "当前版本",
       });
     } catch {
       setSelectedPreview(null);
@@ -1163,7 +1167,7 @@ function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
       <div className="mb-2 flex items-center justify-between rounded-lg px-3 py-2" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
         <div className="min-w-0">
           <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{item.artifact.filename || item.artifact.type}</p>
-          <p className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{currentPreview ? "临时预览" : item.artifact.version ? `v${item.artifact.version}` : "当前版本"}</p>
+          <p className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{scopedCurrentPreview ? "临时预览" : item.artifact.version ? `v${item.artifact.version}` : "当前版本"}</p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           {isDocumentPreview && (
@@ -1251,7 +1255,9 @@ function DiffPanel({ messages, artifacts }: { messages: Message[]; artifacts: Ar
       metadata: { revisionSource: "diff", diffMessageId: active.id },
     });
     if (!created) return;
+    if (!activeConversationId) return;
     setCurrentPreview({
+      conversationId: activeConversationId,
       artifactId: created.id,
       type: previewTypeForArtifact(created),
       content: created.content,
@@ -1335,14 +1341,16 @@ function DiffPanel({ messages, artifacts }: { messages: Message[]; artifacts: Ar
 }
 
 function SlidesPanel({ artifacts }: { artifacts: Artifact[] }) {
+  const activeConversationId = useChatStore((state) => state.activeConversationId);
   const currentPreview = useChatStore((state) => state.currentPreview);
-  const previewArtifact: Artifact | null = currentPreview?.type === "slides"
+  const scopedCurrentPreview = currentPreview?.conversationId === activeConversationId ? currentPreview : null;
+  const previewArtifact: Artifact | null = scopedCurrentPreview?.type === "slides"
     ? {
-        id: currentPreview.artifactId,
+        id: scopedCurrentPreview.artifactId,
         jobId: "local-preview",
         type: "slides",
-        content: currentPreview.content,
-        filename: currentPreview.filename,
+        content: scopedCurrentPreview.content,
+        filename: scopedCurrentPreview.filename,
         createdAt: 0,
       }
     : null;
@@ -1419,7 +1427,9 @@ function HistoryPanel({ artifacts, stepResults }: { artifacts: Artifact[]; stepR
     .filter((family) => family.some((artifact) => artifact.version || artifact.parentId));
 
   const previewVersion = (artifact: Artifact) => {
+    if (!activeConversationId) return;
     setCurrentPreview({
+      conversationId: activeConversationId,
       artifactId: artifact.id,
       type: previewTypeForArtifact(artifact),
       content: artifact.content,
@@ -1601,6 +1611,7 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
   const quotes = extractQuotes(artifacts);
   const totalChars = messages.reduce((sum, message) => sum + message.content.length, 0);
   const activeRefs = activeConversationId ? (contextReferences[activeConversationId] ?? []) : [];
+  const scopedCurrentPreview = currentPreview?.conversationId === activeConversationId ? currentPreview : null;
   const pinnedRefs = activeRefs.filter((ref) => ref.pinned);
   const orderedRefs = activeRefs.slice().sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
@@ -1771,10 +1782,10 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
 
       <div className="mb-4">
         <SectionHeader title="当前预览" />
-        {currentPreview ? (
+        {scopedCurrentPreview ? (
           <div className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-            <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{currentPreview.filename || currentPreview.artifactId}</p>
-            <p className="mt-1 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{currentPreview.type}</p>
+            <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{scopedCurrentPreview.filename || scopedCurrentPreview.artifactId}</p>
+            <p className="mt-1 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{scopedCurrentPreview.type}</p>
             <button type="button" onClick={() => setCurrentPreview(null)} className="mt-2 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--danger)", background: "var(--danger-subtle)" }}>
               清除临时预览
             </button>
@@ -1863,15 +1874,15 @@ export function RightPanel() {
   }, []);
 
   useEffect(() => {
-    if (!currentPreview) return;
-    const previewKey = `${currentPreview.artifactId}:${currentPreview.type}`;
+    if (!currentPreview || currentPreview.conversationId !== activeConversationId) return;
+    const previewKey = `${currentPreview.conversationId}:${currentPreview.artifactId}:${currentPreview.type}`;
     if (lastAutoPreviewRef.current === previewKey) return;
     lastAutoPreviewRef.current = previewKey;
     const tab = panelTabForArtifact(currentPreview.type);
     if (!TABS.some((item) => item.key === tab)) return;
     const timer = window.setTimeout(() => setActiveTab(tab), 0);
     return () => window.clearTimeout(timer);
-  }, [currentPreview]);
+  }, [activeConversationId, currentPreview]);
 
   useEffect(() => {
     if (activeArtifactTopicId !== activeTopicId) {

@@ -208,6 +208,14 @@ interface StreamingMessageState {
   updatedAt: number;
 }
 
+interface CurrentPreview {
+  conversationId: string;
+  artifactId: string;
+  type: string;
+  content: string;
+  filename?: string;
+}
+
 const EMPTY_TASK_STATE: ConversationTaskState = {
   planSteps: [],
   steps: [],
@@ -316,7 +324,7 @@ interface ChatStore {
   // Phase 1: agent coordination
   conversationMode: Record<string, "single" | "group">;
   agentTyping: Record<string, string[]>;
-  currentPreview: null | { artifactId: string; type: string; content: string; filename?: string };
+  currentPreview: null | CurrentPreview;
   agentMessages: Record<string, Array<{ agentId: string; agentName: string; agentRole: string; content: string; timestamp: number }>>;
   contextReferences: Record<string, ContextReference[]>;
 
@@ -478,6 +486,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     saveActiveConvId(id);
     set({ 
       activeConversationId: id, 
+      currentPreview: get().currentPreview?.conversationId === id ? get().currentPreview : null,
       agentStates: {},
       planSteps: nextTaskState.planSteps,
       steps: nextTaskState.steps,

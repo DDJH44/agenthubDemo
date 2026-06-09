@@ -104,7 +104,8 @@ export function RightPanelTabs() {
   const handleFileClick = useCallback((artifactId: string, filename: string, type: string, content: string) => {
     const tab = panelTabForArtifact(type);
     useNavigationStore.getState().setActiveNav("chat");
-    useChatStore.getState().setCurrentPreview({ artifactId, type, content, filename });
+    if (!activeConversationId) return;
+    useChatStore.getState().setCurrentPreview({ conversationId: activeConversationId, artifactId, type, content, filename });
     window.dispatchEvent(new CustomEvent(OPEN_ARTIFACT_EVENT, {
       detail: { artifactId, type, content, filename, conversationId: activeConversationId, tab },
     }));

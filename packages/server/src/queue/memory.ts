@@ -138,18 +138,30 @@ function artifactDedupKey(artifact: Pick<Artifact, "type" | "filename" | "conten
   return [artifact.type, artifact.filename ?? "", artifact.content.trim()].join("\u0000");
 }
 
-function stripCodeFromFinalSummary(summary: string, hasPublishedCodeArtifacts: boolean, task: string) {
+export function stripCodeFromFinalSummary(summary: string, hasPublishedCodeArtifacts: boolean, task: string) {
   if (!hasPublishedCodeArtifacts) return summary.slice(0, 2000);
 
-  const text = summary
-    .replace(/```[\s\S]*?```/g, "")
-    .replace(/<!doctype html[\s\S]*?<\/html\s*>/gi, "")
-    .replace(/<html[\s\S]*?<\/html\s*>/gi, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-
-  if (text) return text.slice(0, 2000);
   return `已生成产物：${cleanTitle(task, "前端产物")}\n\n代码已放入产物卡片，可预览、继续编辑或部署。`;
+}
+
+function normalizeSummaryText(value: unknown) {
+  return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+export function shouldCreateFinalSummaryMessage(
+  final: Record<string, unknown>,
+  finalSummaryText: string,
+  options: { hasPublishedCodeArtifacts: boolean; deliverableArtifactCreated: boolean }
+) {
+  if (!finalSummaryText.trim()) return false;
+  if (options.hasPublishedCodeArtifacts || options.deliverableArtifactCreated) return true;
+
+  const stepResults = Array.isArray(final.stepResults)
+    ? final.stepResults as Array<{ result?: unknown }>
+    : [];
+  const onlyResult = stepResults.length === 1 ? normalizeSummaryText(stepResults[0]?.result) : "";
+  const summary = normalizeSummaryText(final.summary);
+  return !onlyResult || onlyResult !== summary;
 }
 
 function parseArtifactMetadata(metadata: unknown, fallback?: Record<string, unknown>) {
@@ -990,22 +1002,24 @@ export class MemoryQueue implements IJobQueue {
               const finalSummaryText = deliverableArtifactCreated
                 ? `${deliverableKind === "slides" ? "演示稿" : "文档"}已生成：${deliverableTitle || cleanTitle(payload.task, "AI 生成文档")}\n\n文件已放入上方产物卡片，可预览、继续编辑或导出。`
                 : stripCodeFromFinalSummary(String(final.summary), hasPublishedCodeArtifacts, payload.task);
-              const summaryPayload = {
-                ...(final as Record<string, unknown>),
-                kind: "final_summary",
-                jobId,
-                workflowRef: payload.workflowRef,
-                ...(deliverableKind ? { deliverableKind, deliverableArtifactCreated } : {}),
-              };
-              const summaryMsg = await messageRepo.createAndUpdateConv({
-                conversationId: payload.conversationId,
-                type: "agent_message",
-                sender: summarySender,
-                senderId: summarySender,
-                content: finalSummaryText,
-                payload: summaryPayload,
-              });
-              emit({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, senderId: summaryMsg.senderId ?? undefined, content: summaryMsg.content, payload: summaryPayload, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
+              if (shouldCreateFinalSummaryMessage(final, finalSummaryText, { hasPublishedCodeArtifacts, deliverableArtifactCreated })) {
+                const summaryPayload = {
+                  ...(final as Record<string, unknown>),
+                  kind: "final_summary",
+                  jobId,
+                  workflowRef: payload.workflowRef,
+                  ...(deliverableKind ? { deliverableKind, deliverableArtifactCreated } : {}),
+                };
+                const summaryMsg = await messageRepo.createAndUpdateConv({
+                  conversationId: payload.conversationId,
+                  type: "agent_message",
+                  sender: summarySender,
+                  senderId: summarySender,
+                  content: finalSummaryText,
+                  payload: summaryPayload,
+                });
+                emit({ type: "message:created", message: { id: summaryMsg.id, conversationId: summaryMsg.conversationId, type: summaryMsg.type, sender: summaryMsg.sender, senderId: summaryMsg.senderId ?? undefined, content: summaryMsg.content, payload: summaryPayload, mentions: [], timestamp: summaryMsg.timestamp.getTime() } });
+              }
             }
           }
 

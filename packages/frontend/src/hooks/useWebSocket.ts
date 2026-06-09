@@ -838,7 +838,7 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
             content: msg.content,
             timestamp: msg.timestamp,
           });
-          if (msg.artifacts?.length) {
+          if (isActiveConversation(msg.conversationId) && msg.artifacts?.length) {
             for (const artifact of msg.artifacts) {
               useWorkspaceStore.getState().addArtifact(artifact);
             }
@@ -864,8 +864,10 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
           break;
         }
         case "artifact:updated": {
-          useWorkspaceStore.getState().addArtifact(msg.artifact);
-          useTaskTreeStore.getState().addArtifact(msg.artifact);
+          if (isActiveConversation(msg.conversationId)) {
+            useWorkspaceStore.getState().addArtifact(msg.artifact);
+            useTaskTreeStore.getState().addArtifact(msg.artifact);
+          }
           break;
         }
         case "artifact:version": {
@@ -924,7 +926,9 @@ export function useWebSocket(serverUrl?: string, enabled = true) {
                 changeSummary: `部署成功：${platformLabel}`,
               },
             };
-            useWorkspaceStore.getState().addArtifact(artifact);
+            if (isActiveConversation(conversationId)) {
+              useWorkspaceStore.getState().addArtifact(artifact);
+            }
             upsertDeployCard(conversationId, msg.deployId, {
               status: "done",
               platform: msg.providerId,
