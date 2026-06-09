@@ -73,6 +73,8 @@ export class CodexAdapter extends BaseAdapter {
 
   private buildArgs(outputFile: string) {
     const args = [
+      "-a",
+      "never",
       "exec",
       "--json",
       "--ephemeral",
