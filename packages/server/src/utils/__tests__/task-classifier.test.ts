@@ -30,6 +30,11 @@ describe("task classifier", () => {
       expect(isArtifactGenerationTask("请分析一下这个市场趋势")).toBe(false);
       expect(isArtifactGenerationTask("帮我写一份详细方案")).toBe(false);
     });
+
+    it("keeps duplicate artifact questions out of artifact generation", () => {
+      expect(isArtifactGenerationTask("\u4e3a\u4ec0\u4e48\u751f\u62103\u4efd\u76f8\u540c\u7684index.html")).toBe(false);
+      expect(isArtifactGenerationTask("why did you generate duplicate index.html files?")).toBe(false);
+    });
   });
 
   describe("isDeliverableGenerationTask", () => {
@@ -53,6 +58,11 @@ describe("task classifier", () => {
       expect(isLightweightMentionChat("这样可以吗")).toBe(true);
       expect(isLightweightMentionChat("先别动")).toBe(true);
       expect(isLightweightMentionChat("thanks")).toBe(true);
+    });
+
+    it("treats duplicate artifact questions as lightweight mention chat", () => {
+      expect(isLightweightMentionChat("\u4e3a\u4ec0\u4e48\u751f\u62103\u4efd\u76f8\u540c\u7684index.html")).toBe(true);
+      expect(isLightweightMentionChat("why did you generate duplicate index.html files?")).toBe(true);
     });
 
     it("keeps concrete work requests in task execution", () => {

@@ -134,6 +134,24 @@ function artifactSender(artifact: Artifact) {
   return "worker";
 }
 
+function artifactDedupKey(artifact: Pick<Artifact, "type" | "filename" | "content">) {
+  return [artifact.type, artifact.filename ?? "", artifact.content.trim()].join("\u0000");
+}
+
+function stripCodeFromFinalSummary(summary: string, hasPublishedCodeArtifacts: boolean, task: string) {
+  if (!hasPublishedCodeArtifacts) return summary.slice(0, 2000);
+
+  const text = summary
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/<!doctype html[\s\S]*?<\/html\s*>/gi, "")
+    .replace(/<html[\s\S]*?<\/html\s*>/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  if (text) return text.slice(0, 2000);
+  return `已生成产物：${cleanTitle(task, "前端产物")}\n\n代码已放入产物卡片，可预览、继续编辑或部署。`;
+}
+
 function parseArtifactMetadata(metadata: unknown, fallback?: Record<string, unknown>) {
   if (typeof metadata !== "string" || !metadata.trim()) return fallback;
   try {
@@ -497,6 +515,8 @@ export class MemoryQueue implements IJobQueue {
           const final = msg;
           const stepResults = (final.stepResults as Array<{ id: string; task: string; result: string; toolUsed?: string }>) ?? [];
           const publishedArtifactTypes = new Set<Artifact["type"]>();
+          const publishedArtifactKeys = new Set<string>();
+          const publishedFilenames = new Map<string, number>();
 
           for (const sr of stepResults) {
             emit({
@@ -508,10 +528,16 @@ export class MemoryQueue implements IJobQueue {
           }
 
           const publishArtifactMessage = async (artifact: Artifact) => {
+            const dedupKey = artifactDedupKey(artifact);
+            if (publishedArtifactKeys.has(dedupKey)) return null;
+            publishedArtifactKeys.add(dedupKey);
+
+            const filename = artifact.filename ? uniqueFilename(artifact.filename, publishedFilenames) : undefined;
+            const content = artifact.content.trim();
             const storedArtifact = await jobRepo.addArtifact(jobId, {
               type: artifact.type,
-              content: artifact.content,
-              filename: artifact.filename,
+              content,
+              filename,
               metadata: { ...(artifact.metadata ?? {}), topicTitle: payload.task },
             });
             const persistedArtifact: Artifact = {
@@ -570,6 +596,7 @@ export class MemoryQueue implements IJobQueue {
                 timestamp: artifactMsg.timestamp.getTime(),
               },
             });
+            return persistedArtifact;
           };
 
           for (const sr of stepResults) {
@@ -594,38 +621,42 @@ export class MemoryQueue implements IJobQueue {
             }
           }
 
-          const codeBlockRegex = /```([^\r\n`]*)[ \t]*(?:\r?\n)([\s\S]*?)```/g;
-          const summaryText = final.summary as string ?? "";
-          let match: RegExpExecArray | null;
-          let codeIdx = 0;
-          while ((match = codeBlockRegex.exec(summaryText)) !== null) {
-            const { language: lang, filename: explicitFilename } = parseFenceHeader(match[1] || "");
-            const code = match[2];
-            if (code.trim().length < 10) continue;
-            const extMap: Record<string, string> = {
-              html: "html", css: "css", js: "javascript", javascript: "javascript",
-              ts: "typescript", typescript: "typescript", tsx: "typescript", jsx: "javascript",
-              json: "json", py: "python", python: "python", go: "go", rust: "rust",
-              yaml: "yaml", yml: "yaml", xml: "xml", sql: "sql", sh: "shell", bash: "shell",
-              java: "java", cpp: "cpp", c: "c", php: "php", md: "markdown", markdown: "markdown",
-            };
-            const ext = lang.toLowerCase();
-            const normalizedExt = extMap[ext] || ext;
-            const artifactType = normalizedExt === "html"
-              ? "html"
-              : ["css", "javascript", "typescript", "json", "python", "go", "rust", "java", "cpp", "c", "php", "sql", "shell", "yaml", "xml"].includes(normalizedExt)
-                ? "code"
-                : "markdown";
-            const filename = explicitFilename ?? (extMap[ext] ? `index.${ext}` : `file-${codeIdx}.${ext || "txt"}`);
-            await publishArtifactMessage({
-              id: `artifact-${jobId}-code-${codeIdx}`,
-              jobId,
-              type: artifactType,
-              filename,
-              content: artifactType === "html" ? extractHtmlSegment(code) ?? code.trim() : code.trim(),
-              createdAt: Date.now(),
-            });
-            codeIdx++;
+          let hasPublishedCodeArtifacts = ["html", "code", "json"].some((type) => publishedArtifactTypes.has(type as Artifact["type"]));
+          if (!hasPublishedCodeArtifacts) {
+            const codeBlockRegex = /```([^\r\n`]*)[ \t]*(?:\r?\n)([\s\S]*?)```/g;
+            const summaryText = final.summary as string ?? "";
+            let match: RegExpExecArray | null;
+            let codeIdx = 0;
+            while ((match = codeBlockRegex.exec(summaryText)) !== null) {
+              const { language: lang, filename: explicitFilename } = parseFenceHeader(match[1] || "");
+              const code = match[2];
+              if (code.trim().length < 10) continue;
+              const extMap: Record<string, string> = {
+                html: "html", css: "css", js: "javascript", javascript: "javascript",
+                ts: "typescript", typescript: "typescript", tsx: "typescript", jsx: "javascript",
+                json: "json", py: "python", python: "python", go: "go", rust: "rust",
+                yaml: "yaml", yml: "yaml", xml: "xml", sql: "sql", sh: "shell", bash: "shell",
+                java: "java", cpp: "cpp", c: "c", php: "php", md: "markdown", markdown: "markdown",
+              };
+              const ext = lang.toLowerCase();
+              const normalizedExt = extMap[ext] || ext;
+              const artifactType = normalizedExt === "html"
+                ? "html"
+                : ["css", "javascript", "typescript", "json", "python", "go", "rust", "java", "cpp", "c", "php", "sql", "shell", "yaml", "xml"].includes(normalizedExt)
+                  ? "code"
+                  : "markdown";
+              const filename = explicitFilename ?? (extMap[ext] ? `index.${ext}` : `file-${codeIdx}.${ext || "txt"}`);
+              await publishArtifactMessage({
+                id: `artifact-${jobId}-code-${codeIdx}`,
+                jobId,
+                type: artifactType,
+                filename,
+                content: artifactType === "html" ? extractHtmlSegment(code) ?? code.trim() : code.trim(),
+                createdAt: Date.now(),
+              });
+              codeIdx++;
+            }
+            hasPublishedCodeArtifacts = ["html", "code", "json"].some((type) => publishedArtifactTypes.has(type as Artifact["type"]));
           }
 
           const summaryTextForDeliverable = String(final.summary || "").trim();
@@ -676,7 +707,7 @@ export class MemoryQueue implements IJobQueue {
               const summarySender = visibleAgentForRole("refiner");
               const finalSummaryText = deliverableArtifactCreated
                 ? `${deliverableKind === "slides" ? "演示稿" : "文档"}已生成：${deliverableTitle || cleanTitle(payload.task, "AI 生成文档")}\n\n文件已放入上方产物卡片，可预览、继续编辑或导出。`
-                : String(final.summary).slice(0, 2000);
+                : stripCodeFromFinalSummary(String(final.summary), hasPublishedCodeArtifacts, payload.task);
               const summaryPayload = {
                 ...(final as Record<string, unknown>),
                 kind: "final_summary",

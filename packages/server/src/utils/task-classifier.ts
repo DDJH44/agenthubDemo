@@ -47,6 +47,13 @@ const DELIVERABLE_COMPLAINT_HINTS = [
   /不要.*生成.*(文档|报告|方案|PPT|幻灯片|演示文稿)/,
 ];
 
+const ARTIFACT_COMPLAINT_HINTS = [
+  /(?:为什么|为何|怎么|怎么会|原因|解释).*(?:生成|输出).*(?:index\.html|html|代码|产物|网页)/i,
+  /(?:重复|相同|一样).*(?:index\.html|html|代码|产物|网页)/i,
+  /(?:why|how|reason|explain).*(?:generated?|created?|output).*(?:index\.html|html|code|artifact|page)/i,
+  /(?:duplicate|same|identical|repeated).*(?:index\.html|html|code|artifact|page)/i,
+];
+
 const BUILD_ACTION_HINTS = [
   /帮我|请|做|写|生成|创建|开发|制作|实现|编写|构建|搭建|设计/i,
 ];
@@ -54,6 +61,11 @@ const BUILD_ACTION_HINTS = [
 const LIGHTWEIGHT_MENTION_CHAT_PATTERNS = [
   /^(你好|hi|hello|hey|嗨|哈喽|在吗|在不在|你在吗|听得到吗|收到吗|谢谢|感谢|辛苦了|好的|收到|ok|okay|嗯|可以|可以吗|行吗|这样可以吗|这样行吗|你怎么看|怎么说|有思路吗|先等一下|等一下|先别动|别执行|暂停|先暂停)\s*[!！?？。.~～]*$/i,
   /^(are you there|you there|thanks|thank you|ok|okay|sure|cool|hold on|wait|pause)$/i,
+];
+
+const MENTION_QUESTION_CHAT_PATTERNS = [
+  /(?:为什么|为何|怎么|原因|解释|怎么回事|是不是|对吗|准确吗|有问题吗)/,
+  /(?:why|how|reason|explain|what happened|is it correct|is this right|\?)/i,
 ];
 
 const MENTION_TASK_HINTS = [
@@ -146,6 +158,7 @@ export function isSimpleChat(text: string): boolean {
 export function isLightweightMentionChat(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed || trimmed.length > 80) return false;
+  if (MENTION_QUESTION_CHAT_PATTERNS.some((pattern) => pattern.test(trimmed))) return true;
   if (MENTION_TASK_HINTS.some((pattern) => pattern.test(trimmed))) return false;
   if (LIGHTWEIGHT_MENTION_CHAT_PATTERNS.some((pattern) => pattern.test(trimmed))) return true;
   return trimmed.length <= 12 && trimmed.split(/\s+/).length <= 4 && !/[，。；：！？、,.!?]/.test(trimmed);
@@ -154,6 +167,7 @@ export function isLightweightMentionChat(text: string): boolean {
 export function isArtifactGenerationTask(text: string): boolean {
   const lower = text.trim().toLowerCase();
   if (!lower) return false;
+  if (ARTIFACT_COMPLAINT_HINTS.some((pattern) => pattern.test(text))) return false;
   if (COMPLEX_INDICATORS.some((keyword) => lower.includes(keyword))) return false;
 
   const hasBuildAction = BUILD_ACTIONS.some((keyword) => lower.includes(keyword))

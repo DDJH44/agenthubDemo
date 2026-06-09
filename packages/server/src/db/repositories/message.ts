@@ -13,16 +13,25 @@ export const messageRepo = {
     conversationId: string; type: string; sender: string; senderId?: string;
     content: string; payload?: Record<string, unknown>; mentions?: string[];
   }) {
-    return prisma.message.create({
-      data: {
-        conversationId: data.conversationId,
-        type: data.type,
-        sender: data.sender,
-        senderId: data.senderId,
-        content: data.content,
-        payload: data.payload ? JSON.stringify(data.payload) : null,
-        mentions: JSON.stringify(data.mentions ?? []),
-      },
+    return prisma.$transaction(async (tx) => {
+      const msg = await tx.message.create({
+        data: {
+          conversationId: data.conversationId,
+          type: data.type,
+          sender: data.sender,
+          senderId: data.senderId,
+          content: data.content,
+          payload: data.payload ? JSON.stringify(data.payload) : null,
+          mentions: JSON.stringify(data.mentions ?? []),
+        },
+      });
+
+      await tx.conversation.updateMany({
+        where: { id: data.conversationId },
+        data: { messageCount: { increment: 1 } },
+      });
+
+      return msg;
     });
   },
 
@@ -40,8 +49,13 @@ export const messageRepo = {
           title: data.content.slice(0, 40),
           lastMessage: data.content.slice(0, 200),
           lastMessageAt: new Date(),
+          messageCount: 1,
         },
-        update: { lastMessage: data.content.slice(0, 200), lastMessageAt: new Date() },
+        update: {
+          lastMessage: data.content.slice(0, 200),
+          lastMessageAt: new Date(),
+          messageCount: { increment: 1 },
+        },
       }),
       prisma.message.create({
         data: {

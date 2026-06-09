@@ -1,5 +1,23 @@
 import { prisma } from "../index";
 
+type ConversationRow = Awaited<ReturnType<typeof prisma.conversation.findMany>>[number];
+
+async function withActualMessageCounts(conversations: ConversationRow[]) {
+  if (conversations.length === 0) return conversations;
+
+  const counts = await prisma.message.groupBy({
+    by: ["conversationId"],
+    where: { conversationId: { in: conversations.map((conversation) => conversation.id) } },
+    _count: { _all: true },
+  });
+  const countByConversationId = new Map(counts.map((row) => [row.conversationId, row._count._all]));
+
+  return conversations.map((conversation) => ({
+    ...conversation,
+    messageCount: countByConversationId.get(conversation.id) ?? 0,
+  }));
+}
+
 export const conversationRepo = {
   async listByWorkspace(workspaceId: string, userId?: string) {
     const all = await prisma.conversation.findMany({
@@ -12,19 +30,21 @@ export const conversationRepo = {
       take: 200,
     });
 
-    if (!userId) return all.slice(0, 50);
+    if (!userId) return withActualMessageCounts(all.slice(0, 50));
 
-    return all.filter((c) => {
+    const visible = all.filter((c) => {
       try {
         const participants: string[] = JSON.parse(c.participants ?? "[]");
         if (participants.length === 0) return true;
         return participants.includes(userId);
       } catch { return true; }
     }).slice(0, 50);
+
+    return withActualMessageCounts(visible);
   },
 
-  listActive(workspaceId: string) {
-    return prisma.conversation.findMany({
+  async listActive(workspaceId: string) {
+    const conversations = await prisma.conversation.findMany({
       where: { workspaceId, status: "active" },
       orderBy: [
         { pinned: "desc" },
@@ -33,14 +53,16 @@ export const conversationRepo = {
       ],
       take: 50,
     });
+    return withActualMessageCounts(conversations);
   },
 
-  listArchived(workspaceId: string) {
-    return prisma.conversation.findMany({
+  async listArchived(workspaceId: string) {
+    const conversations = await prisma.conversation.findMany({
       where: { workspaceId, status: "archived" },
       orderBy: { updatedAt: "desc" },
       take: 50,
     });
+    return withActualMessageCounts(conversations);
   },
 
   async search(workspaceId: string, query: string, userId?: string) {
@@ -60,15 +82,17 @@ export const conversationRepo = {
       take: 50,
     });
 
-    if (!userId) return all.slice(0, 20);
+    if (!userId) return withActualMessageCounts(all.slice(0, 20));
 
-    return all.filter((c) => {
+    const visible = all.filter((c) => {
       try {
         const participants: string[] = JSON.parse(c.participants ?? "[]");
         if (participants.length === 0) return true;
         return participants.includes(userId);
       } catch { return false; }
     }).slice(0, 20);
+
+    return withActualMessageCounts(visible);
   },
 
   getById(id: string) {
