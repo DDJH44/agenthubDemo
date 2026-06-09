@@ -151,7 +151,7 @@ function participantToAgentName(participant: string) {
 export function buildInitialConversationAgentNames(participants: string[], convType: string) {
   if (convType !== "group" && convType !== "task_room") {
     const directAgent = participants.map(participantToAgentName).find(Boolean);
-    return directAgent ? [directAgent] : ["planner"];
+    return directAgent ? [directAgent] : [];
   }
 
   const selectedAgents = participants
@@ -173,7 +173,8 @@ export function getEffectiveEnabledAgentNames(
 
   if (hasExplicitParticipantAgents) {
     const fromParticipants = participantAgents.filter((name) => entryMap.get(name)?.enabled ?? true);
-    return unique(fromParticipants.length > 0 ? fromParticipants : ["planner"]);
+    if (fromParticipants.length > 0) return unique(fromParticipants);
+    return convType === "group" || convType === "task_room" ? ["planner"] : [];
   }
 
   return unique(enabledNames.length > 0 ? enabledNames : participantAgents);
@@ -191,9 +192,14 @@ export function agentNameMatchesRole(agentName: string, role: string) {
   return false;
 }
 
-export function selectEnabledAgentsForTask(requestedAgents: string[], enabledAgentNames: string[]) {
+export function selectEnabledAgentsForTask(
+  requestedAgents: string[],
+  enabledAgentNames: string[],
+  options?: { fallback?: string[] }
+) {
   const enabled = unique(enabledAgentNames);
-  if (enabled.length === 0) return ["planner"];
+  const fallback = unique(options?.fallback ?? ["planner"]);
+  if (enabled.length === 0) return fallback;
 
   const selected: string[] = [];
   for (const requested of requestedAgents) {
@@ -211,7 +217,7 @@ export function selectEnabledAgentsForTask(requestedAgents: string[], enabledAge
     selected.push(enabled.find((name) => !isCoordinatorAgent(name)) ?? enabled[0]);
   }
 
-  return unique(selected);
+  return unique(selected.length > 0 ? selected : fallback);
 }
 
 export function resolveVisibleAgentForRole(role: string, activeAgents: string[]) {

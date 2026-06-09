@@ -19,6 +19,24 @@ describe("conversation agent routing", () => {
     expect(agents).toEqual(["planner", "Frontend Agent", "Design Agent"]);
   });
 
+  it("keeps planner as a group-only default coordinator", () => {
+    expect(buildInitialConversationAgentNames([
+      "12708080461435579",
+      "c20b4a7e-8ef2-4efa-8e2a-8247c1f07a77",
+    ], "group")).toEqual(["planner"]);
+
+    expect(buildInitialConversationAgentNames([
+      "12708080461435579",
+      "c20b4a7e-8ef2-4efa-8e2a-8247c1f07a77",
+    ], "direct")).toEqual([]);
+  });
+
+  it("uses the selected direct-chat agent without forcing planner", () => {
+    expect(buildInitialConversationAgentNames(["Claude Code"], "direct")).toEqual(["Claude Code"]);
+    expect(getEffectiveEnabledAgentNames(["Claude Code"], "direct", [])).toEqual(["Claude Code"]);
+    expect(selectEnabledAgentsForTask(["worker"], [], { fallback: [] })).toEqual([]);
+  });
+
   it("uses participants to override legacy default enabled entries", () => {
     const effective = getEffectiveEnabledAgentNames(
       ["__main__", "Frontend Agent"],

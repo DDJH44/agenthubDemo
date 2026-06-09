@@ -1209,7 +1209,8 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
                   // 查找对话中实际的智能体名称
                   const convAgents = await conversationAgentRepo.listByConversation(conversationId);
                   const enabledAgent = convAgents.find(a => a.enabled);
-                  agentName = enabledAgent?.agentName ?? "planner";
+                  const directAgentName = buildInitialConversationAgentNames(convParticipants, convType)[0];
+                  agentName = enabledAgent?.agentName ?? directAgentName ?? "assistant";
                 }
               }
             } catch (err) {
@@ -1564,7 +1565,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
 
             // Route only to agents that belong to this conversation. Custom agents can satisfy
             // built-in roles, e.g. "Frontend Agent" can receive a worker/code task.
-            matchedAgents = selectEnabledAgentsForTask(matchedAgents, enabledAgentNames);
+            matchedAgents = selectEnabledAgentsForTask(matchedAgents, enabledAgentNames, {
+              fallback: isDirectConv ? [] : ["planner"],
+            });
             const isMentionOnlyTask = isMentionOnlyInput && !executionSummary;
             const isLightweightMentionTask = isLightweightMentionInput && !executionSummary;
             const artifactEditPayload = baseArtifact ? {
@@ -2078,7 +2081,9 @@ export function setupWebSocket(server: HTTPServer, _adapter?: IAdapter) {
             const convAgents = await conversationAgentRepo.listByConversation(targetConvId);
             const participants = conv ? getParticipants(conv) : [];
             const enabledAgentNames = getEffectiveEnabledAgentNames(participants, conv?.type ?? "group", convAgents);
-            const targetAgents = selectEnabledAgentsForTask([msg.agentId], enabledAgentNames);
+            const targetAgents = selectEnabledAgentsForTask([msg.agentId], enabledAgentNames, {
+              fallback: conv?.type === "direct" ? [] : ["planner"],
+            });
             const userMsg = {
               id: msg.clientMsgId || crypto.randomUUID(),
               conversationId: targetConvId,
