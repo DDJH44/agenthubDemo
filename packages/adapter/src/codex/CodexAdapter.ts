@@ -3,12 +3,92 @@ import { existsSync } from "fs";
 import { mkdtemp, readFile, rm } from "fs/promises";
 import { tmpdir } from "os";
 import path from "path";
+import { createInterface } from "readline";
 import { BaseAdapter } from "../base";
 import type { AdapterConfig, AdapterCapabilities, AdapterContext } from "../types";
 
 const SEND_TIMEOUT_MS = Number(process.env.CODEX_TIMEOUT_MS || 180_000);
 const STREAM_TIMEOUT_MS = Number(process.env.CODEX_STREAM_TIMEOUT_MS || 240_000);
 const PLACEHOLDER_MODELS = new Set(["codex-cli", "gpt-4o-mini", "your-volcengine-endpoint-id"]);
+
+interface CodexStreamParseResult {
+  chunk?: string;
+  final?: string;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function readTextContent(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value.map((item) => readTextContent(item)).filter(Boolean).join("");
+  }
+
+  const record = asRecord(value);
+  if (!record) return "";
+
+  for (const key of ["text", "content", "message", "output", "result"]) {
+    const text = readTextContent(record[key]);
+    if (text) return text;
+  }
+
+  return "";
+}
+
+function looksLikeAssistantText(typeText: string) {
+  return /(assistant|message|output_text|final|result|response\.output_text)/i.test(typeText);
+}
+
+function looksLikeInternalText(typeText: string) {
+  return /(reasoning|thought|tool|command|exec|stderr|stdout|plan_update|token_count)/i.test(typeText);
+}
+
+export function extractCodexStreamText(line: string): CodexStreamParseResult {
+  const trimmed = line.trim();
+  if (!trimmed) return {};
+
+  try {
+    const event = JSON.parse(trimmed) as Record<string, unknown>;
+    const msg = asRecord(event.msg);
+    const item = asRecord(event.item);
+    const message = asRecord(event.message);
+    const delta = asRecord(event.delta) ?? asRecord(msg?.delta) ?? asRecord(item?.delta) ?? asRecord(message?.delta);
+    const typeText = [
+      event.type,
+      msg?.type,
+      item?.type,
+      message?.type,
+      delta?.type,
+    ].filter(Boolean).join(" ");
+
+    if (looksLikeInternalText(typeText) && !looksLikeAssistantText(typeText)) return {};
+
+    const directDelta = [
+      event.delta,
+      msg?.delta,
+      item?.delta,
+      message?.delta,
+      event.text_delta,
+      event.content_delta,
+    ].map(readTextContent).find(Boolean);
+    if (directDelta && looksLikeAssistantText(typeText)) {
+      return { chunk: directDelta };
+    }
+
+    const source = item ?? msg ?? message ?? event;
+    const finalText = readTextContent(source).trim();
+    const isCompleted = /(completed|complete|final|result|assistant_message|message|turn\.completed)/i.test(typeText);
+    if (finalText && isCompleted && looksLikeAssistantText(typeText)) {
+      return { final: finalText };
+    }
+  } catch {
+    return {};
+  }
+
+  return {};
+}
 
 export class CodexAdapter extends BaseAdapter {
   public readonly capabilities: AdapterCapabilities = {
@@ -35,8 +115,12 @@ export class CodexAdapter extends BaseAdapter {
 
   async *streamResponse(content: string, context?: AdapterContext): AsyncGenerator<string, string, unknown> {
     this.ensureConnected();
-    const result = await this.runCodex(content, context, STREAM_TIMEOUT_MS);
-    yield result;
+    const generator = this.runCodexStreaming(content, context, STREAM_TIMEOUT_MS);
+    let result = "";
+    for await (const chunk of generator) {
+      result += chunk;
+      yield chunk;
+    }
     return result;
   }
 
@@ -195,6 +279,117 @@ export class CodexAdapter extends BaseAdapter {
 
         child.stdin.end(this.buildPrompt(content, context));
       });
+    } finally {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
+    }
+  }
+
+  private async *runCodexStreaming(content: string, context: AdapterContext | undefined, timeoutMs: number): AsyncGenerator<string, string, unknown> {
+    if (context?.signal?.aborted) {
+      const err = new Error("Codex CLI request aborted before starting");
+      err.name = "AbortError";
+      throw err;
+    }
+
+    const tempDir = await mkdtemp(path.join(tmpdir(), "agenthub-codex-"));
+    const outputFile = path.join(tempDir, "last-message.txt");
+
+    try {
+      let settled = false;
+      let stderr = "";
+      let stdout = "";
+      let result = "";
+      let finalResult = "";
+      let resolveOnClose!: (value: string) => void;
+      let rejectOnClose!: (reason: Error) => void;
+      const closePromise = new Promise<string>((resolve, reject) => {
+        resolveOnClose = resolve;
+        rejectOnClose = reject;
+      });
+
+      const command = this.config.cliPath ?? "codex";
+      const child = spawn(command, this.buildArgs(outputFile), {
+        cwd: this.resolveCwd(),
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env },
+        shell: this.shouldUseShell(command),
+      });
+      this.processes.add(child);
+
+      const timer = setTimeout(() => {
+        this.killProcessTree(child);
+        finish(() => {
+          const err = new Error(`Codex CLI timed out after ${Math.round(timeoutMs / 1000)}s`);
+          err.name = "AbortError";
+          rejectOnClose(err);
+        });
+      }, timeoutMs);
+
+      const finish = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        context?.signal?.removeEventListener("abort", onAbort);
+        this.processes.delete(child);
+        fn();
+      };
+
+      const onAbort = () => {
+        this.killProcessTree(child);
+        finish(() => {
+          const err = new Error("Codex CLI request aborted");
+          err.name = "AbortError";
+          rejectOnClose(err);
+        });
+      };
+      context?.signal?.addEventListener("abort", onAbort);
+
+      child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+      child.on("error", (err) => {
+        finish(() => rejectOnClose(err instanceof Error ? err : new Error(String(err))));
+      });
+      child.on("close", async (code) => {
+        try {
+          const outputText = (await readFile(outputFile, "utf-8").catch(() => "")).trim();
+          const fallbackText = outputText || finalResult || this.extractReadableOutput(stdout).trim() || result;
+          finish(() => {
+            this.killProcessTree(child);
+            if (code === 0 && fallbackText) {
+              resolveOnClose(fallbackText);
+              return;
+            }
+
+            const detail = (stderr || fallbackText || stdout || `Codex CLI exited with code ${code}`).trim();
+            rejectOnClose(new Error(detail));
+          });
+        } catch (err) {
+          finish(() => rejectOnClose(err instanceof Error ? err : new Error(String(err))));
+        }
+      });
+
+      child.stdin.end(this.buildPrompt(content, context));
+
+      const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
+      for await (const line of lines) {
+        stdout += `${line}\n`;
+        const parsed = extractCodexStreamText(line);
+        if (parsed.final) finalResult = parsed.final;
+        if (parsed.chunk) {
+          result += parsed.chunk;
+          yield parsed.chunk;
+        }
+      }
+
+      const finalText = await closePromise;
+      if (finalText && finalText !== result) {
+        const remainder = result && finalText.startsWith(result) ? finalText.slice(result.length) : (!result ? finalText : "");
+        if (remainder) {
+          result += remainder;
+          yield remainder;
+        }
+      }
+
+      return finalText || result;
     } finally {
       await rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
     }

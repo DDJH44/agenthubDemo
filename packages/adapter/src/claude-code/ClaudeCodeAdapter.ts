@@ -6,6 +6,35 @@ const SEND_TIMEOUT_MS = 90_000;
 const STREAM_TIMEOUT_MS = 180_000;
 const PLACEHOLDER_MODELS = new Set(["gpt-4o-mini", "your-volcengine-endpoint-id"]);
 
+interface ClaudeStreamParseResult {
+  chunk?: string;
+  final?: string;
+}
+
+export function extractClaudeStreamText(line: string): ClaudeStreamParseResult {
+  const trimmed = line.trim();
+  if (!trimmed) return {};
+
+  try {
+    const event = JSON.parse(trimmed) as Record<string, unknown>;
+    if (event.type === "stream_event") {
+      const streamEvent = event.event && typeof event.event === "object" ? event.event as Record<string, unknown> : undefined;
+      const delta = streamEvent?.delta && typeof streamEvent.delta === "object" ? streamEvent.delta as Record<string, unknown> : undefined;
+      if (delta?.type === "text_delta" && typeof delta.text === "string") {
+        return { chunk: delta.text };
+      }
+    }
+
+    if (event.type === "result" && typeof event.result === "string") {
+      return { final: event.result };
+    }
+  } catch {
+    return {};
+  }
+
+  return {};
+}
+
 export class ClaudeCodeAdapter extends BaseAdapter {
   public readonly capabilities: AdapterCapabilities = {
     streaming: true, toolCalling: true, vision: true, embeddings: false,
@@ -63,8 +92,18 @@ export class ClaudeCodeAdapter extends BaseAdapter {
     return sections.join("\n\n");
   }
 
-  private buildArgs() {
-    const args = ["--bare", "--print", "--output-format=text", "--no-session-persistence", "--tools=none"];
+  private buildArgs(mode: "text" | "stream" = "text") {
+    const args = mode === "stream"
+      ? [
+        "--bare",
+        "--print",
+        "--verbose",
+        "--output-format=stream-json",
+        "--include-partial-messages",
+        "--no-session-persistence",
+        "--tools=none",
+      ]
+      : ["--bare", "--print", "--output-format=text", "--no-session-persistence", "--tools=none"];
     const model = this.config.model?.trim();
     if (model && !PLACEHOLDER_MODELS.has(model)) {
       args.push("--model", model);
@@ -149,6 +188,7 @@ export class ClaudeCodeAdapter extends BaseAdapter {
     let settled = false;
     let stderr = "";
     let result = "";
+    let finalResult = "";
     let resolveOnClose!: (value: string) => void;
     let rejectOnClose!: (reason: Error) => void;
     const closePromise = new Promise<string>((resolve, reject) => {
@@ -156,7 +196,7 @@ export class ClaudeCodeAdapter extends BaseAdapter {
       rejectOnClose = reject;
     });
 
-    const child = spawn(this.config.cliPath ?? "claude", this.buildArgs(), {
+    const child = spawn(this.config.cliPath ?? "claude", this.buildArgs("stream"), {
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, CLAUDE_CODE_SIMPLE: "1" },
     });
@@ -197,24 +237,52 @@ export class ClaudeCodeAdapter extends BaseAdapter {
     child.on("close", (code) => {
       finish(() => {
         this.killProcessTree(child);
-        if (code === 0 && result) {
-          resolveOnClose(result);
+        if (code === 0 && (result || finalResult)) {
+          resolveOnClose(finalResult || result);
           return;
         }
-        const errText = (stderr || result || `Claude Code exited with code ${code}`).trim();
+        const errText = (stderr || finalResult || result || `Claude Code exited with code ${code}`).trim();
         rejectOnClose(new Error(errText));
       });
     });
 
     child.stdin.end(this.buildPrompt(content, context));
 
+    let stdoutBuffer = "";
     for await (const chunk of child.stdout) {
-      const text = chunk.toString();
-      result += text;
-      yield text;
+      stdoutBuffer += chunk.toString();
+      const lines = stdoutBuffer.split(/\r?\n/);
+      stdoutBuffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const parsed = extractClaudeStreamText(line);
+        if (parsed.final) finalResult = parsed.final;
+        if (parsed.chunk) {
+          result += parsed.chunk;
+          yield parsed.chunk;
+        }
+      }
     }
 
-    return closePromise;
+    if (stdoutBuffer.trim()) {
+      const parsed = extractClaudeStreamText(stdoutBuffer);
+      if (parsed.final) finalResult = parsed.final;
+      if (parsed.chunk) {
+        result += parsed.chunk;
+        yield parsed.chunk;
+      }
+    }
+
+    const finalText = await closePromise;
+    if (finalText && finalText !== result) {
+      const remainder = result && finalText.startsWith(result) ? finalText.slice(result.length) : (!result ? finalText : "");
+      if (remainder) {
+        result += remainder;
+        yield remainder;
+      }
+    }
+
+    return finalText || result;
   }
 
   private killProcessTree(child: ChildProcessWithoutNullStreams) {
