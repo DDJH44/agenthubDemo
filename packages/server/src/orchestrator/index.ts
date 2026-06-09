@@ -19,7 +19,7 @@ import {
   formatFinalSummary,
   extractOutputInfo,
 } from "../utils/format-helpers";
-import { isArtifactGenerationTask } from "../utils/task-classifier";
+import { isArtifactGenerationTask, isSimpleChat } from "../utils/task-classifier";
 
 export type StreamEventType = "system" | "plan" | "stream" | "critic" | "research" | "refine" | "retry" | "final" | "variable";
 export type StreamEvent = { type: StreamEventType; msg: unknown };
@@ -43,14 +43,7 @@ export class Orchestrator {
   }
 
   private async isSimpleConversation(task: string): Promise<boolean> {
-    const trimmed = task.trim();
-    if (trimmed.length > 80) return false;
-    const simplePatterns = /^(你好|hi|hello|hey|嗨|哈喽|早上好|下午好|晚上好|早安|晚安|在吗|在不在|谢谢|感谢|ok|好的|嗯|是|否|对|不|再见|拜拜|what|how are you|who are you|你是谁|你叫什么|介绍|介绍一下你自己)\s*[!！?？。.~～]*$/i;
-    if (simplePatterns.test(trimmed)) return true;
-    const wordCount = trimmed.split(/\s+/).length;
-    const charCount = trimmed.length;
-    if (charCount <= 15 && wordCount <= 5 && !/[，。；：！？、]/.test(trimmed)) return true;
-    return false;
+    return isSimpleChat(task);
   }
 
   private isCodeGenerationTask(task: string): boolean {

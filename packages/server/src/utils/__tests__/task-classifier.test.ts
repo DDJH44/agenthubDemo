@@ -9,6 +9,7 @@ describe("task classifier", () => {
 
     it("does not treat creation requests as simple chat", () => {
       expect(isSimpleChat("生成一个小型的放烟花网站")).toBe(false);
+      expect(isSimpleChat("生成一个简单的贪吃蛇小游戏网页")).toBe(false);
       expect(isSimpleChat("帮我做一个 todo 页面")).toBe(false);
     });
   });
@@ -16,6 +17,7 @@ describe("task classifier", () => {
   describe("isArtifactGenerationTask", () => {
     it("detects small website and page generation requests", () => {
       expect(isArtifactGenerationTask("生成一个小型的放烟花网站")).toBe(true);
+      expect(isArtifactGenerationTask("生成一个简单的贪吃蛇小游戏网页")).toBe(true);
       expect(isArtifactGenerationTask("帮我做一个 todo 页面")).toBe(true);
       expect(isArtifactGenerationTask("create a simple fireworks demo")).toBe(true);
       expect(isArtifactGenerationTask("生成番茄钟")).toBe(true);
