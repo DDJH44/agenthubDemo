@@ -42,7 +42,7 @@ export function ConversationGroupView({ workspaceId = "default", onSendMessage, 
     <div className="flex flex-col h-full" style={{ background: "var(--bg-root)" }}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: "var(--border)" }}>
-        <h2 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>会话分组</h2>
+        <h2 className="text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>会话分组</h2>
         <button onClick={() => setShowCreate(!showCreate)}
           className="text-xs px-2 py-1 rounded-lg font-medium"
           style={{ background: "var(--accent)", color: "#fff" }}>
@@ -59,7 +59,7 @@ export function ConversationGroupView({ workspaceId = "default", onSendMessage, 
             onChange={(e) => setNewName(e.target.value)}
             placeholder="分组名称"
             className="w-full px-3 py-2 rounded-lg text-xs mb-2 outline-none"
-            style={{ background: "var(--surface-low)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+            style={{ background: "var(--surface-low)", color: "var(--fg-primary)", border: "1px solid var(--border)" }}
           />
           <input
             type="text"
@@ -67,7 +67,7 @@ export function ConversationGroupView({ workspaceId = "default", onSendMessage, 
             onChange={(e) => setNewDesc(e.target.value)}
             placeholder="描述（可选）"
             className="w-full px-3 py-2 rounded-lg text-xs mb-2 outline-none"
-            style={{ background: "var(--surface-low)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+            style={{ background: "var(--surface-low)", color: "var(--fg-primary)", border: "1px solid var(--border)" }}
           />
           <div className="flex gap-2">
             <button onClick={handleCreate}
@@ -77,7 +77,7 @@ export function ConversationGroupView({ workspaceId = "default", onSendMessage, 
             </button>
             <button onClick={() => setShowCreate(false)}
               className="px-3 py-1.5 rounded-lg text-xs"
-              style={{ color: "var(--text-secondary)" }}>
+              style={{ color: "var(--fg-secondary)" }}>
               取消
             </button>
           </div>
@@ -94,11 +94,11 @@ export function ConversationGroupView({ workspaceId = "default", onSendMessage, 
                 onClick={() => toggleExpand(group.id)}
               >
                 <div className="flex items-center gap-2">
-                  <span className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                  <span className="text-xs" style={{ color: "var(--fg-secondary)" }}>
                     {expanded[group.id] ? "▼" : "▶"}
                   </span>
-                  <span className="text-xs font-medium" style={{ color: "var(--text-primary)" }}>{group.name}</span>
-                  <span className="text-xs px-1 rounded" style={{ background: "var(--surface-low)", color: "var(--text-tertiary)", fontSize: 9 }}>
+                  <span className="text-xs font-medium" style={{ color: "var(--fg-primary)" }}>{group.name}</span>
+                  <span className="text-xs px-1 rounded" style={{ background: "var(--surface-low)", color: "var(--fg-tertiary)", fontSize: 9 }}>
                     {group.conversationIds.length} 个会话
                   </span>
                 </div>
@@ -111,7 +111,7 @@ export function ConversationGroupView({ workspaceId = "default", onSendMessage, 
               {expanded[group.id] && (
                 <div className="px-3 pb-2">
                   {group.description && (
-                    <p className="text-xs mb-2" style={{ color: "var(--text-tertiary)" }}>{group.description}</p>
+                <p className="text-xs mb-2" style={{ color: "var(--fg-tertiary)" }}>{group.description}</p>
                   )}
                   <div className="flex flex-col gap-1">
                     {group.conversationIds.map((cid) => (
@@ -122,7 +122,7 @@ export function ConversationGroupView({ workspaceId = "default", onSendMessage, 
                       </button>
                     ))}
                     {group.conversationIds.length === 0 && (
-                      <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>暂无会话</p>
+                    <p className="text-xs" style={{ color: "var(--fg-tertiary)" }}>暂无会话</p>
                     )}
                   </div>
                 </div>
@@ -130,7 +130,7 @@ export function ConversationGroupView({ workspaceId = "default", onSendMessage, 
             </div>
           ))}
           {groups.length === 0 && (
-            <p className="text-xs text-center py-8" style={{ color: "var(--text-tertiary)" }}>
+          <p className="text-xs text-center py-8" style={{ color: "var(--fg-tertiary)" }}>
               暂无分组，点击上方按钮创建
             </p>
           )}

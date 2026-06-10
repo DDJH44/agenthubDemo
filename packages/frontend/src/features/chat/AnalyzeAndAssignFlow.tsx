@@ -103,7 +103,7 @@ export function AnalyzeAndAssignFlow() {
               <article
                 key={`${result.agentId}-${index}`}
                 className="relative flex gap-2.5 rounded-lg px-2 py-2"
-                style={{ background: "rgba(255, 255, 255, 0.72)", border: "1px solid rgba(226, 232, 240, 0.72)" }}
+                style={{ background: "var(--surface-glass)", border: "1px solid var(--border)" }}
               >
                 <span
                   className="relative z-10 mt-2 h-2.5 w-2.5 shrink-0 rounded-full ring-4"

@@ -66,7 +66,7 @@ export function AgentCard({ agent, onEdit, onDelete, onTest, testing = false, co
               <p className="mt-0.5 text-xs" style={{ color: "var(--fg-tertiary)" }}>{ROLE_LABELS[agent.role] ?? agent.role} · {agent.model}</p>
             </div>
             <div className="flex shrink-0 gap-1">
-              <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+              <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
                 自建
               </span>
               <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: connectionMeta.color, background: connectionMeta.bg, border: `1px solid ${connectionMeta.border}` }}>
@@ -128,7 +128,7 @@ export function AgentCard({ agent, onEdit, onDelete, onTest, testing = false, co
               {testing ? "测试中" : "测试"}
             </button>
           )}
-          <button type="button" onClick={() => onEdit?.(agent)} className="rounded-md px-2 py-1 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+          <button type="button" onClick={() => onEdit?.(agent)} className="rounded-md px-2 py-1 text-xs font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
             编辑
           </button>
           <button type="button" onClick={() => onDelete?.(agent.id)} className="rounded-md px-2 py-1 text-xs font-semibold" style={{ color: "var(--danger)", background: "var(--danger-subtle)" }}>

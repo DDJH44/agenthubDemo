@@ -121,7 +121,7 @@ const PLATFORM_AGENTS: PlatformAgent[] = [
 
 const STATUS_META: Record<AgentStatus, { label: string; color: string; bg: string }> = {
   online: { label: "在线", color: "var(--success)", bg: "var(--success-subtle)" },
-  running: { label: "运行中", color: "#174ea6", bg: "rgba(23, 78, 166, 0.07)" },
+  running: { label: "运行中", color: "var(--accent)", bg: "var(--accent-subtle)" },
   idle: { label: "待命", color: "var(--fg-tertiary)", bg: "var(--surface-low)" },
 };
 
@@ -201,8 +201,8 @@ function PlatformAgentCard({
       onClick={onClick}
       className="rounded-lg p-4 text-left transition-colors hover:bg-[var(--surface-low)]"
       style={{
-        background: selected ? "rgba(23, 78, 166, 0.06)" : "var(--surface-white)",
-        border: `1px solid ${selected ? "rgba(23, 78, 166, 0.18)" : "var(--border)"}`,
+        background: selected ? "var(--accent-subtle)" : "var(--surface-white)",
+        border: `1px solid ${selected ? "var(--accent-border)" : "var(--border)"}`,
         boxShadow: "var(--shadow-xs)",
       }}
     >
@@ -319,7 +319,7 @@ export function AgentsView() {
               type="button"
               onClick={() => setActiveNav("my-agents")}
               className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold"
-              style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}
+              style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}
             >
               <Icon path="M12 5v14M5 12h14" size={13} />
               创建自建 Agent
@@ -344,8 +344,8 @@ export function AgentsView() {
                 明确区分真实 CLI 平台、内置能力和降级通道；Codex / Claude Code 会由后端检测当前服务器是否可执行。
               </p>
             </div>
-            <span className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}>
-              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#174ea6" }} />
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--accent)" }} />
               {platformHealth
                 ? `${platformHealth.configuredCount}/${platformHealth.minimumRequired} 主流平台可用`
                 : platformHealthError
@@ -405,7 +405,7 @@ export function AgentsView() {
               <h2 className="text-sm font-bold" style={{ color: "var(--fg-primary)" }}>自建 Agent</h2>
               <p className="mt-1 text-xs" style={{ color: "var(--fg-tertiary)" }}>用户创建的 Agent 会和平台 Agent 一起进入会话联系人列表。</p>
             </div>
-            <button type="button" onClick={() => setActiveNav("my-agents")} className="rounded-md px-3 py-1.5 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+            <button type="button" onClick={() => setActiveNav("my-agents")} className="rounded-md px-3 py-1.5 text-xs font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
               管理
             </button>
           </div>
@@ -455,7 +455,7 @@ export function AgentsView() {
             </DetailField>
           )}
           <DetailField label="适配器">
-            <code className="rounded px-1.5 py-0.5 text-xs" style={{ background: "var(--surface-low)", color: "#174ea6" }}>{selectedConnection?.adapter ?? selected.adapter}</code>
+            <code className="rounded px-1.5 py-0.5 text-xs" style={{ background: "var(--surface-low)", color: "var(--accent)" }}>{selectedConnection?.adapter ?? selected.adapter}</code>
           </DetailField>
           <DetailField label="能力标签">
             <div className="flex flex-wrap gap-1.5">
@@ -467,7 +467,7 @@ export function AgentsView() {
           <DetailField label="工具权限">
             <div className="flex flex-wrap gap-1.5">
               {selected.tools.map((tool) => (
-                <span key={tool} className="rounded-sm px-2 py-1 text-xs" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>{tool}</span>
+                <span key={tool} className="rounded-sm px-2 py-1 text-xs" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>{tool}</span>
               ))}
             </div>
           </DetailField>

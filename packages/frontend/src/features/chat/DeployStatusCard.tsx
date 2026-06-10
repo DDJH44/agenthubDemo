@@ -19,9 +19,9 @@ export function DeployStatusCard() {
   const isDone = status === "success";
   const isFailed = status === "failed";
   const isBuilding = status === "deploying";
-  const color = isDone ? "var(--success)" : isFailed ? "var(--danger)" : "#174ea6";
-  const bg = isDone ? "var(--success-subtle)" : isFailed ? "var(--danger-subtle)" : "rgba(23, 78, 166, 0.07)";
-  const border = isDone ? "var(--success-border)" : isFailed ? "var(--danger-border)" : "rgba(23, 78, 166, 0.18)";
+  const color = isDone ? "var(--success)" : isFailed ? "var(--danger)" : "var(--accent)";
+  const bg = isDone ? "var(--success-subtle)" : isFailed ? "var(--danger-subtle)" : "var(--accent-subtle)";
+  const border = isDone ? "var(--success-border)" : isFailed ? "var(--danger-border)" : "var(--accent-border)";
   const label = isDone ? "部署成功" : isFailed ? "部署失败" : "部署中";
   const progress = deployProgress ?? (isDone || isFailed ? 100 : 35);
   const providerLabel = deployProvider ? getDeployProviderLabel(deployProvider) : null;
@@ -63,7 +63,7 @@ export function DeployStatusCard() {
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex max-w-full items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold no-underline"
-            style={{ background: "var(--surface-white)", border: "1px solid var(--border)", color: "#174ea6" }}
+            style={{ background: "var(--surface-white)", border: "1px solid var(--border)", color: "var(--accent)" }}
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
               <path d="M7 17L17 7M7 7h10v10" />

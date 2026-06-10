@@ -57,7 +57,7 @@ export default function LoginPage() {
       }}
     >
       <div
-        className="mx-auto grid min-h-[calc(100dvh-40px)] w-full max-w-[1120px] overflow-hidden rounded-[22px] lg:min-h-[700px] lg:grid-cols-[minmax(0,1fr)_420px]"
+        className="mx-auto grid min-h-[calc(100dvh-40px)] w-full max-w-[1120px] overflow-hidden rounded-[var(--radius-xl)] lg:min-h-[700px] lg:grid-cols-[minmax(0,1fr)_420px]"
         style={{
           background: "var(--surface-glass)",
           border: "1px solid var(--shell-border)",
@@ -76,7 +76,7 @@ export default function LoginPage() {
             className="absolute inset-0"
             style={{
               background:
-                "radial-gradient(circle at 62% 64%, rgba(116,91,255,0.16), transparent 34%), linear-gradient(180deg, transparent 0%, rgba(245,242,255,0.5) 58%, rgba(230,225,255,0.72) 100%)",
+                "radial-gradient(circle at 62% 64%, var(--accent-subtle), transparent 34%), linear-gradient(180deg, transparent 0%, var(--surface-glass) 58%, var(--accent-subtle) 100%)",
             }}
           />
           <div className="absolute inset-x-0 bottom-0 h-[455px] overflow-hidden">
@@ -103,21 +103,21 @@ export default function LoginPage() {
               className="absolute inset-0"
               style={{
                 background:
-                  "linear-gradient(180deg, rgba(248,249,255,0) 38%, rgba(242,238,255,0.18) 62%, rgba(232,226,255,0.74) 100%)",
+                  "linear-gradient(180deg, transparent 38%, var(--surface-glass) 62%, var(--accent-subtle) 100%)",
               }}
             />
             <div
               className="absolute inset-y-0 left-0 w-[220px]"
               style={{
                 background:
-                  "linear-gradient(90deg, rgba(249,250,255,0.98) 0%, rgba(248,247,255,0.86) 62%, transparent 100%)",
+                  "linear-gradient(90deg, var(--surface-glass-strong) 0%, var(--surface-glass) 62%, transparent 100%)",
               }}
             />
             <div
               className="absolute inset-y-0 right-0 w-[160px]"
               style={{
                 background:
-                  "linear-gradient(270deg, rgba(240,235,255,0.82) 0%, rgba(242,238,255,0.5) 52%, transparent 100%)",
+                  "linear-gradient(270deg, var(--accent-subtle) 0%, var(--surface-glass) 52%, transparent 100%)",
               }}
             />
           </div>
@@ -134,9 +134,9 @@ export default function LoginPage() {
             <span
               className="rounded-full px-3 py-1 text-[11px] font-semibold"
               style={{
-                background: "rgba(68,86,223,0.08)",
+                background: "var(--accent-subtle)",
                 color: "var(--accent)",
-                border: "1px solid rgba(68,86,223,0.16)",
+                border: "1px solid var(--accent-border)",
               }}
             >
               AI Agents · Together
@@ -183,8 +183,8 @@ export default function LoginPage() {
                   style={{
                     background: "var(--surface-glass)",
                     color: "var(--accent)",
-                    border: "1px solid rgba(68,86,223,0.14)",
-                    boxShadow: "0 8px 22px rgba(68,86,223,0.08)",
+                    border: "1px solid var(--accent-border)",
+                    boxShadow: "var(--shadow-xs)",
                   }}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -204,7 +204,7 @@ export default function LoginPage() {
         <section
           className="flex min-h-[calc(100dvh-40px)] items-start justify-center px-5 pb-8 pt-16 sm:items-center sm:px-8 sm:py-8 lg:min-h-[700px]"
           aria-label="账号入口"
-          style={{ background: "rgba(251,252,255,0.84)" }}
+          style={{ background: "var(--surface-glass-strong)" }}
         >
           <div className="w-full max-w-[360px]">
             <div className="mb-8 lg:hidden">
@@ -278,7 +278,7 @@ export default function LoginPage() {
                     onChange={(event) => setName(event.target.value)}
                     required
                     autoComplete="name"
-                    className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)] focus:ring-2 focus:ring-[rgba(68,86,223,0.12)]"
+                    className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)] focus:ring-2 focus:ring-[var(--accent-subtle)]"
                     style={{ background: "var(--surface-white)", color: "var(--fg-primary)", border: "1px solid var(--border)" }}
                     placeholder="请输入姓名"
                   />
@@ -293,7 +293,7 @@ export default function LoginPage() {
                   onChange={(event) => setEmail(event.target.value)}
                   required
                   autoComplete="email"
-                  className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)] focus:ring-2 focus:ring-[rgba(68,86,223,0.12)]"
+                  className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)] focus:ring-2 focus:ring-[var(--accent-subtle)]"
                   style={{ background: "var(--surface-white)", color: "var(--fg-primary)", border: "1px solid var(--border)" }}
                   placeholder="name@example.com"
                 />
@@ -308,7 +308,7 @@ export default function LoginPage() {
                   required
                   minLength={6}
                   autoComplete={mode === "login" ? "current-password" : "new-password"}
-                  className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)] focus:ring-2 focus:ring-[rgba(68,86,223,0.12)]"
+                  className="h-11 w-full rounded-xl px-3 text-sm outline-none transition focus:border-[var(--accent-border)] focus:ring-2 focus:ring-[var(--accent-subtle)]"
                   style={{ background: "var(--surface-white)", color: "var(--fg-primary)", border: "1px solid var(--border)" }}
                   placeholder="至少 6 个字符"
                   aria-describedby={error ? "login-error" : undefined}
@@ -330,7 +330,7 @@ export default function LoginPage() {
                 type="submit"
                 disabled={submitting}
                 className="flex h-11 w-full items-center justify-center gap-2 rounded-xl text-sm font-semibold text-white transition hover:translate-y-[-1px] disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                style={{ background: "var(--accent)", opacity: submitting ? 0.72 : 1, boxShadow: "0 10px 22px rgba(68,86,223,0.2)" }}
+                style={{ background: "var(--accent)", opacity: submitting ? 0.72 : 1, boxShadow: "var(--accent-glow)" }}
               >
                 {submitting && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" />}
                 {submitting ? "处理中" : mode === "login" ? "进入工作台" : "创建账号"}

@@ -378,8 +378,8 @@ function MessageToolButton({
       style={{
         color: active ? "var(--success)" : isHovered ? "var(--accent)" : "var(--fg-tertiary)",
         background: active ? "var(--success-subtle)" : isHovered ? "var(--accent-subtle)" : "transparent",
-        borderColor: active ? "var(--success-border)" : isHovered ? "rgba(68,86,223,0.32)" : "transparent",
-        boxShadow: isHovered ? "0 0 0 2px rgba(68,86,223,0.16), 0 3px 10px rgba(68,86,223,0.14)" : "none",
+        borderColor: active ? "var(--success-border)" : isHovered ? "var(--accent-border)" : "transparent",
+        boxShadow: isHovered ? "var(--accent-glow)" : "none",
         opacity: isEmphasized ? 1 : 0.75,
       }}
     >
@@ -701,8 +701,8 @@ function DocumentCardTrigger({ title, onClick }: {
       className="flex w-full max-w-[320px] items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all duration-150 active:scale-[0.99] focus-visible:outline-none"
       style={{
         background: isHovered ? "var(--accent-subtle)" : "var(--surface-tinted)",
-        borderColor: isHovered ? "rgba(68,86,223,0.32)" : "var(--border-strong)",
-        boxShadow: isHovered ? "0 0 0 2px rgba(68,86,223,0.14), 0 8px 20px rgba(68,86,223,0.12)" : "none",
+        borderColor: isHovered ? "var(--accent-border)" : "var(--border-strong)",
+        boxShadow: isHovered ? "var(--accent-glow)" : "none",
       }}
     >
       <span
@@ -710,7 +710,7 @@ function DocumentCardTrigger({ title, onClick }: {
         style={{
           color: "var(--accent)",
           background: isHovered ? "var(--surface-white)" : "var(--accent-subtle)",
-          boxShadow: isHovered ? "0 4px 10px rgba(68,86,223,0.16)" : "none",
+          boxShadow: isHovered ? "var(--shadow-glow)" : "none",
         }}
       >
         <Icon path="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M9 13h6M9 17h4" size={17} />
@@ -724,7 +724,7 @@ function DocumentCardTrigger({ title, onClick }: {
         style={{
           color: isHovered ? "var(--accent)" : "var(--fg-disabled)",
           background: "var(--surface-white)",
-          borderColor: isHovered ? "rgba(68,86,223,0.32)" : "var(--border)",
+          borderColor: isHovered ? "var(--accent-border)" : "var(--border)",
           transform: isHovered ? "translateX(2px)" : "translateX(0)",
         }}
       >
@@ -779,7 +779,7 @@ function DocumentCompletionView({
               type="button"
               onClick={() => downloadDocumentContent(content, fileTitle, item.format)}
               className="rounded-md px-2 py-1 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-low)]"
-              style={{ color: item.format === "md" ? "#174ea6" : "var(--fg-tertiary)", background: item.format === "md" ? "rgba(23,78,166,0.07)" : "var(--surface-tinted)", border: "1px solid var(--border)" }}
+              style={{ color: item.format === "md" ? "var(--accent)" : "var(--fg-tertiary)", background: item.format === "md" ? "var(--accent-subtle)" : "var(--surface-tinted)", border: "1px solid var(--border)" }}
             >
               {item.label}
             </button>
@@ -1308,7 +1308,7 @@ export function AIAssistantView() {
                     ))}
                   </div>
 
-                  <div className="mt-4 rounded-lg px-3 py-2" style={{ background: "rgba(23, 78, 166, 0.055)", border: "1px solid rgba(23, 78, 166, 0.14)" }}>
+                  <div className="mt-4 rounded-lg px-3 py-2" style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
                     <p className="text-[10px] font-semibold" style={{ color: "var(--accent)" }}>建议输入方式</p>
                     <p className="mt-1 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.65 }}>
                       直接说目标、交付物和限制条件。例如：帮我把某个功能拆成可执行计划，并指出需要验证的页面状态。

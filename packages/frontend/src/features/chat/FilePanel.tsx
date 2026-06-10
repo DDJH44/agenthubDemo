@@ -63,10 +63,10 @@ export function FilePanel({ conversationId, onSendMessage }: FilePanelProps) {
           onDrop={handleDrop}
           onClick={() => fileInputRef.current?.click()}
         >
-          <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+          <p className="text-xs" style={{ color: "var(--fg-secondary)" }}>
             {uploading ? "上传中..." : "点击或拖拽文件到此处上传"}
           </p>
-          <p className="text-xs mt-1" style={{ color: "var(--text-tertiary)" }}>最大 100MB</p>
+          <p className="text-xs mt-1" style={{ color: "var(--fg-tertiary)" }}>最大 100MB</p>
         </div>
         <input ref={fileInputRef} type="file" onChange={handleUpload} className="hidden" />
       </div>
@@ -79,8 +79,8 @@ export function FilePanel({ conversationId, onSendMessage }: FilePanelProps) {
               style={{ background: "var(--surface-low)" }}>
               <span className="text-lg">{FILE_ICONS[file.mimeType] ?? "📎"}</span>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium truncate" style={{ color: "var(--text-primary)" }}>{file.name}</p>
-                <p className="text-xs" style={{ color: "var(--text-tertiary)", fontSize: 10 }}>
+                <p className="text-xs font-medium truncate" style={{ color: "var(--fg-primary)" }}>{file.name}</p>
+                <p className="text-xs" style={{ color: "var(--fg-tertiary)", fontSize: 10 }}>
                   {formatSize(file.size)}
                 </p>
               </div>
@@ -99,7 +99,7 @@ export function FilePanel({ conversationId, onSendMessage }: FilePanelProps) {
             </div>
           ))}
           {files.length === 0 && (
-            <p className="text-xs text-center py-4" style={{ color: "var(--text-tertiary)" }}>暂无文件</p>
+        <p className="text-xs text-center py-4" style={{ color: "var(--fg-tertiary)" }}>暂无文件</p>
           )}
         </div>
       </div>

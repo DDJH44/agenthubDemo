@@ -18,16 +18,16 @@ interface MemoryEntry {
   createdAt: number;
 }
 
-const ACCENT = "#5B6CFF";
-const ACCENT_GRADIENT = "linear-gradient(135deg, #5B6CFF, #8B7FFF)";
+const ACCENT = "var(--accent)";
+const ACCENT_GRADIENT = "var(--accent-gradient)";
 const MEMORY_STORAGE_KEY = "agenthub-project-memory";
 
 const AGENT_CONFIG = [
-  { id: "Planner", name: "Planner", role: "规划者", gradient: "linear-gradient(135deg, #5B6CFF, #6C7AFF)", initial: "P" },
+  { id: "Planner", name: "Planner", role: "规划者", gradient: ACCENT_GRADIENT, initial: "P" },
   { id: "UI Designer", name: "UI Designer", role: "UI 设计", gradient: "linear-gradient(135deg, #8B5CF6, #A78BFA)", initial: "U" },
   { id: "Frontend Dev", name: "Frontend Dev", role: "前端开发", gradient: "linear-gradient(135deg, #22C55E, #4ADE80)", initial: "F" },
   { id: "Tester", name: "Tester", role: "测试", gradient: "linear-gradient(135deg, #F59E0B, #FBBF24)", initial: "T" },
-  { id: "planner", name: "Planner", role: "规划者", gradient: "linear-gradient(135deg, #5B6CFF, #6C7AFF)", initial: "P" },
+  { id: "planner", name: "Planner", role: "规划者", gradient: ACCENT_GRADIENT, initial: "P" },
   { id: "worker", name: "Worker", role: "执行者", gradient: "linear-gradient(135deg, #22C55E, #4ADE80)", initial: "W" },
   { id: "critic", name: "Critic", role: "审查者", gradient: "linear-gradient(135deg, #F59E0B, #FBBF24)", initial: "C" },
   { id: "researcher", name: "Researcher", role: "研究员", gradient: "linear-gradient(135deg, #3B82F6, #60A5FA)", initial: "R" },

@@ -96,7 +96,7 @@ function AgentAvatarStack({ conv, isGroup, userAgents, excludeParticipantIds }: 
           title={agents.map((agent) => `${agent.name} - ${agent.capabilities.join(" / ")}`).join("\n")}
         >
           <BrandMascot variant="happy" size={40} />
-          <div className="absolute -bottom-1 -right-1 grid h-4 min-w-4 place-items-center rounded-sm px-1 text-[9px] font-bold" style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid rgba(23, 78, 166, 0.18)" }}>
+          <div className="absolute -bottom-1 -right-1 grid h-4 min-w-4 place-items-center rounded-sm px-1 text-[9px] font-bold" style={{ color: "var(--accent)", background: "var(--surface-white)", border: "1px solid var(--accent-border)" }}>
             {agents.length}
           </div>
           <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full" style={{ background: connection.meta.color, border: "2px solid var(--surface-white)" }} />
@@ -107,11 +107,11 @@ function AgentAvatarStack({ conv, isGroup, userAgents, excludeParticipantIds }: 
     return (
       <div
         className="relative grid h-10 w-10 shrink-0 place-items-center rounded-md text-sm font-bold text-white"
-        style={{ background: primary?.color ?? "#174ea6" }}
+        style={{ background: primary?.color ?? "var(--accent)" }}
         title={agents.map((agent) => `${agent.name} · ${agent.capabilities.join(" / ")}`).join("\n")}
       >
         群
-        <div className="absolute -bottom-1 -right-1 grid h-4 min-w-4 place-items-center rounded-sm px-1 text-[9px] font-bold" style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid rgba(23, 78, 166, 0.18)" }}>
+        <div className="absolute -bottom-1 -right-1 grid h-4 min-w-4 place-items-center rounded-sm px-1 text-[9px] font-bold" style={{ color: "var(--accent)", background: "var(--surface-white)", border: "1px solid var(--accent-border)" }}>
           {agents.length}
         </div>
         <span className="absolute -left-0.5 -top-0.5 h-2.5 w-2.5 rounded-full" style={{ background: connection.meta.color, border: "2px solid var(--surface-white)" }} />
@@ -360,7 +360,7 @@ export function ConversationListView({
             type="button"
             onClick={onCreate}
             className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-white transition-opacity hover:opacity-90"
-            style={{ background: "var(--accent)", boxShadow: "0 8px 18px rgba(68,86,223,0.18)" }}
+            style={{ background: "var(--accent)", boxShadow: "0 8px 18px var(--accent-border)" }}
             title="新建会话"
           >
             <Icon type="plus" size={16} />
@@ -526,7 +526,7 @@ export function ConversationListView({
                     type="button"
                     onClick={onCreate}
                     className="mt-4 h-9 rounded-lg px-4 text-xs font-semibold text-white transition-opacity hover:opacity-90"
-                    style={{ background: "var(--accent)", boxShadow: "0 8px 18px rgba(68,86,223,0.18)" }}
+                    style={{ background: "var(--accent)", boxShadow: "0 8px 18px var(--accent-border)" }}
                   >
                     新建会话
                   </button>

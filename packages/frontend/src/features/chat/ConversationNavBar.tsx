@@ -165,12 +165,12 @@ export function ConversationNavBar() {
   return (
     <div
       className="relative flex min-h-16 shrink-0 items-center px-4 py-2"
-      style={{ background: "rgba(255, 255, 255, 0.94)", borderBottom: "1px solid var(--divider)" }}
+      style={{ background: "var(--surface-glass-strong)", borderBottom: "1px solid var(--divider)" }}
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <div
           className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[11px] font-bold text-white"
-          style={{ background: isGroup ? "var(--accent)" : primaryAgent.color, boxShadow: "0 8px 22px rgba(37, 56, 120, 0.12)" }}
+          style={{ background: isGroup ? "var(--accent)" : primaryAgent.color, boxShadow: "var(--shadow-glow)" }}
         >
           {isGroup ? "群" : primaryAgent.badge.slice(0, 3)}
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full" style={{ background: statusColor, border: "2px solid var(--surface-white)" }} />

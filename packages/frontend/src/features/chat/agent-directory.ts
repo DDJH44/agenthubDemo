@@ -29,7 +29,7 @@ interface ConversationAgentOptions {
 }
 
 export const CONNECTION_STATE_META: Record<AgentConnectionState, { label: string; shortLabel: string; color: string; bg: string; border: string }> = {
-  local: { label: "内置可用", shortLabel: "内置", color: "#174ea6", bg: "rgba(23, 78, 166, 0.07)", border: "rgba(23, 78, 166, 0.16)" },
+  local: { label: "内置可用", shortLabel: "内置", color: "var(--accent)", bg: "var(--accent-subtle)", border: "var(--accent-border)" },
   live: { label: "真实适配器", shortLabel: "真实", color: "var(--success)", bg: "var(--success-subtle)", border: "var(--success-border)" },
   managed: { label: "系统托管", shortLabel: "托管", color: "#7c3aed", bg: "rgba(124, 58, 237, 0.08)", border: "rgba(124, 58, 237, 0.18)" },
   fallback: { label: "降级接管", shortLabel: "降级", color: "#9a6700", bg: "rgba(154, 103, 0, 0.10)", border: "rgba(154, 103, 0, 0.18)" },
@@ -52,7 +52,7 @@ export const AGENT_DIRECTORY: AgentDirectoryEntry[] = [
     provider: "AgentHub",
     role: "协调器",
     badge: "PMO",
-    color: "#174ea6",
+    color: "var(--accent)",
     capabilities: ["任务拆解", "并行调度", "失败降级"],
     connection: {
       state: "local",

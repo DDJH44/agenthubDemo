@@ -245,7 +245,7 @@ function CollapsedNav() {
         style={{
           background: "var(--surface-white)",
           border: "1px solid var(--accent-border)",
-          boxShadow: "0 6px 14px rgba(68,86,223,0.12)",
+          boxShadow: "var(--shadow-glow)",
           color: "var(--accent)",
         }}
         title={user?.name ?? "用户"}
@@ -309,7 +309,7 @@ function ExpandedNav({
             type="button"
             onClick={onCreateConversation}
             className="mt-2 flex h-9 w-full items-center justify-center gap-2 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90 active:scale-[0.99]"
-            style={{ background: "var(--accent)", boxShadow: "0 8px 18px rgba(68,86,223,0.18)" }}
+            style={{ background: "var(--accent)", boxShadow: "var(--accent-glow)" }}
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
               <path d="M12 5v14 M5 12h14" />

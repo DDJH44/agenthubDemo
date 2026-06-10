@@ -414,9 +414,9 @@ function AgentForm({
                 onClick={() => toggleTool(tool.value)}
                 className="rounded-md px-2.5 py-1.5 text-xs font-semibold"
                 style={{
-                  color: active ? "#174ea6" : "var(--fg-secondary)",
-                  background: active ? "rgba(23, 78, 166, 0.07)" : "var(--surface-low)",
-                  border: `1px solid ${active ? "rgba(23, 78, 166, 0.18)" : "var(--border)"}`,
+                  color: active ? "var(--accent)" : "var(--fg-secondary)",
+                  background: active ? "var(--accent-subtle)" : "var(--surface-low)",
+                  border: `1px solid ${active ? "var(--accent-border)" : "var(--border)"}`,
                 }}
               >
                 {tool.label}
@@ -430,7 +430,7 @@ function AgentForm({
         <button type="button" onClick={onCancel} className="h-9 rounded-md px-4 text-sm font-semibold" style={{ color: "var(--fg-secondary)", background: "var(--surface-low)" }}>
           取消
         </button>
-        <button type="button" onClick={onSubmit} disabled={!value.name.trim()} className="h-9 rounded-md px-4 text-sm font-semibold text-white" style={{ background: value.name.trim() ? "#174ea6" : "var(--surface-mid)", color: value.name.trim() ? "#fff" : "var(--fg-disabled)" }}>
+        <button type="button" onClick={onSubmit} disabled={!value.name.trim()} className="h-9 rounded-md px-4 text-sm font-semibold text-white" style={{ background: value.name.trim() ? "var(--accent)" : "var(--surface-mid)", color: value.name.trim() ? "#fff" : "var(--fg-disabled)" }}>
           {editing ? "保存修改" : "创建 Agent"}
         </button>
       </div>
@@ -536,11 +536,11 @@ export function MyAgentsView() {
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button type="button" onClick={() => setActiveNav("agents")} className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}>
+            <button type="button" onClick={() => setActiveNav("agents")} className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
               <Icon path="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z" />
               查看平台 Agent
             </button>
-            <button type="button" onClick={() => startCreate()} className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-white" style={{ background: "#174ea6" }}>
+            <button type="button" onClick={() => startCreate()} className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-xs font-semibold text-white" style={{ background: "var(--accent)" }}>
               <Icon path="M12 5v14M5 12h14" />
               手动创建
             </button>
@@ -569,7 +569,7 @@ export function MyAgentsView() {
                 className="min-w-0 flex-1 resize-none rounded-md px-3 py-2 text-sm outline-none"
                 style={{ color: "var(--fg-primary)", background: "var(--surface-low)", border: "1px solid var(--border)", lineHeight: 1.6 }}
               />
-              <button type="button" onClick={applyDescription} disabled={!description.trim()} className="w-24 rounded-md text-xs font-semibold text-white" style={{ background: description.trim() ? "#174ea6" : "var(--surface-mid)", color: description.trim() ? "#fff" : "var(--fg-disabled)" }}>
+              <button type="button" onClick={applyDescription} disabled={!description.trim()} className="w-24 rounded-md text-xs font-semibold text-white" style={{ background: description.trim() ? "var(--accent)" : "var(--surface-mid)", color: description.trim() ? "#fff" : "var(--fg-disabled)" }}>
                 生成配置
               </button>
             </div>
@@ -618,7 +618,7 @@ export function MyAgentsView() {
               <p className="mx-auto mt-2 max-w-md text-sm" style={{ color: "var(--fg-tertiary)", lineHeight: 1.7 }}>
                 从模板创建一个 UX Reviewer，或用描述式创建生成自己的 Agent。
               </p>
-              <button type="button" onClick={() => startCreate({ ...emptyForm(), name: TEMPLATES[0].name, avatar: TEMPLATES[0].avatar, avatarBg: TEMPLATES[0].color, role: TEMPLATES[0].role, model: TEMPLATES[0].model, systemPrompt: TEMPLATES[0].prompt, tools: TEMPLATES[0].tools })} className="mt-4 h-9 rounded-md px-4 text-xs font-semibold text-white" style={{ background: "#174ea6" }}>
+              <button type="button" onClick={() => startCreate({ ...emptyForm(), name: TEMPLATES[0].name, avatar: TEMPLATES[0].avatar, avatarBg: TEMPLATES[0].color, role: TEMPLATES[0].role, model: TEMPLATES[0].model, systemPrompt: TEMPLATES[0].prompt, tools: TEMPLATES[0].tools })} className="mt-4 h-9 rounded-md px-4 text-xs font-semibold text-white" style={{ background: "var(--accent)" }}>
                 创建 UX Reviewer
               </button>
             </div>

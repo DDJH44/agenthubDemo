@@ -172,27 +172,50 @@ export function MobileRemoteView({
     >
       <header className="shrink-0 px-4 pt-4">
         <div
-          className="flex items-center justify-between rounded-2xl border bg-white/88 px-4 py-3 shadow-sm backdrop-blur"
-          style={{ borderColor: "rgba(205, 214, 232, 0.85)" }}
+          className="flex items-center justify-between rounded-2xl border px-4 py-3 backdrop-blur"
+          style={{
+            background: "var(--surface-glass-strong)",
+            borderColor: "var(--border)",
+            boxShadow: "var(--shadow-sm)",
+          }}
         >
           <div className="flex items-center gap-3">
-            <div className="grid h-10 w-10 place-items-center rounded-xl bg-[#5B5CF6] text-lg font-black text-white shadow-sm">
+            <div
+              className="grid h-10 w-10 place-items-center rounded-xl text-lg font-black text-white"
+              style={{ background: "var(--accent)", boxShadow: "var(--shadow-xs)" }}
+            >
               A
             </div>
             <div>
-              <div className="text-[15px] font-bold leading-tight text-slate-950">AgentHub Remote</div>
-              <div className="mt-1 flex items-center gap-1.5 text-xs text-slate-500">
-                <span className={`h-1.5 w-1.5 rounded-full ${connected ? "bg-emerald-500" : "bg-rose-500"}`} />
+              <div className="text-[15px] font-bold leading-tight" style={{ color: "var(--fg-primary)" }}>
+                AgentHub Remote
+              </div>
+              <div className="mt-1 flex items-center gap-1.5 text-xs" style={{ color: "var(--fg-tertiary)" }}>
+                <span
+                  className="h-1.5 w-1.5 rounded-full"
+                  style={{ background: connected ? "var(--success)" : "var(--danger)" }}
+                />
                 {connected ? "在线" : "离线"}
-                {isStreaming ? <span className="ml-1 rounded-full bg-blue-50 px-1.5 py-0.5 text-blue-700">执行中</span> : null}
+                {isStreaming ? (
+                  <span
+                    className="ml-1 rounded-full px-1.5 py-0.5"
+                    style={{ background: "var(--accent-subtle)", color: "var(--accent)" }}
+                  >
+                    执行中
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
           <button
             type="button"
             onClick={onCreateConversation}
-            className="grid h-10 w-10 place-items-center rounded-xl border bg-white text-[#4F54E8] active:scale-95"
-            style={{ borderColor: "rgba(205, 214, 232, 0.9)" }}
+            className="grid h-10 w-10 place-items-center rounded-xl border active:scale-95"
+            style={{
+              background: "var(--surface-white)",
+              borderColor: "var(--border)",
+              color: "var(--accent)",
+            }}
             aria-label="新建会话"
           >
             <svg aria-hidden="true" height="18" viewBox="0 0 24 24" width="18" fill="none" stroke="currentColor" strokeWidth="2">
@@ -203,15 +226,21 @@ export function MobileRemoteView({
       </header>
 
       <div className="shrink-0 px-4 pt-3">
-        <div className="grid grid-cols-2 rounded-2xl bg-white/75 p-1 shadow-sm ring-1 ring-slate-200/75">
+        <div
+          className="grid grid-cols-2 rounded-2xl border p-1"
+          style={{ background: "var(--surface-glass)", borderColor: "var(--border)", boxShadow: "var(--shadow-xs)" }}
+        >
           {(["assistant", "chat"] as const).map((item) => (
             <button
               key={item}
               type="button"
               onClick={() => setTab(item)}
-              className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
-                tab === item ? "bg-[#5357F2] text-white shadow-sm" : "text-slate-600"
-              }`}
+              className="rounded-xl px-3 py-2 text-sm font-semibold transition"
+              style={
+                tab === item
+                  ? { background: "var(--accent)", color: "#fff", boxShadow: "var(--shadow-xs)" }
+                  : { color: "var(--fg-secondary)" }
+              }
             >
               {item === "assistant" ? "AI 助手" : "会话"}
             </button>
@@ -222,14 +251,28 @@ export function MobileRemoteView({
       <section ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
         {tab === "assistant" ? (
           <div className="space-y-3">
-            <div className="rounded-3xl border bg-white/90 p-4 shadow-sm" style={{ borderColor: "rgba(205, 214, 232, 0.78)" }}>
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6167F2]">Remote Control</div>
-              <h1 className="mt-2 text-[22px] font-black leading-tight text-slate-950">手机确认，电脑执行。</h1>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
+            <div
+              className="rounded-3xl border p-4"
+              style={{
+                background: "var(--surface-white)",
+                borderColor: "var(--border)",
+                boxShadow: "var(--shadow-sm)",
+              }}
+            >
+              <div className="text-xs font-semibold uppercase tracking-[0.18em]" style={{ color: "var(--accent)" }}>
+                Remote Control
+              </div>
+              <h1 className="mt-2 text-[22px] font-black leading-tight" style={{ color: "var(--fg-primary)" }}>
+                手机确认，电脑执行。
+              </h1>
+              <p className="mt-2 text-sm leading-6" style={{ color: "var(--fg-secondary)" }}>
                 当前会话：{activeConversation?.title || "暂无会话"}
               </p>
               {taskSummary ? (
-                <div className="mt-3 rounded-2xl bg-slate-50 px-3 py-2 text-sm leading-6 text-slate-700">
+                <div
+                  className="mt-3 rounded-2xl px-3 py-2 text-sm leading-6"
+                  style={{ background: "var(--surface-low)", color: "var(--fg-secondary)" }}
+                >
                   {plainText(taskSummary).slice(0, 180)}
                 </div>
               ) : null}
@@ -241,8 +284,13 @@ export function MobileRemoteView({
                   key={prompt}
                   type="button"
                   onClick={() => sendText(prompt)}
-                  className="rounded-2xl border bg-white/88 px-4 py-3 text-left text-sm font-medium text-slate-800 shadow-sm active:scale-[0.99]"
-                  style={{ borderColor: "rgba(205, 214, 232, 0.8)" }}
+                  className="rounded-2xl border px-4 py-3 text-left text-sm font-medium active:scale-[0.99]"
+                  style={{
+                    background: "var(--surface-white)",
+                    borderColor: "var(--border)",
+                    color: "var(--fg-primary)",
+                    boxShadow: "var(--shadow-xs)",
+                  }}
                 >
                   {prompt}
                 </button>
@@ -258,10 +306,14 @@ export function MobileRemoteView({
                     key={conversation.id}
                     type="button"
                     onClick={() => onSelectConversation(conversation.id)}
-                    className={`min-w-[168px] rounded-2xl border px-3 py-2 text-left shadow-sm ${
-                      conversation.id === activeConversationId ? "bg-[#EEF1FF] text-[#252BC8]" : "bg-white/88 text-slate-700"
-                    }`}
-                    style={{ borderColor: conversation.id === activeConversationId ? "#B8C3FF" : "rgba(205, 214, 232, 0.8)" }}
+                    className="min-w-[168px] rounded-2xl border px-3 py-2 text-left"
+                    style={{
+                      background:
+                        conversation.id === activeConversationId ? "var(--accent-subtle)" : "var(--surface-white)",
+                      borderColor: conversation.id === activeConversationId ? "var(--accent-border)" : "var(--border)",
+                      color: conversation.id === activeConversationId ? "var(--accent)" : "var(--fg-secondary)",
+                      boxShadow: "var(--shadow-xs)",
+                    }}
                   >
                     <div className="truncate text-sm font-bold">{conversation.title}</div>
                     <div className="mt-1 text-xs opacity-70">{formatTime(conversation.lastMessageAt || conversation.updatedAt)}</div>
@@ -271,8 +323,13 @@ export function MobileRemoteView({
                 <button
                   type="button"
                   onClick={onCreateConversation}
-                  className="w-full rounded-2xl border bg-white/88 px-4 py-4 text-left text-sm font-semibold text-slate-700 shadow-sm"
-                  style={{ borderColor: "rgba(205, 214, 232, 0.8)" }}
+                  className="w-full rounded-2xl border px-4 py-4 text-left text-sm font-semibold"
+                  style={{
+                    background: "var(--surface-white)",
+                    borderColor: "var(--border)",
+                    color: "var(--fg-secondary)",
+                    boxShadow: "var(--shadow-xs)",
+                  }}
                 >
                   新建一个会话
                 </button>
@@ -288,34 +345,62 @@ export function MobileRemoteView({
                     return (
                       <article key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                         <div className={`max-w-[86%] ${mine ? "items-end" : "items-start"} flex flex-col gap-1`}>
-                          <div className="px-1 text-[11px] text-slate-400">
+                          <div className="px-1 text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
                             {senderName(message)} {formatTime(message.timestamp)}
                           </div>
                           <div
-                            className={`rounded-2xl px-3.5 py-2.5 text-sm leading-6 shadow-sm ${
-                              mine ? "bg-[#5357F2] text-white" : "border bg-white/92 text-slate-800"
-                            }`}
-                            style={mine ? undefined : { borderColor: "rgba(205, 214, 232, 0.72)" }}
+                            className="rounded-2xl px-3.5 py-2.5 text-sm leading-6"
+                            style={
+                              mine
+                                ? { background: "var(--accent)", color: "#fff", boxShadow: "var(--shadow-xs)" }
+                                : {
+                                    background: "var(--surface-white)",
+                                    border: "1px solid var(--border)",
+                                    color: "var(--fg-primary)",
+                                    boxShadow: "var(--shadow-xs)",
+                                  }
+                            }
                           >
                             {preview.label ? (
-                              <div className={`mb-1 text-[11px] font-bold ${mine ? "text-white/75" : "text-[#5860E8]"}`}>
+                              <div
+                                className="mb-1 text-[11px] font-bold"
+                                style={{ color: mine ? "rgba(255,255,255,0.76)" : "var(--accent)" }}
+                              >
                                 {preview.label}
                               </div>
                             ) : null}
-                            <div className={preview.compact ? "text-slate-700" : ""}>{preview.content}</div>
+                            <div style={preview.compact && !mine ? { color: "var(--fg-secondary)" } : undefined}>
+                              {preview.content}
+                            </div>
                           </div>
                         </div>
                       </article>
                     );
                   })
                 ) : (
-                  <div className="rounded-3xl border bg-white/88 px-4 py-8 text-center text-sm text-slate-500 shadow-sm">
+                  <div
+                    className="rounded-3xl border px-4 py-8 text-center text-sm"
+                    style={{
+                      background: "var(--surface-white)",
+                      borderColor: "var(--border)",
+                      color: "var(--fg-tertiary)",
+                      boxShadow: "var(--shadow-xs)",
+                    }}
+                  >
                     还没有消息
                   </div>
                 )}
               </div>
             ) : (
-              <div className="rounded-3xl border bg-white/88 px-4 py-8 text-center text-sm text-slate-500 shadow-sm">
+              <div
+                className="rounded-3xl border px-4 py-8 text-center text-sm"
+                style={{
+                  background: "var(--surface-white)",
+                  borderColor: "var(--border)",
+                  color: "var(--fg-tertiary)",
+                  boxShadow: "var(--shadow-xs)",
+                }}
+              >
                 选择或新建一个会话
               </div>
             )}
@@ -324,9 +409,11 @@ export function MobileRemoteView({
       </section>
 
       <footer
-        className="shrink-0 border-t bg-white/92 px-4 pt-3 shadow-[0_-14px_42px_rgba(71,84,129,0.08)] backdrop-blur"
+        className="shrink-0 border-t px-4 pt-3 backdrop-blur"
         style={{
-          borderColor: "rgba(205, 214, 232, 0.85)",
+          background: "var(--surface-glass-strong)",
+          borderColor: "var(--border)",
+          boxShadow: "var(--shadow-lg)",
           paddingBottom: "max(14px, env(safe-area-inset-bottom))",
         }}
       >
@@ -336,28 +423,40 @@ export function MobileRemoteView({
               key={prompt}
               type="button"
               onClick={() => sendText(prompt)}
-              className="shrink-0 rounded-full border bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600"
-              style={{ borderColor: "rgba(205, 214, 232, 0.82)" }}
+              className="shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium"
+              style={{
+                background: "var(--surface-low)",
+                borderColor: "var(--border)",
+                color: "var(--fg-secondary)",
+              }}
             >
               {prompt}
             </button>
           ))}
         </div>
-        <div className="rounded-3xl border bg-slate-50 p-2" style={{ borderColor: "rgba(188, 199, 224, 0.85)" }}>
+        <div
+          className="rounded-3xl border p-2"
+          style={{ background: "var(--surface-low)", borderColor: "var(--border)" }}
+        >
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             rows={2}
             placeholder={tab === "assistant" ? "问 AI 助手，或确认电脑端继续执行..." : "发送消息..."}
-            className="max-h-28 w-full resize-none bg-transparent px-2 py-2 text-[15px] leading-6 text-slate-900 outline-none placeholder:text-slate-400"
+            className="max-h-28 w-full resize-none bg-transparent px-2 py-2 text-[15px] leading-6 outline-none placeholder:text-[var(--fg-tertiary)]"
+            style={{ color: "var(--fg-primary)" }}
           />
           <div className="flex items-center justify-between gap-2 px-1 pb-1">
             <button
               type="button"
               onClick={confirmExecution}
               disabled={!activeConversationId}
-              className="rounded-2xl border px-3 py-2 text-sm font-semibold text-[#3D46D8] disabled:opacity-45"
-              style={{ borderColor: "rgba(83, 87, 242, 0.28)", background: "#F3F5FF" }}
+              className="rounded-2xl border px-3 py-2 text-sm font-semibold disabled:opacity-45"
+              style={{
+                background: "var(--accent-subtle)",
+                borderColor: "var(--accent-border)",
+                color: "var(--accent)",
+              }}
             >
               确认执行
             </button>
@@ -365,7 +464,8 @@ export function MobileRemoteView({
               type="button"
               onClick={() => sendText()}
               disabled={!draft.trim()}
-              className="rounded-2xl bg-[#5357F2] px-5 py-2 text-sm font-bold text-white shadow-sm disabled:bg-slate-300"
+              className="rounded-2xl px-5 py-2 text-sm font-bold text-white disabled:opacity-45"
+              style={{ background: "var(--accent)", boxShadow: "var(--shadow-xs)" }}
             >
               发送
             </button>

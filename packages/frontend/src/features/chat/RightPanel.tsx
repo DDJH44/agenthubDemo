@@ -102,13 +102,14 @@ function documentShell(title: string, body: string) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(title)}</title>
   <style>
+    :root { --accent: #174ea6; }
     body { margin: 0; padding: 28px; color: #202124; background: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; line-height: 1.75; }
     h1 { font-size: 26px; margin: 0 0 18px; }
     h2 { font-size: 20px; margin: 22px 0 10px; }
     h3 { font-size: 16px; margin: 18px 0 8px; }
     p { margin: 10px 0; }
-    blockquote { margin: 14px 0; padding: 10px 14px; border-left: 4px solid #174ea6; background: #f6f8fb; color: #4b5563; }
-    code { background: #f1f3f4; border-radius: 4px; padding: 1px 5px; color: #174ea6; }
+    blockquote { margin: 14px 0; padding: 10px 14px; border-left: 4px solid var(--accent); background: #f6f8fb; color: #4b5563; }
+    code { background: #f1f3f4; border-radius: 4px; padding: 1px 5px; color: var(--accent); }
     ul { padding-left: 22px; }
   </style>
 </head>
@@ -464,7 +465,7 @@ function statusText(status: string) {
 
 function statusColor(status: string) {
   if (status === "done") return "var(--success)";
-  if (status === "running") return "#174ea6";
+  if (status === "running") return "var(--accent)";
   if (status === "failed") return "var(--danger)";
   return "var(--fg-tertiary)";
 }
@@ -525,13 +526,13 @@ function OrchestrationBoard({
     <div className="mb-4 space-y-3">
       <div className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
         <div className="flex items-start gap-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: "#174ea6" }}>
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-[11px] font-bold text-white" style={{ background: "var(--accent)" }}>
             PMO
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center justify-between gap-2">
               <p className="truncate text-sm font-bold" style={{ color: "var(--fg-primary)" }}>主 Agent 调度中枢</p>
-              <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+              <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
                 协调器
               </span>
             </div>
@@ -550,9 +551,9 @@ function OrchestrationBoard({
                 </div>
               ))}
             </div>
-            <div className="mt-3 rounded-md px-2.5 py-2" style={{ background: "rgba(23, 78, 166, 0.05)", border: "1px solid rgba(23, 78, 166, 0.12)" }}>
+            <div className="mt-3 rounded-md px-2.5 py-2" style={{ background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
               <div className="mb-2 flex items-center justify-between gap-2">
-                <p className="text-[10px] font-bold" style={{ color: "#174ea6" }}>调度证据链</p>
+                <p className="text-[10px] font-bold" style={{ color: "var(--accent)" }}>调度证据链</p>
                 <span className="truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>PMO / 子 Agent / 产物</span>
               </div>
               <div className="grid grid-cols-2 gap-1.5">
@@ -581,7 +582,7 @@ function OrchestrationBoard({
                   <p className="text-xs font-bold" style={{ color: "var(--fg-primary)" }}>{lane.title}</p>
                   <p className="mt-0.5 text-[11px]" style={{ color: "var(--fg-tertiary)" }}>{lane.desc}</p>
                 </div>
-                <span className="shrink-0 text-xs font-bold" style={{ color: "#174ea6" }}>{lane.progress}%</span>
+                <span className="shrink-0 text-xs font-bold" style={{ color: "var(--accent)" }}>{lane.progress}%</span>
               </div>
               <div className="mb-2 flex flex-wrap gap-1.5">
                 {lane.agents.map((agent) => (
@@ -591,7 +592,7 @@ function OrchestrationBoard({
                 ))}
               </div>
               <div className="h-1 overflow-hidden rounded-sm" style={{ background: "var(--surface-low)" }}>
-                <div className="h-full rounded-sm" style={{ width: `${Math.max(0, Math.min(lane.progress, 100))}%`, background: "#174ea6" }} />
+                <div className="h-full rounded-sm" style={{ width: `${Math.max(0, Math.min(lane.progress, 100))}%`, background: "var(--accent)" }} />
               </div>
             </div>
           ))}
@@ -609,7 +610,7 @@ function OrchestrationBoard({
           <div className="space-y-2">
             {conflictEvents.slice(-2).map((event) => (
               <div key={event.id} className="rounded-md px-2 py-2" style={{ background: "var(--surface-low)" }}>
-                <p className="text-[10px] font-semibold" style={{ color: event.type === "diff_card" ? "#174ea6" : "var(--danger)" }}>
+                <p className="text-[10px] font-semibold" style={{ color: event.type === "diff_card" ? "var(--accent)" : "var(--danger)" }}>
                   {event.type === "diff_card" ? "Diff 已生成" : "PMO 风险判断"} · {formatTime(event.timestamp)}
                 </p>
                 <p className="mt-1 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>{event.content}</p>
@@ -678,10 +679,10 @@ function TaskPanel({ messages }: { messages: Message[] }) {
         <div className="mb-3 rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
           <div className="mb-2 flex items-center justify-between text-xs">
             <span style={{ color: "var(--fg-secondary)" }}>总进度</span>
-            <span className="font-semibold" style={{ color: "#174ea6" }}>{displayProgress.percentage}%</span>
+            <span className="font-semibold" style={{ color: "var(--accent)" }}>{displayProgress.percentage}%</span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-sm" style={{ background: "var(--surface-low)" }}>
-            <div className="h-full" style={{ width: `${displayProgress.percentage}%`, background: "#174ea6" }} />
+            <div className="h-full" style={{ width: `${displayProgress.percentage}%`, background: "var(--accent)" }} />
           </div>
           <div className="mt-2 text-[11px]" style={{ color: "var(--fg-tertiary)" }}>
             已完成 {displayProgress.completed} / {displayProgress.total}，进行中 {displayProgress.inProgress}，等待 {displayProgress.waiting}
@@ -722,14 +723,14 @@ function TaskPanel({ messages }: { messages: Message[] }) {
           <div className="space-y-2">
             {sessionAgentStatuses.map((agent) => (
               <div key={agent.agentId} className="flex items-center gap-3 rounded-lg p-2.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-                <span className="grid h-7 w-7 place-items-center rounded-md text-[10px] font-bold text-white" style={{ background: agent.status === "running" ? "#174ea6" : agent.status === "done" ? "var(--success)" : "var(--fg-tertiary)" }}>
+                <span className="grid h-7 w-7 place-items-center rounded-md text-[10px] font-bold text-white" style={{ background: agent.status === "running" ? "var(--accent)" : agent.status === "done" ? "var(--success)" : "var(--fg-tertiary)" }}>
                   {agent.agentName.slice(0, 2).toUpperCase()}
                 </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{agent.agentName}</p>
                   <p className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{agent.agentRole}</p>
                 </div>
-                <span className="text-[10px] font-semibold" style={{ color: agent.status === "running" ? "#174ea6" : agent.status === "done" ? "var(--success)" : "var(--fg-tertiary)" }}>
+                <span className="text-[10px] font-semibold" style={{ color: agent.status === "running" ? "var(--accent)" : agent.status === "done" ? "var(--success)" : "var(--fg-tertiary)" }}>
                   {agent.status === "running" ? `${agent.progress ?? 0}%` : agent.status === "done" ? "完成" : "等待"}
                 </span>
               </div>
@@ -846,14 +847,14 @@ function SelectionHandoffBar({
     <div
       className="mb-2 rounded-lg p-3"
       style={{
-        background: selection ? "rgba(23, 78, 166, 0.05)" : "var(--surface-low)",
-        border: `1px solid ${selection ? "rgba(23, 78, 166, 0.14)" : "var(--border)"}`,
+        background: selection ? "var(--accent-subtle)" : "var(--surface-low)",
+        border: `1px solid ${selection ? "var(--accent-border)" : "var(--border)"}`,
       }}
     >
       {selection ? (
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-bold" style={{ color: "#174ea6" }}>{selection.sourceLabel}</p>
+            <p className="text-xs font-bold" style={{ color: "var(--accent)" }}>{selection.sourceLabel}</p>
             <p className="mt-1 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.55 }}>
               {selection.content}
             </p>
@@ -870,7 +871,7 @@ function SelectionHandoffBar({
                   onClick={() => handoffSelection(agent.id)}
                   disabled={!activeConversationId}
                   className="rounded-md px-2 py-1 text-[10px] font-semibold"
-                  style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid rgba(23, 78, 166, 0.16)" }}
+                  style={{ color: "var(--accent)", background: "var(--surface-white)", border: "1px solid var(--accent-border)" }}
                 >
                   {agent.label}
                 </button>
@@ -1011,9 +1012,9 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
             onClick={() => setActiveId(item.id)}
             className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold"
             style={{
-              color: item.id === activeItem.id ? "#174ea6" : "var(--fg-secondary)",
-              background: item.id === activeItem.id ? "rgba(23, 78, 166, 0.07)" : "var(--surface-white)",
-              border: `1px solid ${item.id === activeItem.id ? "rgba(23, 78, 166, 0.18)" : "var(--border)"}`,
+              color: item.id === activeItem.id ? "var(--accent)" : "var(--fg-secondary)",
+              background: item.id === activeItem.id ? "var(--accent-subtle)" : "var(--surface-white)",
+              border: `1px solid ${item.id === activeItem.id ? "var(--accent-border)" : "var(--border)"}`,
             }}
           >
             {item.filename}
@@ -1035,10 +1036,10 @@ function CodePanel({ artifacts, messages }: { artifacts: Artifact[]; messages: M
             <button type="button" onClick={resetDraft} disabled={!isDirty} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: isDirty ? "#dbeafe" : "#71717a", background: isDirty ? "#3f3f46" : "#2b2b2b", border: "1px solid #3b3b3b" }}>
               重置
             </button>
-            <button type="button" onClick={saveVersion} disabled={!canSaveVersion} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: canSaveVersion ? "#dbeafe" : "#71717a", background: canSaveVersion ? "#174ea6" : "#2b2b2b", border: "1px solid #3b3b3b" }}>
+            <button type="button" onClick={saveVersion} disabled={!canSaveVersion} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: canSaveVersion ? "#dbeafe" : "#71717a", background: canSaveVersion ? "var(--accent)" : "#2b2b2b", border: "1px solid #3b3b3b" }}>
               保存版本
             </button>
-            <button type="button" onClick={() => askAgent(activeItem.artifactId, value)} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: "#dbeafe", background: "#174ea6" }}>
+            <button type="button" onClick={() => askAgent(activeItem.artifactId, value)} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: "#dbeafe", background: "var(--accent)" }}>
               交给 Agent
             </button>
           </div>
@@ -1172,7 +1173,7 @@ function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
         <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
           {isDocumentPreview && (
             <>
-              <button type="button" onClick={() => downloadMarkdown(item.artifact.content, documentDownloadTitle)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+              <button type="button" onClick={() => downloadMarkdown(item.artifact.content, documentDownloadTitle)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
                 下载 MD
               </button>
               <button type="button" onClick={() => downloadDOCX(item.artifact.content, documentDownloadTitle)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)", border: "1px solid var(--border)" }}>
@@ -1184,7 +1185,7 @@ function PreviewPanel({ artifacts }: { artifacts: Artifact[] }) {
             </>
           )}
           {src && (
-            <a href={src} target="_blank" rel="noopener noreferrer" className="rounded-md px-2 py-1 text-[10px] font-semibold no-underline" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+            <a href={src} target="_blank" rel="noopener noreferrer" className="rounded-md px-2 py-1 text-[10px] font-semibold no-underline" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
               新窗口
             </a>
           )}
@@ -1286,9 +1287,9 @@ function DiffPanel({ messages, artifacts }: { messages: Message[]; artifacts: Ar
               onClick={() => setActiveId(message.id)}
               className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold"
               style={{
-                color: message.id === active.id ? "#174ea6" : "var(--fg-secondary)",
-                background: message.id === active.id ? "rgba(23, 78, 166, 0.07)" : "var(--surface-white)",
-                border: `1px solid ${message.id === active.id ? "rgba(23, 78, 166, 0.18)" : "var(--border)"}`,
+                color: message.id === active.id ? "var(--accent)" : "var(--fg-secondary)",
+                background: message.id === active.id ? "var(--accent-subtle)" : "var(--surface-white)",
+                border: `1px solid ${message.id === active.id ? "var(--accent-border)" : "var(--border)"}`,
               }}
             >
               {itemPayload?.fileName || "diff"}
@@ -1302,7 +1303,7 @@ function DiffPanel({ messages, artifacts }: { messages: Message[]; artifacts: Ar
             <span className="block truncate text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>{payload?.fileName || "diff"}</span>
             <span className="text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{targetArtifact?.filename ? `目标：${targetArtifact.filename}` : formatTime(active.timestamp)}</span>
           </div>
-          <button type="button" onClick={applyDiff} disabled={!targetArtifact} className="h-6 shrink-0 rounded px-2 text-[10px] font-semibold" style={{ color: targetArtifact ? "#fff" : "var(--fg-disabled)", background: targetArtifact ? "#174ea6" : "var(--surface-white)", border: "1px solid var(--border)" }}>
+          <button type="button" onClick={applyDiff} disabled={!targetArtifact} className="h-6 shrink-0 rounded px-2 text-[10px] font-semibold" style={{ color: targetArtifact ? "#fff" : "var(--fg-disabled)", background: targetArtifact ? "var(--accent)" : "var(--surface-white)", border: "1px solid var(--border)" }}>
             应用为版本
           </button>
         </div>
@@ -1387,7 +1388,7 @@ function SlidesPanel({ artifacts }: { artifacts: Artifact[] }) {
           onClick={handleDownload}
           disabled={exporting || slides.length === 0}
           className="shrink-0 rounded-md px-2.5 py-1.5 text-[10px] font-semibold transition-colors disabled:opacity-45"
-          style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}
+          style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}
         >
           {exporting ? "生成中" : "下载 PPTX"}
         </button>
@@ -1401,9 +1402,9 @@ function SlidesPanel({ artifacts }: { artifacts: Artifact[] }) {
               onClick={() => setArtifactId(item.id)}
               className="shrink-0 rounded-md px-2 py-1 text-xs font-semibold"
               style={{
-                color: item.id === artifact.id ? "#174ea6" : "var(--fg-secondary)",
-                background: item.id === artifact.id ? "rgba(23, 78, 166, 0.07)" : "var(--surface-white)",
-                border: `1px solid ${item.id === artifact.id ? "rgba(23, 78, 166, 0.18)" : "var(--border)"}`,
+                color: item.id === artifact.id ? "var(--accent)" : "var(--fg-secondary)",
+                background: item.id === artifact.id ? "var(--accent-subtle)" : "var(--surface-white)",
+                border: `1px solid ${item.id === artifact.id ? "var(--accent-border)" : "var(--border)"}`,
               }}
             >
               {getPptxFilename(item.filename)}
@@ -1491,7 +1492,7 @@ function HistoryPanel({ artifacts, stepResults }: { artifacts: Artifact[]; stepR
                     <p className="truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{latest.filename || latest.type}</p>
                     <p className="mt-0.5 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>最新 v{latest.version ?? 1} · {family.length} 个版本</p>
                   </div>
-                  <button type="button" onClick={() => previewVersion(latest)} className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+                  <button type="button" onClick={() => previewVersion(latest)} className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
                     预览最新
                   </button>
                 </div>
@@ -1500,24 +1501,24 @@ function HistoryPanel({ artifacts, stepResults }: { artifacts: Artifact[]; stepR
                     const isLatest = artifact.id === latest.id;
                     const changeSummary = typeof artifact.metadata?.changeSummary === "string" ? artifact.metadata.changeSummary : "产物版本";
                     return (
-                      <div key={artifact.id} className="rounded-md p-2" style={{ background: isLatest ? "rgba(23, 78, 166, 0.05)" : "var(--surface-low)", border: `1px solid ${isLatest ? "rgba(23, 78, 166, 0.14)" : "transparent"}` }}>
+                      <div key={artifact.id} className="rounded-md p-2" style={{ background: isLatest ? "var(--accent-subtle)" : "var(--surface-low)", border: `1px solid ${isLatest ? "var(--accent-border)" : "transparent"}` }}>
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="flex items-center gap-1.5">
-                              <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-bold" style={{ color: isLatest ? "#174ea6" : "var(--fg-secondary)", background: "var(--surface-white)" }}>v{artifact.version ?? 1}</span>
+                              <span className="rounded-sm px-1.5 py-0.5 text-[10px] font-bold" style={{ color: isLatest ? "var(--accent)" : "var(--fg-secondary)", background: "var(--surface-white)" }}>v{artifact.version ?? 1}</span>
                               <span className="truncate text-[10px]" style={{ color: "var(--fg-tertiary)" }}>{artifact.createdBy || "Agent"} · {formatTime(artifact.createdAt)}</span>
                             </div>
                             <p className="mt-1 line-clamp-2 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.5 }}>{changeSummary}</p>
                           </div>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1.5">
-                          <button type="button" onClick={() => previewVersion(artifact)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                          <button type="button" onClick={() => previewVersion(artifact)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
                             预览
                           </button>
-                          <button type="button" onClick={() => restoreVersion(artifact)} disabled={isLatest} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: isLatest ? "var(--fg-disabled)" : "#174ea6", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                          <button type="button" onClick={() => restoreVersion(artifact)} disabled={isLatest} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: isLatest ? "var(--fg-disabled)" : "var(--accent)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
                             回滚到此版
                           </button>
-                          <button type="button" onClick={() => handoffVersion(artifact)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
+                          <button type="button" onClick={() => handoffVersion(artifact)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--surface-white)", border: "1px solid var(--border)" }}>
                             交给 Agent
                           </button>
                         </div>
@@ -1587,7 +1588,7 @@ function ResourceList({ resources }: { resources: ResourceItem[] }) {
     <div className="space-y-2">
       {resources.map((resource) => (
         <div key={resource.id} className="flex items-center gap-3 rounded-md p-2.5" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
-          <span className="grid h-8 w-8 place-items-center rounded-md text-[10px] font-bold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+          <span className="grid h-8 w-8 place-items-center rounded-md text-[10px] font-bold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
             {resource.type.toUpperCase().slice(0, 3)}
           </span>
           <div className="min-w-0 flex-1">
@@ -1721,15 +1722,15 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
                 key={ref.id}
                 className="rounded-lg p-3"
                 style={{
-                  background: ref.pinned ? "rgba(23, 78, 166, 0.045)" : "var(--surface-white)",
-                  border: `1px solid ${ref.pinned ? "rgba(23, 78, 166, 0.18)" : "var(--border)"}`,
+                  background: ref.pinned ? "var(--accent-subtle)" : "var(--surface-white)",
+                  border: `1px solid ${ref.pinned ? "var(--accent-border)" : "var(--border)"}`,
                 }}
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="flex min-w-0 items-center gap-1.5">
                       {ref.pinned && (
-                        <span className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.08)" }}>
+                        <span className="shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
                           固定
                         </span>
                       )}
@@ -1739,7 +1740,7 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
                   </div>
                   {activeConversationId && (
                     <div className="flex shrink-0 gap-1">
-                      <button type="button" onClick={() => toggleContextReferencePin(activeConversationId, ref.id)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: ref.pinned ? "#174ea6" : "var(--fg-tertiary)", background: ref.pinned ? "rgba(23, 78, 166, 0.08)" : "var(--surface-low)" }}>
+                      <button type="button" onClick={() => toggleContextReferencePin(activeConversationId, ref.id)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: ref.pinned ? "var(--accent)" : "var(--fg-tertiary)", background: ref.pinned ? "var(--accent-subtle)" : "var(--surface-low)" }}>
                         {ref.pinned ? "取消固定" : "固定"}
                       </button>
                       <button type="button" onClick={() => removeContextReference(activeConversationId, ref.id)} className="rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--fg-tertiary)", background: "var(--surface-low)" }}>
@@ -1756,7 +1757,7 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
                       type="button"
                       onClick={() => handoffContextReference(ref, agent.id)}
                       className="rounded-md px-2 py-1 text-[10px] font-semibold"
-                      style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}
+                      style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}
                     >
                       交给 {agent.label}
                     </button>
@@ -1774,7 +1775,7 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
             <p className="text-xs font-semibold" style={{ color: "var(--fg-primary)" }}>上下文窗口</p>
             <p className="mt-1 text-[10px]" style={{ color: "var(--fg-tertiary)" }}>约 {estimatedTokens.toLocaleString()} tokens</p>
           </div>
-          <button type="button" onClick={summarizeContext} className="rounded-md px-3 py-1.5 text-xs font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+          <button type="button" onClick={summarizeContext} className="rounded-md px-3 py-1.5 text-xs font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
             生成摘要
           </button>
         </div>
@@ -1809,7 +1810,7 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
             {quotes.map((quote) => (
               <div key={quote.id} className="rounded-lg p-3" style={{ background: "var(--surface-white)", border: "1px solid var(--border)" }}>
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="truncate text-[10px] font-semibold" style={{ color: "#174ea6" }}>{quote.filename} · 第 {quote.index} 段</span>
+                  <span className="truncate text-[10px] font-semibold" style={{ color: "var(--accent)" }}>{quote.filename} · 第 {quote.index} 段</span>
                 </div>
                 <p className="line-clamp-4 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.65 }}>{quote.text}</p>
                 <div className="mt-3 flex flex-wrap gap-1.5">
@@ -1819,7 +1820,7 @@ function ContextPanel({ artifacts, messages, resources }: { artifacts: Artifact[
                       type="button"
                       onClick={() => handoffQuote(quote, agent.id)}
                       className="rounded-md px-2 py-1 text-[10px] font-semibold"
-                      style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}
+                      style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}
                     >
                       交给 {agent.label}
                     </button>
@@ -1894,11 +1895,11 @@ export function RightPanel() {
     <aside
       className="flex h-full flex-col overflow-hidden"
       style={{
-        background: "rgba(247, 249, 254, 0.96)",
-        border: "1px solid rgba(224, 229, 242, 0.95)",
+        background: "var(--surface-tinted)",
+        border: "1px solid var(--border)",
       }}
     >
-      <div className="shrink-0 px-3 pb-3 pt-3" style={{ background: "rgba(255, 255, 255, 0.92)", borderBottom: "1px solid var(--divider)" }}>
+      <div className="shrink-0 px-3 pb-3 pt-3" style={{ background: "var(--surface-glass-strong)", borderBottom: "1px solid var(--divider)" }}>
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
             <span
@@ -2030,7 +2031,7 @@ export function RightPanel() {
         {activeTab === "context" && <ContextPanel artifacts={topicArtifacts} messages={topicMessages} resources={resources} />}
       </div>
 
-      <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2.5" style={{ background: "rgba(255, 255, 255, 0.88)", borderTop: "1px solid var(--border)" }}>
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 py-2.5" style={{ background: "var(--surface-glass-strong)", borderTop: "1px solid var(--border)" }}>
         <div className="min-w-0">
           <p className="truncate text-[10px] font-semibold" style={{ color: isStreaming ? "var(--accent)" : "var(--fg-tertiary)" }}>
             {isStreaming ? "Agent 正在生成" : "工作台已同步"}

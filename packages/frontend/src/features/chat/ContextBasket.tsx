@@ -122,8 +122,8 @@ function ContextChip({
     <div
       className="min-w-0 rounded-lg px-2.5 py-2"
       style={{
-        background: refItem.pinned ? "rgba(23, 78, 166, 0.045)" : "var(--surface-white)",
-        border: `1px solid ${refItem.pinned ? "rgba(23, 78, 166, 0.18)" : "var(--border)"}`,
+        background: refItem.pinned ? "var(--accent-subtle)" : "var(--surface-white)",
+        border: `1px solid ${refItem.pinned ? "var(--accent-border)" : "var(--border)"}`,
       }}
     >
       <div className="mb-1.5 flex min-w-0 items-center justify-between gap-2">
@@ -151,7 +151,7 @@ function ContextChip({
               title={`交给 ${agent.label}`}
               onClick={() => handoff(agent)}
               className="h-6 rounded-md px-1.5 text-[10px] font-bold transition-colors hover:bg-[var(--accent-subtle)]"
-              style={{ color: "var(--accent)", background: "rgba(23, 78, 166, 0.06)", border: "1px solid rgba(23, 78, 166, 0.12)" }}
+              style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}
             >
               {agent.short}
             </button>

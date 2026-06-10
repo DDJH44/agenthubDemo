@@ -458,7 +458,7 @@ export function AgentChatPanel({
               bottom: 16,
               width: "min(760px, calc(100vw - 32px), 48vw)",
               minWidth: "min(420px, calc(100vw - 32px))",
-              boxShadow: "0 24px 70px rgba(39, 49, 84, 0.22), 0 0 0 1px rgba(224, 229, 242, 0.95)",
+              boxShadow: "var(--shadow-xl), 0 0 0 1px var(--border)",
             }}
           >
             <RightPanel />

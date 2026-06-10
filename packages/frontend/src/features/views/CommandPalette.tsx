@@ -180,9 +180,9 @@ export function CommandPalette() {
                 onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => runCommand(command)}
                 className="flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-left"
-                style={{ background: index === activeIndex ? "rgba(23, 78, 166, 0.07)" : "transparent" }}
+                style={{ background: index === activeIndex ? "var(--accent-subtle)" : "transparent" }}
               >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.08)" }}>
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
                   <Icon path={command.section === "页面" ? "M4 5h16M4 12h16M4 19h16" : "M5 3l14 9-14 9V3z"} size={14} />
                 </span>
                 <span className="min-w-0 flex-1">

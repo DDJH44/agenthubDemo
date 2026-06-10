@@ -50,7 +50,7 @@ interface DashboardStep {
 }
 
 const STATUS_MAP: Record<StatusKey, { label: string; color: string; bg: string }> = {
-  running: { label: "运行中", color: "#174ea6", bg: "rgba(23, 78, 166, 0.08)" },
+  running: { label: "运行中", color: "var(--accent)", bg: "var(--accent-subtle)" },
   active: { label: "进行中", color: "#0f766e", bg: "rgba(15, 118, 110, 0.08)" },
   waiting: { label: "等待中", color: "#9a6700", bg: "rgba(154, 103, 0, 0.10)" },
   done: { label: "已完成", color: "#188038", bg: "rgba(24, 128, 56, 0.08)" },
@@ -316,7 +316,7 @@ function ProgressBar({ value }: { value: number }) {
         className="h-full transition-all"
         style={{
           width: `${safeValue}%`,
-          background: safeValue >= 100 ? "var(--success)" : "#174ea6",
+          background: safeValue >= 100 ? "var(--success)" : "var(--accent)",
         }}
       />
     </div>
@@ -343,7 +343,7 @@ function EmptyPanel({
           type="button"
           onClick={onAction}
           className="mt-4 inline-flex h-8 items-center justify-center rounded-md px-3 text-xs font-semibold"
-          style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}
+          style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}
         >
           {action}
         </button>
@@ -490,7 +490,7 @@ export function DashboardViewNew() {
           <section className="min-w-0">
             <div className="mb-3 flex items-center justify-between">
               <h2 style={{ color: "var(--fg-primary)", fontSize: 16, fontWeight: 740 }}>任务队列</h2>
-              <button type="button" onClick={() => setActiveNav("tasks")} className="text-xs font-semibold" style={{ color: "#174ea6" }}>
+              <button type="button" onClick={() => setActiveNav("tasks")} className="text-xs font-semibold" style={{ color: "var(--accent)" }}>
                 查看全部
               </button>
             </div>
@@ -541,7 +541,7 @@ export function DashboardViewNew() {
                           type="button"
                           onClick={() => openConversation(task.conversationId)}
                           className="h-7 rounded-md px-2.5 text-xs font-semibold"
-                          style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.16)" }}
+                          style={{ color: "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}
                         >
                           打开
                         </button>
@@ -599,7 +599,7 @@ export function DashboardViewNew() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-semibold" style={{ color: "var(--fg-primary)" }}>{agent.name}</span>
-                        <span className="rounded-sm px-1.5 py-0.5 text-xs" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>{agent.tag}</span>
+                        <span className="rounded-sm px-1.5 py-0.5 text-xs" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>{agent.tag}</span>
                       </div>
                       <p className="truncate text-xs" style={{ color: "var(--fg-tertiary)" }}>{agent.desc}</p>
                     </div>

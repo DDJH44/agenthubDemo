@@ -242,7 +242,7 @@ function ChatEmptyState({
                 type="button"
                 onClick={onCreate}
                 className="inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold text-white transition-opacity hover:opacity-90"
-                style={{ background: "var(--accent)", boxShadow: "0 8px 18px rgba(68,86,223,0.18)" }}
+              style={{ background: "var(--accent)", boxShadow: "var(--accent-glow)" }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" aria-hidden="true">
                   <path d="M12 5v14M5 12h14" />
@@ -817,13 +817,13 @@ export default function Page() {
             <button
               onClick={() => setShowMobileSidebar(true)}
               className="p-2 rounded-lg"
-              style={{ color: "var(--text-secondary)" }}
+              style={{ color: "var(--fg-secondary)" }}
             >
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M3 12h18M3 6h18M3 18h18" />
               </svg>
             </button>
-            <span style={{ fontSize: "var(--text-base)", fontWeight: 600, color: "var(--text-primary)" }}>
+            <span style={{ fontSize: "var(--text-base)", fontWeight: 600, color: "var(--fg-primary)" }}>
               AgentHub
             </span>
           </div>

@@ -962,9 +962,9 @@ const MessageBubble = memo(function MessageBubble({
             className="overflow-hidden rounded-lg"
             data-context-message-id={message.id}
             style={{
-              background: isUser ? "#eef5ff" : "rgba(255, 255, 255, 0.82)",
-              color: isUser ? "#173a7a" : "var(--fg-primary)",
-              border: `1px solid ${isUser ? "rgba(68, 86, 223, 0.10)" : "rgba(62, 79, 118, 0.08)"}`,
+              background: isUser ? "var(--accent-subtle)" : "var(--surface-tinted)",
+              color: isUser ? "var(--accent)" : "var(--fg-primary)",
+              border: `1px solid ${isUser ? "var(--accent-border)" : "var(--border)"}`,
               boxShadow: "none",
             }}
           >
@@ -1084,7 +1084,7 @@ function StreamDisplay({ isStreaming, streamBuffer }: { isStreaming: boolean; st
           AI
         </div>
         <div className="min-w-0 flex-1" style={{ maxWidth: "86%" }}>
-          <div className="rounded-lg px-4 py-3" style={{ background: "rgba(255, 255, 255, 0.82)", border: "1px solid var(--accent-border)", boxShadow: "none" }}>
+          <div className="rounded-lg px-4 py-3" style={{ background: "var(--surface-tinted)", border: "1px solid var(--accent-border)", boxShadow: "none" }}>
             {streamBuffer ? (
               <pre className="m-0 whitespace-pre-wrap" style={{ color: "var(--fg-secondary)", fontFamily: "var(--font-mono)", fontSize: "var(--text-sm)", lineHeight: 1.65 }}>
                 {streamBuffer}

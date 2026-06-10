@@ -138,7 +138,7 @@ function DocumentDownloadMenu({
         type="button"
         onClick={() => setOpen((value) => !value)}
         className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]"
-        style={{ color: "#174ea6" }}
+        style={{ color: "var(--accent)" }}
       >
         下载
       </button>
@@ -166,7 +166,7 @@ function DocumentDownloadMenu({
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-[11px] transition-colors hover:bg-[var(--surface-low)]"
                 style={{ color: "var(--fg-secondary)" }}
               >
-                <span className="grid h-5 min-w-7 place-items-center rounded text-[9px] font-black" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.08)" }}>
+                <span className="grid h-5 min-w-7 place-items-center rounded text-[9px] font-black" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
                   {item.badge}
                 </span>
                 <span className="whitespace-nowrap">{item.label}</span>
@@ -245,7 +245,7 @@ function CodeView({
               type="button"
               onClick={onPreview}
               className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]"
-              style={{ color: "#174ea6" }}
+              style={{ color: "var(--accent)" }}
             >
               预览
             </button>
@@ -255,7 +255,7 @@ function CodeView({
               type="button"
               onClick={() => { setEditContent(content); setEditing(true); }}
               className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]"
-              style={{ color: "#174ea6" }}
+              style={{ color: "var(--accent)" }}
             >
               编辑
             </button>
@@ -359,7 +359,7 @@ function MarkdownView({ content, filename }: { content: string; filename?: strin
             type="button"
             onClick={() => setSourceMode((value) => !value)}
             className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]"
-            style={{ color: "#174ea6" }}
+            style={{ color: "var(--accent)" }}
           >
             {sourceMode ? "预览" : "源码"}
           </button>
@@ -474,7 +474,7 @@ function DocumentView({
               type="button"
               onClick={onPreview}
               className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]"
-              style={{ color: "#174ea6" }}
+              style={{ color: "var(--accent)" }}
             >
               打开预览
             </button>
@@ -483,7 +483,7 @@ function DocumentView({
             type="button"
             onClick={() => setSourceMode((value) => !value)}
             className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]"
-            style={{ color: "#174ea6" }}
+            style={{ color: "var(--accent)" }}
           >
             {sourceMode ? "预览" : "源码"}
           </button>
@@ -505,7 +505,7 @@ function DocumentView({
           <div className="flex items-center justify-between gap-2">
             <span className="text-[10px] font-bold" style={{ color: "var(--fg-tertiary)" }}>段落引用</span>
             {paragraphs.length > 3 && (
-              <button type="button" onClick={() => setExpandedQuotes((value) => !value)} className="text-[10px] font-semibold" style={{ color: "#174ea6" }}>
+              <button type="button" onClick={() => setExpandedQuotes((value) => !value)} className="text-[10px] font-semibold" style={{ color: "var(--accent)" }}>
                 {expandedQuotes ? "收起" : `全部 ${paragraphs.length} 段`}
               </button>
             )}
@@ -517,7 +517,7 @@ function DocumentView({
                 <p className="line-clamp-3 text-xs" style={{ color: "var(--fg-secondary)", lineHeight: 1.6 }}>{paragraph}</p>
                 {conversationId && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <button type="button" onClick={() => referenceParagraph(paragraph, index)} className="rounded px-2 py-1 text-[10px] font-semibold" style={{ color: referencedId === refId ? "var(--success)" : "#174ea6", background: "rgba(23, 78, 166, 0.07)", border: "1px solid rgba(23, 78, 166, 0.14)" }}>
+                    <button type="button" onClick={() => referenceParagraph(paragraph, index)} className="rounded px-2 py-1 text-[10px] font-semibold" style={{ color: referencedId === refId ? "var(--success)" : "var(--accent)", background: "var(--accent-subtle)", border: "1px solid var(--accent-border)" }}>
                       {referencedId === refId ? "已引用" : "引用"}
                     </button>
                     {HANDOFF_AGENTS.map((agent) => (
@@ -578,7 +578,7 @@ function SlidesView({
         <>
           <CopyButton text={content} />
           {onPreview && (
-            <button type="button" onClick={onPreview} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]" style={{ color: "#174ea6" }}>
+            <button type="button" onClick={onPreview} className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)]" style={{ color: "var(--accent)" }}>
               预览
             </button>
           )}
@@ -587,7 +587,7 @@ function SlidesView({
             onClick={handleDownload}
             disabled={slides.length === 0 || exporting}
             className="h-6 rounded px-2 text-[10px] font-semibold transition-colors hover:bg-[var(--surface-mid)] disabled:opacity-45"
-            style={{ color: "#174ea6" }}
+            style={{ color: "var(--accent)" }}
           >
             {exporting ? "生成中" : "下载 PPTX"}
           </button>
@@ -602,7 +602,7 @@ function SlidesView({
       >
         <span
           className="grid h-11 w-11 shrink-0 place-items-center rounded-lg text-[11px] font-black"
-          style={{ color: "#fff", background: "linear-gradient(135deg, #5B5CF6, #7C3AED)", boxShadow: "0 10px 22px rgba(91, 92, 246, 0.20)" }}
+          style={{ color: "#fff", background: "linear-gradient(135deg, var(--accent), #7C3AED)", boxShadow: "0 10px 22px var(--accent-border)" }}
         >
           PPTX
         </span>
@@ -612,7 +612,7 @@ function SlidesView({
             {slideTitles.length > 0 ? slideTitles.join(" / ") : "点击预览后在右侧工作台浏览"}
           </span>
         </span>
-        <span className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+        <span className="shrink-0 rounded-md px-2 py-1 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
           点击预览
         </span>
       </button>
@@ -628,7 +628,7 @@ function PreviewView({ url, content }: { url?: string; content?: string }) {
       title="产物预览"
       meta={openUrl || "inline preview"}
       actions={openUrl ? (
-        <a href={openUrl} target="_blank" rel="noopener noreferrer" className="h-6 rounded px-2 text-[10px] font-semibold no-underline" style={{ color: "#174ea6" }}>
+        <a href={openUrl} target="_blank" rel="noopener noreferrer" className="h-6 rounded px-2 text-[10px] font-semibold no-underline" style={{ color: "var(--accent)" }}>
           打开
         </a>
       ) : undefined}
@@ -654,7 +654,7 @@ function DiffView({ content, original }: { content: string; original?: string })
         title="代码 Diff"
         meta="并排对比"
         actions={
-          <button type="button" onClick={() => setSideBySide(false)} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: "#174ea6" }}>
+          <button type="button" onClick={() => setSideBySide(false)} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: "var(--accent)" }}>
             文本视图
           </button>
         }
@@ -701,7 +701,7 @@ function DiffView({ content, original }: { content: string; original?: string })
         <>
           <CopyButton text={content} />
           {original && (
-            <button type="button" onClick={() => setSideBySide(true)} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: "#174ea6" }}>
+            <button type="button" onClick={() => setSideBySide(true)} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: "var(--accent)" }}>
               并排
             </button>
           )}
@@ -717,8 +717,8 @@ function DiffView({ content, original }: { content: string; original?: string })
             <div
               key={`${index}-${line}`}
               style={{
-                background: removed ? "rgba(165, 14, 14, 0.07)" : added ? "rgba(24, 128, 56, 0.08)" : header ? "rgba(23, 78, 166, 0.07)" : "transparent",
-                color: removed ? "#a50e0e" : added ? "#188038" : header ? "#174ea6" : "var(--fg-secondary)",
+                background: removed ? "rgba(165, 14, 14, 0.07)" : added ? "rgba(24, 128, 56, 0.08)" : header ? "var(--accent-subtle)" : "transparent",
+                color: removed ? "#a50e0e" : added ? "#188038" : header ? "var(--accent)" : "var(--fg-secondary)",
                 padding: "0 6px",
                 minWidth: "100%",
                 width: "max-content",
@@ -758,7 +758,7 @@ function DeployView({
   const failed = status === "failed" || status === "error";
   const providerLabel = provider ? getDeployProviderLabel(provider) : "";
   const label = done ? "部署完成" : failed ? "部署失败" : "部署中";
-  const color = done ? "var(--success)" : failed ? "var(--danger)" : "#174ea6";
+  const color = done ? "var(--success)" : failed ? "var(--danger)" : "var(--accent)";
   const displayLabel = done && verified ? "部署完成，已验证" : label;
   const normalizedProgress = failed ? 100 : done ? 100 : Math.max(0, Math.min(progress ?? 35, 100));
   const addMessage = useChatStore((state) => state.addMessage);
@@ -802,12 +802,12 @@ function DeployView({
       actions={
         <>
           {failed && conversationId && (
-            <button type="button" onClick={handoffToCodex} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: "#174ea6", background: "rgba(23, 78, 166, 0.07)" }}>
+            <button type="button" onClick={handoffToCodex} className="h-6 rounded px-2 text-[10px] font-semibold" style={{ color: "var(--accent)", background: "var(--accent-subtle)" }}>
               交给 Codex
             </button>
           )}
           {url && (
-            <a href={url} target="_blank" rel="noopener noreferrer" className="h-6 rounded px-2 text-[10px] font-semibold no-underline" style={{ color: "#174ea6" }}>
+            <a href={url} target="_blank" rel="noopener noreferrer" className="h-6 rounded px-2 text-[10px] font-semibold no-underline" style={{ color: "var(--accent)" }}>
               访问
             </a>
           )}

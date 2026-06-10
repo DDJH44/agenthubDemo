@@ -488,7 +488,7 @@ export function TasksView() {
                         type="button"
                         onClick={() => openConversation(task.conversationId, "tasks")}
                         className="h-8 rounded-lg px-3 text-xs font-semibold text-white transition-opacity hover:opacity-90"
-                        style={{ background: "var(--accent)", boxShadow: "0 8px 18px rgba(68, 86, 223, 0.16)" }}
+                        style={{ background: "var(--accent)", boxShadow: "var(--accent-glow)" }}
                       >
                         打开会话
                       </button>
