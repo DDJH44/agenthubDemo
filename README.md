@@ -27,7 +27,7 @@ npm run dev:all
 npm run dev:server
 ```
 
-## 结题演示主线
+## 演示主线
 
 1. 登录 AgentHub，进入工作台。
 2. 打开会话页，展示单聊、群聊、会话列表、成员与 Agent 标签。
@@ -36,8 +36,6 @@ npm run dev:server
 5. 打开右侧产物工作台，演示预览、代码、Diff、PPT、历史、部署、上下文。
 6. 打开我的智能体，展示自建 Agent 和 LLM 配置能力。
 7. 打开设置页，使用“运行自检”确认后端、模型、部署服务器和工作区状态。
-
-详细脚本见 [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md)，最终检查清单见 [docs/final-acceptance-checklist.md](docs/final-acceptance-checklist.md)。
 
 ## 常用检查
 
@@ -74,9 +72,6 @@ APP_URL=http://localhost:3000 API_URL=http://localhost:3002 npm run smoke:accept
 
 ## 文档入口
 
-- [结题交付说明](docs/FINAL_DELIVERY.md)
-- [产品规格](docs/SPEC.md)
-- [架构说明](docs/ARCHITECTURE.md)
-- [演示脚本](docs/DEMO_SCRIPT.md)
-- [自托管部署](docs/self-hosted-deployment.md)
-- [Vercel 生产部署](docs/vercel-production-deployment.md)
+- [产品文档](docs/PRODUCT_DOCUMENT.md)
+- [技术文档](docs/TECHNICAL_DOCUMENT.md)
+- [AI 协作记录](docs/AI_COLLABORATION_RECORD.md)

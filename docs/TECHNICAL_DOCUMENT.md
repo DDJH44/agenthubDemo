@@ -1,4 +1,4 @@
-# AgentHub Architecture
+# AgentHub 技术文档
 
 ## 1. 架构目标
 
